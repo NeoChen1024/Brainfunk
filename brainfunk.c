@@ -28,6 +28,7 @@ Brainf**k Original:
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
@@ -35,9 +36,9 @@ Brainf**k Original:
 #define POWTWO(x) (1 << x)
 
 #ifndef SIZEDEF
-#define STACKSIZE 65536
-#define MEMSIZE 65536
-#define CODESIZE 262144
+#define STACKSIZE 1024
+#define MEMSIZE	262144
+#define CODESIZE 65536
 #endif
 
 #define TRUE 1
