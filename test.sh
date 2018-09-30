@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 set -e
 
 test_echo()
@@ -8,7 +8,7 @@ test_echo()
 
 msg_echo()
 {
-	printf "\033[44m==>>\033[0m \033[1;33m%s\n" "$1"
+	printf "\033[44m==>>\033[0m \033[1;33m%s\033[0m\n" "$1"
 }
 
 response()
