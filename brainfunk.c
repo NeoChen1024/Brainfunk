@@ -69,23 +69,29 @@ void read_code(FILE* fp)
 	int i=0, c=0;
 	while((c=getc(fp)) != EOF)
 	{
+#ifndef FAST
 		if(i >= CODESIZE)
 			panic("?CODE");
+#endif
 		code[i++]=(char)c;
 	}
 }
 
 void push(stack_t *stack, unsigned int *ptr, stack_t content)
 {
+#ifdef FAST
 	if(*ptr >= STACKSIZE)
 		panic("?>STACK");
+#endif
 	stack[(*ptr)++]=content;
 }
 
 stack_t pop(stack_t *stack, unsigned int *ptr)
 {
+#ifdef FAST
 	if(*ptr >= STACKSIZE)
 		panic("?<STACK");
+#endif
 	return stack[--(*ptr)];
 }
 
@@ -127,22 +133,28 @@ void interprete(unsigned char c)
 			break;
 		case '>':
 			ptr++;
+#ifdef FAST
 			if(ptr >= MEMSIZE)
 				panic("?>MEM");
+#endif
 			++code_ptr;
 			break;
 		case '<':
 			ptr--;
+#ifndef FAST
 			if(ptr >= MEMSIZE)
 				panic("?<MEM");
+#endif
 			++code_ptr;
 			break;
 		case '[':
 			if(memory[ptr] == 0)
 			{
 				jump_to_next_matching(); /* Skip everything until reached matching "]" */
+#ifndef FAST
 				if(debug)
 					fprintf(stderr, "[:%d\n", code_ptr);
+#endif
 			}
 			else
 			{
@@ -154,8 +166,10 @@ void interprete(unsigned char c)
 			if(memory[ptr] != 0) /* if not equals to 0 */
 			{
 				code_ptr=pop(stack, &stack_ptr);
+#ifndef FAST
 				if(debug)
 					fprintf(stderr, "]:%d\n", code_ptr);
+#endif
 			}
 			else
 			{
@@ -183,14 +197,14 @@ int main(int argc, char **argv)
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
 	stack	= calloc(STACKSIZE, sizeof(stack_t));
 	code	= calloc(CODESIZE, sizeof(code_t));
-
+#ifndef FAST
 	if(debug)
 	{
 		fprintf(stderr, "memory = %p\n", memory);
 		fprintf(stderr, "stack = %p\n\n", stack);
 		fflush(NULL);
 	}
-
+#endif
 	int i=0;
 	for(i=0; i < CODESIZE; ++i) code[i]='\0';
 
@@ -239,8 +253,10 @@ int main(int argc, char **argv)
 
 	while(code[code_ptr] != '\0')
 	{
+#ifndef FAST
 		if(debug)
 			debug_output();
+#endif
 		interprete(code[code_ptr]);
 	}
 	return 0;
