@@ -183,6 +183,7 @@ void interprete(unsigned char c)
 			break;
 		case '.':
 			putchar(memory[ptr]);
+			fflush(NULL);
 			++code_ptr;
 			break;
 		default:
