@@ -1,6 +1,7 @@
-# Neo_Chen's Brainfuck Interpreter
-## Doesn't even pass all of these tests
-This is a simple interpreter, it don't have any fancy things like Byte Code,
+# Brainfunk
+## Neo_Chen's Simple Brainfuck Interpreter
+### Passed all the tests
+This is a simple interpreter, it don't have any fancy things like Byte Code (currently),
 dynamic memory allocation.
 
 ## Usage:
