@@ -12,6 +12,6 @@ brainfunk-fast:
 	$(CC) $(CFLAGS) $(LDFLAGS) -DFAST brainfunk.c -o brainfunk
 
 clean:
-	rm -fv test ${EXE}
+	rm -rfv test ${EXE}
 test:
 	$(SH) ./test.sh
