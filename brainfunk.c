@@ -30,7 +30,6 @@ Brainf**k Original:
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <signal.h>
 #include <string.h>
 
 #define POWTWO(x) (1 << x)
@@ -44,18 +43,25 @@ Brainf**k Original:
 #define TRUE 1
 #define FALSE 0
 typedef uint8_t memory_t;
-typedef unsigned int stack_type;
+typedef unsigned int stack_t;
 typedef char code_t;
 
 /* init */
 
 memory_t *memory;
 unsigned int ptr=0;
-stack_type *stack;
+stack_t *stack;
+unsigned int stack_ptr=0;
 code_t *code;
 unsigned int code_ptr=0;
 
 int debug=0;
+
+void panic(char *msg)
+{
+	puts(msg);
+	exit(2);
+}
 
 // Read Code
 void read_code(FILE* fp)
@@ -63,26 +69,32 @@ void read_code(FILE* fp)
 	int i=0, c=0;
 	while((c=getc(fp)) != EOF)
 	{
+		if(i >= CODESIZE)
+			panic("?CODE");
 		code[i++]=(char)c;
 	}
 }
 
-void push(stack_type **stack, stack_type content)
+void push(stack_t *stack, unsigned int *ptr, stack_t content)
 {
-	*((*stack)++)=content;
+	if(*ptr >= STACKSIZE)
+		panic("?>STACK");
+	stack[(*ptr)++]=content;
 }
 
-stack_type pop(stack_type **stack)
+stack_t pop(stack_t *stack, unsigned int *ptr)
 {
-	return *(--(*stack));
+	if(*ptr >= STACKSIZE)
+		panic("?<STACK");
+	return stack[--(*ptr)];
 }
 
 void debug_output(void)
 {
-	fprintf(stderr, "code=%u:%c:0x%#x\n", code_ptr, code[code_ptr], code[code_ptr]);
-	fprintf(stderr, "stack=%p:0x%0x\n", stack, *stack);
-	fprintf(stderr, "ptr=%p:0x%0x\n", memory + ptr, memory[ptr]);
-	fprintf(stderr, "--------\n\n");
+	fprintf(stderr, "code=%u:%c\n", code_ptr, code[code_ptr]);
+	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
+	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
+	fprintf(stderr, "--------\n");
 	fflush(NULL);
 }
 
@@ -115,10 +127,14 @@ void interprete(unsigned char c)
 			break;
 		case '>':
 			ptr++;
+			if(ptr >= MEMSIZE)
+				panic("?>MEM");
 			++code_ptr;
 			break;
 		case '<':
 			ptr--;
+			if(ptr >= MEMSIZE)
+				panic("?<MEM");
 			++code_ptr;
 			break;
 		case '[':
@@ -126,23 +142,26 @@ void interprete(unsigned char c)
 			{
 				jump_to_next_matching(); /* Skip everything until reached matching "]" */
 				if(debug)
-					fprintf(stderr, "Forward to code[%d]\n", code_ptr);
+					fprintf(stderr, "[:%d\n", code_ptr);
 			}
 			else
 			{
-				push(&stack, code_ptr); /* Push current PC */
+				push(stack, &stack_ptr, code_ptr); /* Push current PC */
 				code_ptr++;
 			}
 			break;
 		case ']':
 			if(memory[ptr] != 0) /* if not equals to 0 */
 			{
-				code_ptr=pop(&stack);
+				code_ptr=pop(stack, &stack_ptr);
 				if(debug)
-					fprintf(stderr, "Back to code[%d]\n", code_ptr);
+					fprintf(stderr, "]:%d\n", code_ptr);
 			}
 			else
+			{
 				code_ptr++;
+				pop(stack, &stack_ptr);
+			}
 			break;
 		case ',':
 			memory[ptr]=(char)getchar();
@@ -162,13 +181,14 @@ int main(int argc, char **argv)
 {
 	/* Init */
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
-	stack	= calloc(STACKSIZE, sizeof(stack_type));
+	stack	= calloc(STACKSIZE, sizeof(stack_t));
 	code	= calloc(CODESIZE, sizeof(code_t));
 
 	if(debug)
 	{
 		fprintf(stderr, "memory = %p\n", memory);
-		fprintf(stderr, "stack = %p\n", stack);
+		fprintf(stderr, "stack = %p\n\n", stack);
+		fflush(NULL);
 	}
 
 	int i=0;
