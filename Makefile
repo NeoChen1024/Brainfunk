@@ -1,17 +1,20 @@
-CC=	clang
-CFLAGS=	-O3 -finline -g2 -Wall -Wextra -pipe -fPIE
-EXE=	brainfunk
+CC=	cc
+CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE
+EXE=	brainfunk brainfunk-fast
 SH?=	/bin/sh
-all:
-	@echo "make brainfunk, brainfunk-fast, or test"
+
+all: brainfunk brainfunk-fast
 
 brainfunk:
 	$(CC) $(CFLAGS) $(LDFLAGS) brainfunk.c -o brainfunk
 
 brainfunk-fast:
-	$(CC) $(CFLAGS) $(LDFLAGS) -DFAST brainfunk.c -o brainfunk
+	$(CC) $(CFLAGS) $(LDFLAGS) -DFAST brainfunk.c -o brainfunk-fast
 
 clean:
-	rm -rfv test ${EXE}
+	rm -rfv ${EXE}
+
+clean-all:
+	rm -rfv ${EXE} test
 test:
 	$(SH) ./test.sh
