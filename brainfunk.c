@@ -48,7 +48,7 @@ int debug=0;
 
 void panic(char *msg)
 {
-	puts(msg);
+	fputs(msg, stderr);
 	exit(2);
 }
 
