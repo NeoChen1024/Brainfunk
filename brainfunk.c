@@ -83,7 +83,7 @@ void push(stack_type *stack, unsigned int *ptr, stack_type content)
 	if(*ptr >= STACKSIZE)
 		panic("?>STACK");
 #endif
-	stack[(*ptr)++]=content;
+	stack[++(*ptr)]=content;
 }
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
@@ -92,7 +92,12 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 	if(*ptr >= STACKSIZE)
 		panic("?<STACK");
 #endif
-	return stack[--(*ptr)];
+	return stack[(*ptr)++];
+}
+
+stack_type peek(stack_type *stack, unsigned int *ptr)
+{
+	return stack[*ptr];
 }
 
 void debug_output(void)
@@ -158,14 +163,14 @@ void interprete(unsigned char c)
 			}
 			else
 			{
-				push(stack, &stack_ptr, code_ptr); /* Push current PC */
+				push(stack, &stack_ptr, code_ptr + 1); /* Push next PC */
 				code_ptr++;
 			}
 			break;
 		case ']':
 			if(memory[ptr] != 0) /* if not equals to 0 */
 			{
-				code_ptr=pop(stack, &stack_ptr);
+				code_ptr=peek(stack, &stack_ptr);
 #ifndef FAST
 				if(debug)
 					fprintf(stderr, "]:%d\n", code_ptr);
@@ -174,7 +179,7 @@ void interprete(unsigned char c)
 			else
 			{
 				code_ptr++;
-				pop(stack, &stack_ptr);
+				stack_ptr--; /* Drop */
 			}
 			break;
 		case ',':
