@@ -29,8 +29,8 @@ Brainf**k Original:
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 
 #define POWTWO(x) (1 << x)
 
@@ -43,14 +43,14 @@ Brainf**k Original:
 #define TRUE 1
 #define FALSE 0
 typedef uint8_t memory_t;
-typedef unsigned int stack_t;
+typedef unsigned int stack_type;
 typedef char code_t;
 
 /* init */
 
 memory_t *memory;
 unsigned int ptr=0;
-stack_t *stack;
+stack_type *stack;
 unsigned int stack_ptr=0;
 code_t *code;
 unsigned int code_ptr=0;
@@ -77,7 +77,7 @@ void read_code(FILE* fp)
 	}
 }
 
-void push(stack_t *stack, unsigned int *ptr, stack_t content)
+void push(stack_type *stack, unsigned int *ptr, stack_type content)
 {
 #ifdef FAST
 	if(*ptr >= STACKSIZE)
@@ -86,7 +86,7 @@ void push(stack_t *stack, unsigned int *ptr, stack_t content)
 	stack[(*ptr)++]=content;
 }
 
-stack_t pop(stack_t *stack, unsigned int *ptr)
+stack_type pop(stack_type *stack, unsigned int *ptr)
 {
 #ifdef FAST
 	if(*ptr >= STACKSIZE)
@@ -196,7 +196,7 @@ int main(int argc, char **argv)
 {
 	/* Init */
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
-	stack	= calloc(STACKSIZE, sizeof(stack_t));
+	stack	= calloc(STACKSIZE, sizeof(stack_type));
 	code	= calloc(CODESIZE, sizeof(code_t));
 #ifndef FAST
 	if(debug)
