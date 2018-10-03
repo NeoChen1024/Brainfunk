@@ -95,11 +95,6 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 	return stack[(*ptr)++];
 }
 
-stack_type peek(stack_type *stack, unsigned int *ptr)
-{
-	return stack[*ptr];
-}
-
 void debug_output(void)
 {
 	fprintf(stderr, "code=%u:%c\n", code_ptr, code[code_ptr]);
@@ -170,7 +165,7 @@ void interprete(unsigned char c)
 		case ']':
 			if(memory[ptr] != 0) /* if not equals to 0 */
 			{
-				code_ptr=peek(stack, &stack_ptr);
+				code_ptr=stack[stack_ptr]; /* Peek */
 #ifndef FAST
 				if(debug)
 					fprintf(stderr, "]:%d\n", code_ptr);
@@ -180,6 +175,10 @@ void interprete(unsigned char c)
 			{
 				code_ptr++;
 				stack_ptr--; /* Drop */
+#ifndef FAST
+				if(stack_ptr >= STACKSIZE)
+					panic("?<STACK");
+#endif
 			}
 			break;
 		case ',':
