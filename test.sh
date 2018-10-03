@@ -25,12 +25,17 @@ msg_echo "Downloading More Tests from Internet"
 mkdir -p test
 
 cd test
-[ -f brainf_progs.tar ] ||curl -OJv http://www.kotay.com/sree/bf/brainf_progs.tar
+[ -f brainf_progs.tar ] || curl -OJv http://www.kotay.com/sree/bf/brainf_progs.tar
 tar -xpf brainf_progs.tar
 
 for i in bench.b long.b fib.b ; do
 	msg_echo "Testing ${i%.b}"
 	../brainfunk -f $i && response "PASS"
 done
+
+[ -f mandelbrot.b ] || curl -OJv http://esoteric.sange.fi/brainfuck/utils/mandelbrot/mandelbrot.b
+
+msg_echo "Testing mandelbrot"
+../brainfunk -f mandelbrot.b && response "PASS"
 
 cd ..
