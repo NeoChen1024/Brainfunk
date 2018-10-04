@@ -3,6 +3,8 @@ set -e
 
 if [ -z "${BF}" ]; then
 	BF="`realpath brainfunk`"
+else
+	BF="`realpath $BF`"
 fi
 
 msg_echo()
@@ -19,6 +21,7 @@ fetch()
 {
 	local url="$1"
 	if [ -f "${i##*/}" ]; then
+		msg_echo "Fetching $url"
 		curl -OJv "$url"
 	fi
 }
@@ -35,10 +38,10 @@ test_from_url()
 
 
 msg_echo "Testing Basic Loop, see if it coredumps" "-[>+<-]"
-( ${BF} -c '-[>+<-]' ) && response "PASS"
+( ${BF} -c '-[>+<-]' ) && response "PASS" || response "FAIL"
 
 msg_echo "Hello World Test"
-( ${BF} -c '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS"
+( ${BF} -c '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS" || response "FAIL"
 
 msg_echo "Downloading More Tests from Internet"
 mkdir -p test
@@ -49,9 +52,7 @@ tar -xpf brainf_progs.tar
 
 for i in bench.b long.b; do
 	msg_echo "Testing ${i%.b}"
-	${BF} -f $i && response "PASS"
+	${BF} -f $i && response "PASS" || response "FAIL"
 done
 
 test_from_url https://raw.githubusercontent.com/pablojorge/brainfuck/master/programs/sierpinski.bf
-
-cd ..
