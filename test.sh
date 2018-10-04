@@ -53,6 +53,5 @@ for i in bench.b long.b; do
 done
 
 test_from_url https://raw.githubusercontent.com/pablojorge/brainfuck/master/programs/sierpinski.bf
-test_from_url http://esoteric.sange.fi/brainfuck/utils/mandelbrot/mandelbrot.b
 
 cd ..
