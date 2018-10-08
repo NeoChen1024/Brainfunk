@@ -2,9 +2,7 @@
 set -e
 
 if [ -z "${BF}" ]; then
-	BF="`realpath brainfunk`"
-else
-	BF="`realpath $BF`"
+	BF="${PWD}/brainfunk"
 fi
 
 msg_echo()
@@ -20,7 +18,7 @@ response()
 fetch()
 {
 	local url="$1"
-	if [ -f "${i##*/}" ]; then
+	if [ ! -f "${i##*/}" ]; then
 		msg_echo "Fetching $url"
 		curl -OJv "$url"
 	fi
