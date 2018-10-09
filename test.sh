@@ -18,7 +18,7 @@ response()
 fetch()
 {
 	local url="$1"
-	if [ ! -f "${i##*/}" ]; then
+	if [ ! -f "${url##*/}" ]; then
 		msg_echo "Fetching $url"
 		curl -OJv "$url"
 	fi
