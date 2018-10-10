@@ -15,6 +15,8 @@
 	,	*ptr = getchar()
 */
 
+/* If "FAST" is defined, will bypass alli runtime checking */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -23,10 +25,18 @@
 
 #define POWTWO(x) (1 << x)
 
-#ifndef SIZEDEF
-#define STACKSIZE 1024
-#define MEMSIZE	262144
-#define CODESIZE 65536
+#define DEF_MEMSIZE 262144
+#define DEF_CODESIZE 65536
+#define DEF_STACKSIZE 1024
+
+#ifdef FAST
+#	define MEMSIZE DEF_MEMSIZE
+#	define CODESIZE DEF_CODESIZE
+#	define STACKSIZE DEF_STACKSIZE
+#else
+#	define MEMSIZE memsize
+#	define CODESIZE codesize
+#	define STACKSIZE stacksize
 #endif
 
 #define TRUE 1
@@ -46,6 +56,10 @@ unsigned int code_ptr=0;
 
 int debug=0;
 
+unsigned int memsize=DEF_MEMSIZE;
+unsigned int codesize=DEF_CODESIZE;
+unsigned int stacksize=DEF_STACKSIZE;
+
 void panic(char *msg)
 {
 	fputs(msg, stderr);
@@ -55,7 +69,8 @@ void panic(char *msg)
 // Read Code
 void read_code(FILE* fp)
 {
-	int i=0, c=0;
+	unsigned int i=0;
+	int c=0;
 	while((c=getc(fp)) != EOF)
 	{
 #ifndef FAST
@@ -189,31 +204,34 @@ int main(int argc, char **argv)
 {
 	/* Init */
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
-	stack	= calloc(STACKSIZE, sizeof(stack_type));
 	code	= calloc(CODESIZE, sizeof(code_t));
-#ifndef FAST
-	if(debug)
-	{
-		fprintf(stderr, "memory = %p\n", memory);
-		fprintf(stderr, "stack = %p\n\n", stack);
-		fflush(NULL);
-	}
-#endif
-	int i=0;
-	for(i=0; i < CODESIZE; ++i) code[i]='\0';
+	stack	= calloc(STACKSIZE, sizeof(stack_type));
 
 	/* Parse Argument */
 	FILE *corefile;
 	int opt;
 
 	if(!(argc >= 2))
+	{
 		puts("argc < 2!");
+	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:")) != -1)
+		while((opt = getopt(argc, argv, "hdf:c:s:")) != -1)
 		{
 			switch(opt)
 			{
+				case 's':
+					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
+					if(memsize == 0 || codesize == 0 || stacksize == 0)
+						panic("?SIZE=0");
+					free(memory);
+					free(code);
+					free(stack);
+					memory	= calloc(memsize, sizeof(memory_t));
+					code	= calloc(codesize, sizeof(code_t));
+					stack	= calloc(stacksize, sizeof(stack_type));
+					break;
 				case 'f':
 					if(strcmp(optarg, "-"))
 					{
@@ -223,6 +241,7 @@ int main(int argc, char **argv)
 							exit(8);
 						}
 						read_code(corefile);
+						fclose(corefile);
 					}
 					else
 						read_code(stdin);
@@ -231,7 +250,7 @@ int main(int argc, char **argv)
 					strncpy(code, optarg, CODESIZE);
 					break;
 				case 'h':
-					printf("Usage: %s [-h] [-f file] [-c code] [-d]\n", argv[0]);
+					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
 					break;
 				case 'd':
 					puts("Enabled Debug verbose message");
@@ -245,6 +264,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if(debug)
+	{
+		fprintf(stderr, "memory	= %p[%d]\n", memory, MEMSIZE);
+		fprintf(stderr, "code	= %p[%d]\n", code, CODESIZE);
+		fprintf(stderr, "stack	= %p[%d]\n\n", stack, STACKSIZE);
+		fflush(NULL);
+	}
+
 	while(code[code_ptr] != '\0')
 	{
 #ifndef FAST
@@ -253,5 +280,9 @@ int main(int argc, char **argv)
 #endif
 		interprete(code[code_ptr]);
 	}
+
+	free(memory);
+	free(code);
+	free(stack);
 	return 0;
 }
