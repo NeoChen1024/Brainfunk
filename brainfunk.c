@@ -23,8 +23,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define POWTWO(x) (1 << x)
-
 #define DEF_MEMSIZE 262144
 #define DEF_CODESIZE 65536
 #define DEF_STACKSIZE 1024
@@ -123,7 +121,7 @@ void jump_to_next_matching(void)
 	}
 }
 
-void interprete(unsigned char c)
+void interprete(code_t c)
 {
 	switch(c)
 	{
@@ -186,7 +184,7 @@ void interprete(unsigned char c)
 			}
 			break;
 		case ',':
-			memory[ptr]=(char)getchar();
+			memory[ptr]=(memory_t)getchar();
 			++code_ptr;
 			break;
 		case '.':
@@ -260,7 +258,6 @@ int main(int argc, char **argv)
 					break;
 				default:
 					exit(1);
-					break;
 
 			}
 		}
