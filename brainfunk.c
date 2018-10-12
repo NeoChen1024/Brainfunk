@@ -15,7 +15,7 @@
 	,	*ptr = getchar()
 */
 
-/* If "FAST" is defined, will bypass alli runtime checking */
+/* If "FAST" is defined, will bypass all runtime checking */
 
 #include <stdio.h>
 #include <stdlib.h>
