@@ -221,7 +221,8 @@ int main(int argc, char **argv)
 		{
 			switch(opt)
 			{
-				case 's':
+				case 's': /* Read size from argument */
+#ifndef FAST
 					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0)
 						panic("?SIZE=0");
@@ -231,8 +232,9 @@ int main(int argc, char **argv)
 					memory	= calloc(memsize, sizeof(memory_t));
 					code	= calloc(codesize, sizeof(code_t));
 					stack	= calloc(stacksize, sizeof(stack_type));
+#endif
 					break;
-				case 'f':
+				case 'f': /* File */
 					if(strcmp(optarg, "-"))
 					{
 						if((corefile = fopen(optarg, "r")) == NULL)
@@ -246,13 +248,13 @@ int main(int argc, char **argv)
 					else
 						read_code(stdin);
 					break;
-				case 'c':
+				case 'c': /* Code */
 					strncpy(code, optarg, CODESIZE);
 					break;
-				case 'h':
+				case 'h': /* Help */
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
 					break;
-				case 'd':
+				case 'd': /* Debug */
 					puts("Enabled Debug verbose message");
 					debug = TRUE;
 					break;
