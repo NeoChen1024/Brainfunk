@@ -64,7 +64,7 @@ void panic(char *msg)
 	exit(2);
 }
 
-// Read Code
+/* Read Code */
 void read_code(FILE* fp)
 {
 	unsigned int i=0;
@@ -94,7 +94,7 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 	if(*ptr >= STACKSIZE)
 		panic("?<STACK");
 #endif
-	return stack[(*ptr)++];
+	return stack[(*ptr)--];
 }
 
 void debug_output(void)
