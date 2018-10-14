@@ -1,5 +1,5 @@
 CC=	cc
-CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE
+CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi
 EXE=	brainfunk brainfunk-fast
 SH?=	/bin/sh
 
