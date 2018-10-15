@@ -30,6 +30,7 @@ typedef unsigned int stack_type;
 typedef char code_t;
 
 void panic(char *msg);
+void read_code(FILE* fp);
 void push(stack_type *stack, unsigned int *ptr, stack_type content);
 stack_type pop(stack_type *stack, unsigned int *ptr);
 void debug_output(void);
