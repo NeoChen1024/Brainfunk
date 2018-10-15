@@ -15,9 +15,9 @@ libbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
 
 clean:
-	rm -rfv brainfunk
+	rm -rfv brainfunk *.o
 
 clean-all:
-	rm -rfv brainfunk test
+	rm -rfv brainfunk *.o test
 test:
 	$(SH) ./test.sh
