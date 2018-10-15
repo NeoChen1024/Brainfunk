@@ -1,12 +1,13 @@
-CC=	cc
-CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi -I.
+CC	= cc
+CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi -I.
+LDFLAGS	= -fPIE
 # CFLAGS += -DFAST
 SH?=	/bin/sh
 
 all: brainfunk
 
 brainfunk: brainfunk.o libbrainfunk.o
-	$(CC) $(CFLAGS) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
+	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
 
 brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
