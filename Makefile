@@ -1,20 +1,23 @@
 CC=	cc
-CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi
-EXE=	brainfunk brainfunk-fast
+CFLAGS=	-O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi -I.
+# CFLAGS += -DFAST
 SH?=	/bin/sh
 
-all: brainfunk brainfunk-fast
+all: brainfunk
 
-brainfunk:
-	$(CC) $(CFLAGS) $(LDFLAGS) brainfunk.c -o brainfunk
+brainfunk: brainfunk.o libbrainfunk.o
+	$(CC) $(CFLAGS) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
 
-brainfunk-fast:
-	$(CC) $(CFLAGS) $(LDFLAGS) -DFAST brainfunk.c -o brainfunk-fast
+brainfunk.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
+
+libbrainfunk.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
 
 clean:
-	rm -rfv ${EXE}
+	rm -rfv brainfunk
 
 clean-all:
-	rm -rfv ${EXE} test
+	rm -rfv brainfunk test
 test:
 	$(SH) ./test.sh
