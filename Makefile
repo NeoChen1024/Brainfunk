@@ -1,7 +1,12 @@
 CC	= cc
 CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi -I.
 LDFLAGS	= -fPIE
+# If you want to make it run faster
 # CFLAGS += -DFAST
+#
+# If you needs LTO
+# CFLAGS	+= -flto
+# LDFLAGS	+= -flto
 SH?=	/bin/sh
 
 all: brainfunk
