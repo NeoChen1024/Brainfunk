@@ -1,3 +1,4 @@
-brainfunk*
+brainfunk
+visualbrainfunk
 *.o
 test
