@@ -27,10 +27,17 @@ unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
 unsigned int stacksize=DEF_STACKSIZE;
 
+void debug_output(void)
+{
+	printw("code=%u:%c\n", code_ptr, code[code_ptr]);
+	printw("stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
+	printw("ptr=%0x:0x%0x\n", ptr, memory[ptr]);
+	printw("--------\n");
+}
+
 void output(memory_t c)
 {
 	printw("%c", c);
-	refresh();
 }
 
 memory_t input(void)
@@ -113,7 +120,10 @@ int main(int argc, char **argv)
 
 	while(code[code_ptr] != '\0')
 	{
+		if(debug)
+			debug_output();
 		interprete(code[code_ptr]);
+		refresh();
 	}
 
 	endwin();
