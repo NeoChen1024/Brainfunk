@@ -1,10 +1,6 @@
 #!/usr/bin/env sh
 set -e
 
-if [ -z "${BF}" ]; then
-	BF="${PWD}/brainfunk"
-fi
-
 msg_echo()
 {
 	printf "\033[44m==>>\033[0m \033[1;33m%s\033[0m\n" "$1"
@@ -34,23 +30,26 @@ test_from_url()
 	${BF} -f "$file" && response "PASS" || response "FAIL"
 }
 
+for i in "$@"; do
+	BF="${PWD}/${i}"
+	msg_echo "Testing Basic Loop, see if it coredumps" "-[>+<-]"
+	( ${BF} -c '-[>+<-]' ) && response "PASS" || response "FAIL"
 
-msg_echo "Testing Basic Loop, see if it coredumps" "-[>+<-]"
-( ${BF} -c '-[>+<-]' ) && response "PASS" || response "FAIL"
+	msg_echo "Hello World Test"
+	( ${BF} -c '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS" || response "FAIL"
 
-msg_echo "Hello World Test"
-( ${BF} -c '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS" || response "FAIL"
+	msg_echo "Downloading More Tests from Internet"
+	mkdir -p test
 
-msg_echo "Downloading More Tests from Internet"
-mkdir -p test
+	cd test
+	fetch http://www.kotay.com/sree/bf/brainf_progs.tar
+	tar -xpf brainf_progs.tar
 
-cd test
-fetch http://www.kotay.com/sree/bf/brainf_progs.tar
-tar -xpf brainf_progs.tar
+	for i in bench.b long.b; do
+		msg_echo "Testing ${i%.b}"
+		${BF} -f $i && response "PASS" || response "FAIL"
+	done
 
-for i in bench.b long.b; do
-	msg_echo "Testing ${i%.b}"
-	${BF} -f $i && response "PASS" || response "FAIL"
+	test_from_url https://raw.githubusercontent.com/pablojorge/brainfuck/master/programs/sierpinski.bf
+
 done
-
-test_from_url https://raw.githubusercontent.com/pablojorge/brainfuck/master/programs/sierpinski.bf

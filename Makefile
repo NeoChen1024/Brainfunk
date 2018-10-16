@@ -32,5 +32,5 @@ clean:
 
 clean-all: clean
 	rm -rfv test
-test:
-	$(SH) ./test.sh
+test: all
+	$(SH) ./test.sh brainfunk visualbrainfunk
