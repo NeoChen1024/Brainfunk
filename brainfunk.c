@@ -25,6 +25,25 @@ unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
 unsigned int stacksize=DEF_STACKSIZE;
 
+void debug_output(void)
+{
+	fprintf(stderr, "code=%u:%c\n", code_ptr, code[code_ptr]);
+	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
+	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
+	fprintf(stderr, "--------\n");
+	fflush(NULL);
+}
+
+void output(memory_t c)
+{
+	putchar(c);
+}
+
+memory_t input(void)
+{
+	return (memory_t)getchar();
+}
+
 int main(int argc, char **argv)
 {
 	/* Init */

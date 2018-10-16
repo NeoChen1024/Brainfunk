@@ -17,6 +17,12 @@
 
 /* If "FAST" is defined, will bypass all runtime checking */
 
+/* You need to define
+ * 	void output(memory_t c)
+ * and
+ * 	memory_t input(void)
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -74,15 +80,6 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 		panic("?<STACK");
 #endif
 	return stack[(*ptr)--];
-}
-
-void debug_output(void)
-{
-	fprintf(stderr, "code=%u:%c\n", code_ptr, code[code_ptr]);
-	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
-	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
-	fprintf(stderr, "--------\n");
-	fflush(NULL);
 }
 
 void jump_to_next_matching(void)
@@ -163,12 +160,11 @@ void interprete(code_t c)
 			}
 			break;
 		case ',':
-			memory[ptr]=(memory_t)getchar();
+			memory[ptr]=(memory_t)input();
 			++code_ptr;
 			break;
 		case '.':
-			putchar(memory[ptr]);
-			fflush(NULL);
+			output(memory[ptr]);
 			++code_ptr;
 			break;
 		default:
