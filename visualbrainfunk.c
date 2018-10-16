@@ -21,7 +21,6 @@ code_t *code;
 unsigned int code_ptr=0;
 
 int debug=0;
-int color=1;
 
 unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
@@ -131,8 +130,6 @@ int main(int argc, char **argv)
 				case 'h': /* Help */
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
 					break;
-				case 'k':
-					color = 1;
 				case 'd': /* Debug */
 					wprintw(LOG_WINDOW, "DEBUG=1");
 					debug = TRUE;
