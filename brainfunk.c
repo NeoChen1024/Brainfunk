@@ -37,6 +37,7 @@ void debug_output(void)
 void output(memory_t c)
 {
 	putchar(c);
+	fflush(NULL);
 }
 
 memory_t input(void)
