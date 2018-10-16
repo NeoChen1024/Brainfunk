@@ -27,23 +27,28 @@ unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
 unsigned int stacksize=DEF_STACKSIZE;
 
+/* Currently Placeholders */
+#define LOG_WINDOW stdscr
+#define IO_WINDOW stdscr
+#define CODE_WINDOW stdscr
+
 void debug_output(void)
 {
-	printw("code=%u:%c\n", code_ptr, code[code_ptr]);
-	printw("stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
-	printw("ptr=%0x:0x%0x\n", ptr, memory[ptr]);
-	printw("--------\n");
+	wprintw(LOG_WINDOW, "code=%u:%c\n", code_ptr, code[code_ptr]);
+	wprintw(LOG_WINDOW, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
+	wprintw(LOG_WINDOW, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
+	wprintw(LOG_WINDOW, "--------\n");
 }
 
 void wait_input(char *msg)
 {
-	printw(msg);
-	getch();
+	wprintw(LOG_WINDOW, msg);
+	wgetch(LOG_WINDOW);
 }
 
 void panic(char *msg)
 {
-	printw(msg);
+	wprintw(LOG_WINDOW, msg);
 	wait_input("Error Encountered, press <CR> (Enter) to continue\n");
 	endwin();
 	exit(2);
@@ -51,17 +56,25 @@ void panic(char *msg)
 
 void debug_loop(char *fmt, unsigned int location)
 {
-	printw(fmt, location);
+	wprintw(LOG_WINDOW, fmt, location);
 }
 
 void output(memory_t c)
 {
-	printw("%c", c);
+	wprintw(IO_WINDOW, "%c", c);
 }
 
 memory_t input(void)
 {
-	return (memory_t)getch();
+	return (memory_t)wgetch(IO_WINDOW);
+}
+
+void clean_up(void)
+{
+	endwin();
+	free(memory);
+	free(code);
+	free(stack);
 }
 
 int main(int argc, char **argv)
@@ -121,7 +134,7 @@ int main(int argc, char **argv)
 				case 'k':
 					color = 1;
 				case 'd': /* Debug */
-					puts("Enabled Debug verbose message");
+					wprintw(LOG_WINDOW, "DEBUG=1");
 					debug = TRUE;
 					break;
 				default:
@@ -146,9 +159,6 @@ int main(int argc, char **argv)
 		refresh();
 	}
 
-	endwin();
-	free(memory);
-	free(code);
-	free(stack);
+	clean_up();
 	return 0;
 }
