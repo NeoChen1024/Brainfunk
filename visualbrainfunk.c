@@ -30,6 +30,7 @@ unsigned int stacksize=DEF_STACKSIZE;
 #define LOG_WINDOW stdscr
 #define IO_WINDOW stdscr
 #define CODE_WINDOW stdscr
+#define MEM_WINDOW stdscr
 
 void debug_output(void)
 {
@@ -37,18 +38,21 @@ void debug_output(void)
 	wprintw(LOG_WINDOW, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
 	wprintw(LOG_WINDOW, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
 	wprintw(LOG_WINDOW, "--------\n");
+	refresh();
 }
 
 void wait_input(char *msg)
 {
 	wprintw(LOG_WINDOW, msg);
+	refresh();
 	wgetch(LOG_WINDOW);
 }
 
 void panic(char *msg)
 {
 	wprintw(LOG_WINDOW, msg);
-	wait_input("Error Encountered, press <CR> (Enter) to continue\n");
+	wait_input("Press <CR> (Enter) to continue\n");
+	refresh();
 	endwin();
 	exit(2);
 }
@@ -56,16 +60,19 @@ void panic(char *msg)
 void debug_loop(char *fmt, unsigned int location)
 {
 	wprintw(LOG_WINDOW, fmt, location);
+	refresh();
 }
 
 void output(memory_t c)
 {
 	wprintw(IO_WINDOW, "%c", c);
+	refresh();
 }
 
 memory_t input(void)
 {
 	return (memory_t)wgetch(IO_WINDOW);
+	refresh();
 }
 
 void clean_up(void)
@@ -153,7 +160,6 @@ int main(int argc, char **argv)
 		if(debug)
 			debug_output();
 		interprete(code[code_ptr]);
-		refresh();
 	}
 
 	clean_up();
