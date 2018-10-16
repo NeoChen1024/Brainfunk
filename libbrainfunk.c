@@ -43,12 +43,6 @@ extern unsigned int memsize;
 extern unsigned int codesize;
 extern unsigned int stacksize;
 
-void panic(char *msg)
-{
-	fputs(msg, stderr);
-	exit(2);
-}
-
 /* Read Code */
 void read_code(FILE* fp)
 {
@@ -131,7 +125,7 @@ void interprete(code_t c)
 				jump_to_next_matching(); /* Skip everything until reached matching "]" */
 #ifndef FAST
 				if(debug)
-					fprintf(stderr, "[:%d\n", code_ptr);
+					debug_loop("[:%d\n", code_ptr);
 #endif
 			}
 			else
@@ -146,7 +140,7 @@ void interprete(code_t c)
 				code_ptr=stack[stack_ptr]; /* Peek */
 #ifndef FAST
 				if(debug)
-					fprintf(stderr, "]:%d\n", code_ptr);
+					debug_loop("]:%d\n", code_ptr);
 #endif
 			}
 			else

@@ -38,3 +38,4 @@ void jump_to_next_matching(void);
 void interprete(code_t c);
 void output(memory_t c);
 memory_t input(void);
+void debug_loop(char *fmt, unsigned int location);

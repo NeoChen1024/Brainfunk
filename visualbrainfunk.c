@@ -35,6 +35,25 @@ void debug_output(void)
 	printw("--------\n");
 }
 
+void wait_input(char *msg)
+{
+	printw(msg);
+	getch();
+}
+
+void panic(char *msg)
+{
+	printw(msg);
+	wait_input("Error Encountered, press <CR> (Enter) to continue\n");
+	endwin();
+	exit(2);
+}
+
+void debug_loop(char *fmt, unsigned int location)
+{
+	printw(fmt, location);
+}
+
 void output(memory_t c)
 {
 	printw("%c", c);
@@ -117,6 +136,7 @@ int main(int argc, char **argv)
 	printw("code	= %p[%d]\n", code, CODESIZE);
 	printw("stack	= %p[%d]\n\n", stack, STACKSIZE);
 	refresh();
+	scrollok(stdscr, TRUE);
 
 	while(code[code_ptr] != '\0')
 	{

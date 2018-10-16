@@ -34,6 +34,17 @@ void debug_output(void)
 	fflush(NULL);
 }
 
+void panic(char *msg)
+{
+	fputs(msg, stderr);
+	exit(2);
+}
+
+void debug_loop(char *fmt, unsigned int location)
+{
+	fprintf(stderr, fmt, location);
+}
+
 void output(memory_t c)
 {
 	putchar(c);
