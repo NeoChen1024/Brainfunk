@@ -22,6 +22,7 @@ code_t *code;
 unsigned int code_ptr=0;
 
 int debug=0;
+int delay=0;
 
 unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
@@ -33,7 +34,7 @@ unsigned int stacksize=DEF_STACKSIZE;
 #define REG_WINDOW reg_win
 #define STACK_WINDOW stack_win
 #define WBORDER_DRAW(name) \
-	wborder(name, '|', '|', '-', '-', '+', '+', '+', '+')
+	box(name, 0, 0)
 
 #define MSG_COLOR 1
 
@@ -102,11 +103,11 @@ void parse_argument(int argc, char **argv)
 
 	if(!(argc >= 2))
 	{
-		puts("argc < 2!");
+		puts("?ARG");
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:s:")) != -1)
+		while((opt = getopt(argc, argv, "hdf:c:s:t:")) != -1)
 		{
 			switch(opt)
 			{
@@ -122,27 +123,26 @@ void parse_argument(int argc, char **argv)
 					stack	= calloc(stacksize, sizeof(stack_type));
 					break;
 				case 'f': /* File */
-					if(strcmp(optarg, "-"))
+					if((corefile = fopen(optarg, "r")) == NULL)
 					{
-						if((corefile = fopen(optarg, "r")) == NULL)
-						{
-							perror(optarg);
-							exit(8);
-						}
-						read_code(corefile);
-						fclose(corefile);
+						perror(optarg);
+						exit(8);
 					}
-					else
-						read_code(stdin);
+					read_code(corefile);
+					fclose(corefile);
 					break;
 				case 'c': /* Code */
 					strncpy(code, optarg, CODESIZE);
+					break;
+				case 't': /* Delay (in microsecond) */
+					sscanf(optarg, "%d", &delay);
 					break;
 				case 'h': /* Help */
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
 					break;
 				case 'd': /* Debug */
 					wprintw(IO_WINDOW, "DEBUG=1");
+					wrefresh(IO_WINDOW);
 					debug = TRUE;
 					break;
 				default:
@@ -152,6 +152,38 @@ void parse_argument(int argc, char **argv)
 		}
 	}
 
+}
+
+void print_stack(stack_type *target, unsigned int pointer)
+{
+	unsigned int count=0;
+	wclear(STACK_WINDOW);
+	for(count=0; count <= pointer; count++)
+	{
+		if((pointer - count) <= 13)
+			wprintw(STACK_WINDOW, "%d, %u\n", count, target[count]);
+	}
+	wrefresh(STACK_WINDOW);
+}
+
+void print_reg(void)
+{
+	wclear(REG_WINDOW);
+	wprintw(REG_WINDOW, "CODE_PTR  = %u\n", code_ptr);
+	wprintw(REG_WINDOW, "STACK_PTR = %u\n", stack_ptr);
+	wprintw(REG_WINDOW, "PTR       = %u\n", ptr);
+	wrefresh(REG_WINDOW);
+}
+
+void print_mem(void)
+{
+	int count=0;
+	wclear(MEM_WINDOW);
+	for(count=0; count < 8; count++)
+	{
+		wprintw(MEM_WINDOW, " %2x |", memory[ptr+count]);
+	}
+	wrefresh(MEM_WINDOW);
 }
 
 int main(int argc, char **argv)
@@ -200,6 +232,7 @@ int main(int argc, char **argv)
 	wprintw(IO_WINDOW, "code	= %p[%d]\n", code, CODESIZE);
 	wprintw(IO_WINDOW, "stack	= %p[%d]\n\n", stack, STACKSIZE);
 
+	waddnstr(CODE_WINDOW, code, CODESIZE);
 	wrefresh(MEM_WINDOW);
 	wrefresh(CODE_WINDOW);
 	wrefresh(REG_WINDOW);
@@ -214,7 +247,11 @@ int main(int argc, char **argv)
 	{
 		if(debug)
 			debug_output();
+		if(delay)
+			usleep(delay);
 		interprete(code[code_ptr]);
+		print_reg();
+		print_mem();
 	}
 
 	wait_input("?HALT");

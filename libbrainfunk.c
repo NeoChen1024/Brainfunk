@@ -54,6 +54,9 @@ void read_code(FILE* fp)
 		if(i >= CODESIZE)
 			panic("?CODE");
 #endif
+		if(c == '+' || c == '-' || c == '<' || c == '>' ||
+			c == '[' || c == ']' || c == '.' || c == ',' ||
+			c == '\t' || c == ' ' || c == '\n')
 		code[i++]=(char)c;
 	}
 }
@@ -133,6 +136,9 @@ void interprete(code_t c)
 				push(stack, &stack_ptr, code_ptr + 1); /* Push next PC */
 				code_ptr++;
 			}
+#ifdef VISUAL
+			print_stack(stack, stack_ptr);
+#endif
 			break;
 		case ']':
 			if(memory[ptr] != 0) /* if not equals to 0 */
@@ -152,6 +158,9 @@ void interprete(code_t c)
 					panic("?<STACK");
 #endif
 			}
+#ifdef VISUAL
+			print_stack(stack, stack_ptr);
+#endif
 			break;
 		case ',':
 			memory[ptr]=(memory_t)input();

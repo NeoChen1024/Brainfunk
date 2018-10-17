@@ -39,3 +39,7 @@ void interprete(code_t c);
 void output(memory_t c);
 memory_t input(void);
 void debug_loop(char *fmt, unsigned int location);
+
+#ifdef VISUAL
+void print_stack(stack_type *target, unsigned int pointer);
+#endif

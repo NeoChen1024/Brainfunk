@@ -15,8 +15,8 @@ all: brainfunk visualbrainfunk
 brainfunk: brainfunk.o libbrainfunk.o
 	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
 
-visualbrainfunk: visualbrainfunk.o libbrainfunk.o
-	$(CC) $(LDFLAGS) visualbrainfunk.o libbrainfunk.o -o visualbrainfunk $(VLIBS)
+visualbrainfunk: visualbrainfunk.o libvbrainfunk.o
+	$(CC) $(LDFLAGS) visualbrainfunk.o libvbrainfunk.o -o visualbrainfunk $(VLIBS)
 
 brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
@@ -26,6 +26,9 @@ visualbrainfunk.o:
 
 libbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
+
+libvbrainfunk.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
 
 clean:
 	rm -fv brainfunk visualbrainfunk *.o
