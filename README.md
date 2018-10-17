@@ -1,8 +1,9 @@
 # Brainfunk
 ## Neo_Chen's Simple Brainfuck Interpreter
 ### Passed all the tests
-This is a simple speed-orientated interpreter, it don't have any fancy things like Byte Code (currently),
+Brainfunk is a simple speed-orientated interpreter, it don't have any fancy things like Byte Code (currently),
 and dynamic memory allocation.
+And VisualBrainfunk is just like Brainfunk, but with ncurses based UI and Visualization.
 It has some simple array bounds checking, so normally it won't coredumps.
 
 ## Usage:
@@ -10,3 +11,11 @@ It has some simple array bounds checking, so normally it won't coredumps.
 * -d is for debugging, super verbose
 * -f is the file to read, "-" for reading from stdin
 * -c is run code directly from the argument
+* -s sets code, stack, and memory size
+
+	visualbrainfunk [-h] [-f file] [-c code] [-d]
+* -d is for debugging, super verbose
+* -f is the file to read, "-" for reading from stdin
+* -c is run code directly from the argument
+* -s sets code, stack, and memory size
+* -t is delay between instructions, in microsecond
