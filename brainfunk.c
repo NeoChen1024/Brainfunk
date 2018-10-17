@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <libbrainfunk.h>
 
 /* init */
