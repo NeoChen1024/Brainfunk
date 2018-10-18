@@ -43,6 +43,18 @@ extern unsigned int memsize;
 extern unsigned int codesize;
 extern unsigned int stacksize;
 
+int is_code(char c)
+{
+	if(c == '+' || c == '-' || c == '<' || c == '>' ||
+		c == '[' || c == ']' || c == '.' || c == ',')
+	{
+		return TRUE;
+	}
+	else
+		return FALSE;
+}
+
+
 /* Read Code */
 void read_code(FILE* fp)
 {
@@ -54,9 +66,7 @@ void read_code(FILE* fp)
 		if(i >= CODESIZE)
 			panic("?CODE");
 #endif
-		if(c == '+' || c == '-' || c == '<' || c == '>' ||
-			c == '[' || c == ']' || c == '.' || c == ',' ||
-			c == '\t' || c == ' ' || c == '\n')
+		if((is_code((char)c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
 		code[i++]=(char)c;
 	}
 }

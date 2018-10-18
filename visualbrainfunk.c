@@ -23,7 +23,7 @@ code_t *code;
 unsigned int code_ptr=0;
 
 int debug=0;
-int delay=0;
+int delay=1000*100; /* Delay 100ms */
 
 unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
@@ -34,25 +34,20 @@ unsigned int stacksize=DEF_STACKSIZE;
 #define MEM_WINDOW mem_win
 #define REG_WINDOW reg_win
 #define STACK_WINDOW stack_win
-#define WBORDER_DRAW(name) \
-	box(name, 0, 0)
 
 #define MSG_COLOR 1
+#define MEM_COLOR 2
+#define CODE_COLOR 3
+#define REG_COLOR 4
+#define IO_COLOR 5
+#define STACK_COLOR 6
+
 
 WINDOW *io_win;
 WINDOW *code_win;
 WINDOW *mem_win;
 WINDOW *reg_win;
 WINDOW *stack_win;
-
-void debug_output(void)
-{
-	wprintw(IO_WINDOW, "code=%u:%c\n", code_ptr, code[code_ptr]);
-	wprintw(IO_WINDOW, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
-	wprintw(IO_WINDOW, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
-	wprintw(IO_WINDOW, "--------\n");
-	wrefresh(IO_WINDOW);
-}
 
 void wait_input(char *msg)
 {
@@ -135,11 +130,12 @@ void parse_argument(int argc, char **argv)
 				case 'c': /* Code */
 					strncpy(code, optarg, CODESIZE);
 					break;
-				case 't': /* Delay (in microsecond) */
+				case 't': /* Delay (in msec) */
 					sscanf(optarg, "%d", &delay);
+					delay *= 1000;
 					break;
 				case 'h': /* Help */
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
+					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d] [-t msec]\n", argv[0]);
 					break;
 				case 'd': /* Debug */
 					wprintw(IO_WINDOW, "DEBUG=1");
@@ -170,70 +166,129 @@ void print_stack(stack_type *target, unsigned int pointer)
 void print_reg(void)
 {
 	wclear(REG_WINDOW);
-	wprintw(REG_WINDOW, "CODE_PTR  = %u\n", code_ptr);
-	wprintw(REG_WINDOW, "STACK_PTR = %u\n", stack_ptr);
 	wprintw(REG_WINDOW, "PTR       = %u\n", ptr);
+	wprintw(REG_WINDOW, "CODE_PTR  = %u\n", code_ptr);
+	wprintw(REG_WINDOW, "CODE      = \'%c\'\n", code[code_ptr]);
+	wprintw(REG_WINDOW, "STACK_PTR = %u\n", stack_ptr);
 	wrefresh(REG_WINDOW);
 }
 
 void print_mem(void)
 {
-	int count=0;
+	int count;
 	wclear(MEM_WINDOW);
-	for(count=0; count < 8; count++)
+	for(count=-5; count <= 5 ; count++)
 	{
-		wprintw(MEM_WINDOW, " %2x |", memory[ptr+count]);
+		if((ptr + count) < 0)
+			waddstr(MEM_WINDOW, "    |");
+		else if((ptr + count) >= MEMSIZE)
+			waddstr(MEM_WINDOW, "    |");
+		else
+			wprintw(MEM_WINDOW, " %02x |", memory[ptr+count]);
 	}
+	waddch(MEM_WINDOW, '\n');
+	for(count=0; count <= 4; count++)
+	{
+		waddstr(MEM_WINDOW, "     ");
+	}
+	wprintw(MEM_WINDOW, " ^^ PTR=%u", ptr);
 	wrefresh(MEM_WINDOW);
+}
+
+void calc_line_col(char *target, unsigned int pointer, unsigned int *line, unsigned int *col)
+{
+	unsigned int count=0;
+	(*line)=0;
+	(*col)=0;
+	while(count != pointer)
+	{
+		if(target[count] == '\n')
+		{
+			(*line)++;
+			(*col)=0;
+		}
+		else
+		{
+			(*col)++;
+		}
+		count++;
+	}
+	return;
+}
+
+void print_code(void)
+{
+	unsigned int x=0, y=0;
+	wclear(CODE_WINDOW);
+	move(0, 0);
+	waddnstr(CODE_WINDOW, code, CODESIZE);
+	calc_line_col(code, code_ptr, &x, &y);
+	if(x >= 60)
+	{
+		x %= 60;
+		y++;
+	}
+	mvwchgat(CODE_WINDOW, y, x, 1, A_NORMAL, COLOR_PAIR(MSG_COLOR), NULL);
+	wrefresh(CODE_WINDOW);
 }
 
 int main(int argc, char **argv)
 {
-	/* Init */
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
 	code	= calloc(CODESIZE, sizeof(code_t));
 	stack	= calloc(STACKSIZE, sizeof(stack_type));
 
-	/* Parse Argument */
 	initscr();
-	start_color();
 
-	init_pair(MSG_COLOR, COLOR_YELLOW, COLOR_BLUE);
+	if (! has_colors())
+	{
+		endwin();
+		puts("?COLOR");
+		exit(1);
+	}
+
+	start_color();
 
 /* Window Layout
  *
- * 0		49	79
+ * 0		59	79
  * +-------------+-------+ 0
- * |         MEM         |
+ * |         MEM         |	(BLACK on WHITE)
  * +-------------+-------+ 4
  * |             |       |
- * |    CODE     |  REG  |
+ * |    CODE     |  REG  |	(FG == YELLOW) : (BG == GREEN)
  * |             |       |
  * |-------------+-------+ 10
  * |             |       |
- * |     IO      | STACK |
+ * |     IO      | STACK |	(YELLOW / BLUE) : (BLACK / CYAN)
  * |             |       |
  * +-------------+-------+ 23
  */
 
 	MEM_WINDOW	= newwin(4, 80, 0, 0);
-	CODE_WINDOW	= newwin(6, 50, 4, 0);
-	IO_WINDOW	= newwin(13, 50, 10, 0);
-	REG_WINDOW	= newwin(6, 30, 4, 50);
-	STACK_WINDOW	= newwin(13, 30, 10, 50);
+	CODE_WINDOW	= newwin(6, 60, 4, 0);
+	IO_WINDOW	= newwin(13, 60, 10, 0);
+	REG_WINDOW	= newwin(6, 20, 4, 60);
+	STACK_WINDOW	= newwin(13, 20, 10, 60);
 
-	WBORDER_DRAW(MEM_WINDOW);
-	WBORDER_DRAW(CODE_WINDOW);
-	WBORDER_DRAW(IO_WINDOW);
-	WBORDER_DRAW(REG_WINDOW);
-	WBORDER_DRAW(STACK_WINDOW);
+	init_pair(MSG_COLOR, COLOR_BLACK, COLOR_WHITE);
+	init_pair(MEM_COLOR, COLOR_CYAN, COLOR_BLACK);
+	init_pair(CODE_COLOR, COLOR_YELLOW, COLOR_BLACK);
+	init_pair(REG_COLOR, COLOR_BLACK, COLOR_GREEN);
+	init_pair(IO_COLOR, COLOR_WHITE, COLOR_BLUE);
+	init_pair(STACK_COLOR, COLOR_BLACK, COLOR_CYAN);
 
 	parse_argument(argc, argv);
 	wprintw(IO_WINDOW, "memory	= %p[%d]\n", memory, MEMSIZE);
 	wprintw(IO_WINDOW, "code	= %p[%d]\n", code, CODESIZE);
-	wprintw(IO_WINDOW, "stack	= %p[%d]\n\n", stack, STACKSIZE);
+	wprintw(IO_WINDOW, "stack	= %p[%d]\n", stack, STACKSIZE);
 
-	waddnstr(CODE_WINDOW, code, CODESIZE);
+	wbkgd(MEM_WINDOW, COLOR_PAIR(MEM_COLOR));
+	wbkgd(CODE_WINDOW, COLOR_PAIR(CODE_COLOR));
+	wbkgd(REG_WINDOW, COLOR_PAIR(REG_COLOR));
+	wbkgd(IO_WINDOW, COLOR_PAIR(IO_COLOR));
+	wbkgd(STACK_WINDOW, COLOR_PAIR(STACK_COLOR));
+
 	wrefresh(MEM_WINDOW);
 	wrefresh(CODE_WINDOW);
 	wrefresh(REG_WINDOW);
@@ -246,13 +301,17 @@ int main(int argc, char **argv)
 
 	while(code[code_ptr] != '\0')
 	{
-		if(debug)
-			debug_output();
-		if(delay)
-			usleep(delay);
-		interprete(code[code_ptr]);
-		print_reg();
-		print_mem();
+		if(is_code(code[code_ptr]))
+		{
+			if(delay)
+				usleep(delay);
+			interprete(code[code_ptr]);
+			print_reg();
+			print_mem();
+			print_code();
+		}
+		else
+			code_ptr++;
 	}
 
 	wait_input("?HALT");

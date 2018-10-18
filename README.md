@@ -18,4 +18,4 @@ It has some simple array bounds checking, so normally it won't coredumps.
 * -f is the file to read, "-" for reading from stdin
 * -c is run code directly from the argument
 * -s sets code, stack, and memory size
-* -t is delay between instructions, in microsecond
+* -t is delay between instructions, in msec
