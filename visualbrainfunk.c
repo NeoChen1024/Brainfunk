@@ -296,6 +296,8 @@ int main(int argc, char **argv)
 	wrefresh(STACK_WINDOW);
 
 	wait_input("?START");
+	wclear(IO_WINDOW);
+	wrefresh(IO_WINDOW);
 
 	scrollok(IO_WINDOW, TRUE);
 
