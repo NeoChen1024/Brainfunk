@@ -52,7 +52,7 @@ WINDOW *stack_win;
 void wait_input(char *msg)
 {
 	wattron(IO_WINDOW, COLOR_PAIR(MSG_COLOR) | A_BOLD);
-	wprintw(IO_WINDOW, msg);
+	wprintw(IO_WINDOW, "%s", msg);
 	wattroff(IO_WINDOW, COLOR_PAIR(MSG_COLOR) | A_BOLD);
 	wrefresh(IO_WINDOW);
 	wgetch(IO_WINDOW);
