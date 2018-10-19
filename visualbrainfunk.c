@@ -210,6 +210,11 @@ void calc_line_col(char *target, unsigned int pointer, unsigned int *line, unsig
 		else
 		{
 			(*col)++;
+			if(*col >= 60)
+			{
+				(*col) %= 60;
+				(*line)++;
+			}
 		}
 		count++;
 	}
@@ -222,12 +227,7 @@ void print_code(void)
 	wclear(CODE_WINDOW);
 	move(0, 0);
 	waddnstr(CODE_WINDOW, code, CODESIZE);
-	calc_line_col(code, code_ptr, &x, &y);
-	if(x >= 60)
-	{
-		x %= 60;
-		y++;
-	}
+	calc_line_col(code, code_ptr, &y, &x);
 	mvwchgat(CODE_WINDOW, y, x, 1, A_NORMAL, COLOR_PAIR(MSG_COLOR), NULL);
 	wrefresh(CODE_WINDOW);
 }
