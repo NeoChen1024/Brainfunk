@@ -1,5 +1,5 @@
 CC	= cc
-CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -ansi -I.
+CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -I.
 LDFLAGS	= -fPIE
 VLIBS	= -lncurses
 # If you want to make it run faster
