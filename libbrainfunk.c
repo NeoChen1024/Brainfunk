@@ -62,10 +62,8 @@ void read_code(FILE* fp)
 	int c=0;
 	while((c=getc(fp)) != EOF)
 	{
-#ifndef FAST
 		if(i >= CODESIZE)
 			panic("?CODE");
-#endif
 		if((is_code((char)c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
 		code[i++]=(char)c;
 	}
@@ -73,19 +71,15 @@ void read_code(FILE* fp)
 
 void push(stack_type *stack, unsigned int *ptr, stack_type content)
 {
-#ifdef FAST
 	if(*ptr >= STACKSIZE)
 		panic("?>STACK");
-#endif
 	stack[++(*ptr)]=content;
 }
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-#ifdef FAST
 	if(*ptr >= STACKSIZE)
 		panic("?<STACK");
-#endif
 	return stack[(*ptr)--];
 }
 
@@ -118,28 +112,22 @@ void interprete(code_t c)
 			break;
 		case '>':
 			ptr++;
-#ifdef FAST
 			if(ptr >= MEMSIZE)
 				panic("?>MEM");
-#endif
 			++code_ptr;
 			break;
 		case '<':
 			ptr--;
-#ifndef FAST
 			if(ptr >= MEMSIZE)
 				panic("?<MEM");
-#endif
 			++code_ptr;
 			break;
 		case '[':
 			if(memory[ptr] == 0)
 			{
 				jump_to_next_matching(); /* Skip everything until reached matching "]" */
-#ifndef FAST
 				if(debug)
 					debug_loop("[:%d\n", code_ptr);
-#endif
 			}
 			else
 			{
@@ -154,19 +142,15 @@ void interprete(code_t c)
 			if(memory[ptr] != 0) /* if not equals to 0 */
 			{
 				code_ptr=stack[stack_ptr]; /* Peek */
-#ifndef FAST
 				if(debug)
 					debug_loop("]:%d\n", code_ptr);
-#endif
 			}
 			else
 			{
 				code_ptr++;
 				stack_ptr--; /* Drop */
-#ifndef FAST
 				if(stack_ptr >= STACKSIZE)
 					panic("?<STACK");
-#endif
 			}
 #ifdef VISUAL
 			print_stack(stack, stack_ptr);

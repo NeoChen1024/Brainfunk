@@ -79,7 +79,6 @@ int main(int argc, char **argv)
 			switch(opt)
 			{
 				case 's': /* Read size from argument */
-#ifndef FAST
 					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0)
 						panic("?SIZE=0");
@@ -89,7 +88,6 @@ int main(int argc, char **argv)
 					memory	= calloc(memsize, sizeof(memory_t));
 					code	= calloc(codesize, sizeof(code_t));
 					stack	= calloc(stacksize, sizeof(stack_type));
-#endif
 					break;
 				case 'f': /* File */
 					if(strcmp(optarg, "-"))
@@ -132,10 +130,8 @@ int main(int argc, char **argv)
 
 	while(code[code_ptr] != '\0')
 	{
-#ifndef FAST
 		if(debug)
 			debug_output();
-#endif
 		interprete(code[code_ptr]);
 	}
 
