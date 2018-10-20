@@ -8,14 +8,10 @@ It has some simple array bounds checking, so normally it won't coredumps.
 
 ## Usage:
 	brainfunk [-h] [-f file] [-c code] [-d]
-* -d is for debugging, super verbose
-* -f is the file to read, "-" for reading from stdin
-* -c is run code directly from the argument
-* -s sets code, stack, and memory size
+	visualbrainfunk [-h] [-f file] [-c code] [-d] [-t msec]
 
-	visualbrainfunk [-h] [-f file] [-c code] [-d]
 * -d is for debugging, super verbose
 * -f is the file to read, "-" for reading from stdin
 * -c is run code directly from the argument
 * -s sets code, stack, and memory size
-* -t is delay between instructions, in msec
+* -t is delay between instructions, in millisecond
