@@ -42,6 +42,7 @@ unsigned int stacksize=DEF_STACKSIZE;
 #define IO_COLOR 5
 #define STACK_COLOR 6
 
+#define CODE_WINDOW_WIDTH 60
 
 WINDOW *io_win;
 WINDOW *code_win;
@@ -157,8 +158,8 @@ void print_stack(stack_type *target, unsigned int pointer)
 	wclear(STACK_WINDOW);
 	for(count=0; count <= pointer; count++)
 	{
-		if((pointer - count) <= 13)
-			wprintw(STACK_WINDOW, "%d, %u\n", count, target[count]);
+		if((pointer - count) <= 14)
+			wprintw(STACK_WINDOW, "stack[%d] == %u\n", count, target[count]);
 	}
 	wrefresh(STACK_WINDOW);
 }
@@ -166,10 +167,13 @@ void print_stack(stack_type *target, unsigned int pointer)
 void print_reg(void)
 {
 	wclear(REG_WINDOW);
-	wprintw(REG_WINDOW, "PTR       = %u\n", ptr);
-	wprintw(REG_WINDOW, "CODE_PTR  = %u\n", code_ptr);
-	wprintw(REG_WINDOW, "CODE      = \'%c\'\n", code[code_ptr]);
-	wprintw(REG_WINDOW, "STACK_PTR = %u\n", stack_ptr);
+	wprintw(REG_WINDOW, "PTR       == %u\n", ptr);
+	wprintw(REG_WINDOW, "CODE_PTR  == %u\n", code_ptr);
+	if(is_code(code[code_ptr]))
+		wprintw(REG_WINDOW, "CODE      == \'%c\'\n", code[code_ptr]);
+	else
+		wprintw(REG_WINDOW, "CODE      == \' \'\n");
+	wprintw(REG_WINDOW, "STACK_PTR == %u\n", stack_ptr);
 	wrefresh(REG_WINDOW);
 }
 
@@ -177,17 +181,16 @@ void print_mem(void)
 {
 	int count;
 	wclear(MEM_WINDOW);
-	for(count=-5; count <= 5 ; count++)
+	for(count=-8; count <= 7 ; count++)
 	{
-		if((ptr + count) < 0)
+		if(((signed)ptr + count) < 0)
 			waddstr(MEM_WINDOW, "    |");
 		else if((ptr + count) >= MEMSIZE)
 			waddstr(MEM_WINDOW, "    |");
 		else
 			wprintw(MEM_WINDOW, " %02x |", memory[ptr+count]);
 	}
-	waddch(MEM_WINDOW, '\n');
-	for(count=0; count <= 4; count++)
+	for(count=0; count <= 7; count++)
 	{
 		waddstr(MEM_WINDOW, "     ");
 	}
@@ -210,9 +213,9 @@ void calc_line_col(char *target, unsigned int pointer, unsigned int *line, unsig
 		else
 		{
 			(*col)++;
-			if(*col >= 60)
+			if(*col >= CODE_WINDOW_WIDTH)
 			{
-				(*col) %= 60;
+				(*col) %= CODE_WINDOW_WIDTH;
 				(*line)++;
 			}
 		}
@@ -221,14 +224,49 @@ void calc_line_col(char *target, unsigned int pointer, unsigned int *line, unsig
 	return;
 }
 
+void print_skipline(char *str, int line, unsigned int *y)
+{
+	int temp=0;
+	int col=0;
+	int row=0;
+
+	if(line <= 5)
+		waddnstr(CODE_WINDOW, code, CODESIZE);
+	else
+		while(str[temp] != '\0')
+		{
+			if(str[temp] == '\n')
+			{
+				row++;
+				col=0;
+			}
+			else
+				col++;
+			if(col >= CODE_WINDOW_WIDTH)
+			{
+				row++;
+				col %= CODE_WINDOW_WIDTH;
+			}
+			if(row == line)
+			{
+				(*y) -= row - 1;
+				waddstr(CODE_WINDOW, code + temp);
+				return;
+			}
+			temp++;
+		}
+	return;
+}
+
 void print_code(void)
 {
 	unsigned int x=0, y=0;
 	wclear(CODE_WINDOW);
-	move(0, 0);
-	waddnstr(CODE_WINDOW, code, CODESIZE);
 	calc_line_col(code, code_ptr, &y, &x);
-	mvwchgat(CODE_WINDOW, y, x, 1, A_NORMAL, COLOR_PAIR(MSG_COLOR), NULL);
+	print_skipline(code, y, &y);
+	if(y > 5)
+		y = 1;
+	mvwchgat(CODE_WINDOW, y, x, 1, A_REVERSE, 0, NULL);
 	wrefresh(CODE_WINDOW);
 }
 
@@ -256,9 +294,9 @@ int main(int argc, char **argv)
  * |         MEM         |	(BLACK on WHITE)
  * +-------------+-------+ 4
  * |             |       |
- * |    CODE     |  REG  |	(FG == YELLOW) : (BG == GREEN)
+ * |    CODE     |  REG  |	(BG == YELLOW) : (BG == GREEN)
  * |             |       |
- * |-------------+-------+ 10
+ * |-------------+-------+ 9
  * |             |       |
  * |     IO      | STACK |	(YELLOW / BLUE) : (BLACK / CYAN)
  * |             |       |
@@ -272,8 +310,8 @@ int main(int argc, char **argv)
 	STACK_WINDOW	= newwin(13, 20, 10, 60);
 
 	init_pair(MSG_COLOR, COLOR_BLACK, COLOR_WHITE);
-	init_pair(MEM_COLOR, COLOR_CYAN, COLOR_BLACK);
-	init_pair(CODE_COLOR, COLOR_YELLOW, COLOR_BLACK);
+	init_pair(MEM_COLOR, COLOR_BLACK, COLOR_WHITE);
+	init_pair(CODE_COLOR, COLOR_BLACK, COLOR_YELLOW);
 	init_pair(REG_COLOR, COLOR_BLACK, COLOR_GREEN);
 	init_pair(IO_COLOR, COLOR_WHITE, COLOR_BLUE);
 	init_pair(STACK_COLOR, COLOR_BLACK, COLOR_CYAN);
@@ -305,12 +343,12 @@ int main(int argc, char **argv)
 	{
 		if(is_code(code[code_ptr]))
 		{
+			print_code();
+			print_reg();
+			print_mem();
 			if(delay)
 				usleep(delay);
 			interprete(code[code_ptr]);
-			print_reg();
-			print_mem();
-			print_code();
 		}
 		else
 			code_ptr++;
