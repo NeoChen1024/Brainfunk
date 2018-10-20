@@ -159,7 +159,7 @@ void print_stack(stack_type *target, unsigned int pointer)
 	for(count=0; count <= pointer; count++)
 	{
 		if((pointer - count) <= 14)
-			wprintw(STACK_WINDOW, "stack[%d] == %u\n", count, target[count]);
+			wprintw(STACK_WINDOW, "stack[%4u] == %u\n", count, target[count]);
 	}
 	wrefresh(STACK_WINDOW);
 }
@@ -264,8 +264,6 @@ void print_code(void)
 	wclear(CODE_WINDOW);
 	calc_line_col(code, code_ptr, &y, &x);
 	print_skipline(code, y, &y);
-	if(y > 5)
-		y = 1;
 	mvwchgat(CODE_WINDOW, y, x, 1, A_REVERSE, 0, NULL);
 	wrefresh(CODE_WINDOW);
 }
@@ -343,9 +341,9 @@ int main(int argc, char **argv)
 	{
 		if(is_code(code[code_ptr]))
 		{
-			print_code();
 			print_reg();
 			print_mem();
+			print_code();
 			if(delay)
 				usleep(delay);
 			interprete(code[code_ptr]);
