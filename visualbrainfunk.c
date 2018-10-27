@@ -194,7 +194,7 @@ void print_reg(void)
 	wclear(REG_WINDOW);
 	wprintw(REG_WINDOW, "PTR       == %u\n", ptr);
 #ifdef BITCODE
-	wprintw(REG_WINDOW, "PC        == %u\n", code_ptr);
+	wprintw(REG_WINDOW, "PC        == %u\n", bitcode_ptr);
 #else
 	wprintw(REG_WINDOW, "CODE_PTR  == %u\n", code_ptr);
 	if(is_code(code[code_ptr]))
