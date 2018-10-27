@@ -10,7 +10,7 @@ VLIBS	= -lncurses
 # LDFLAGS	+= -flto
 SH?=	/bin/sh
 
-all: brainfunk visualbrainfunk
+all: brainfunk visualbrainfunk bitfunk
 
 brainfunk: brainfunk.o libbrainfunk.o
 	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
@@ -18,8 +18,14 @@ brainfunk: brainfunk.o libbrainfunk.o
 visualbrainfunk: visualbrainfunk.o libvbrainfunk.o
 	$(CC) $(LDFLAGS) visualbrainfunk.o libvbrainfunk.o -o visualbrainfunk $(VLIBS)
 
+bitfunk: bitfunk.o libbrainfunk.o libbitcode.o
+	$(CC) $(LDFLAGS) bitfunk.o libbrainfunk.o libbitcode.o -o bitfunk
+
 brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
+
+bitfunk.o:
+	$(CC) $(CFLAGS) -c bitfunk.c
 
 visualbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c visualbrainfunk.c
@@ -30,8 +36,11 @@ libbrainfunk.o:
 libvbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
 
+libbitcode.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -c libbitcode.c
+
 clean:
-	rm -fv brainfunk visualbrainfunk *.o
+	rm -fv brainfunk visualbrainfunk bitfunk *.o
 
 clean-all: clean
 	rm -rfv test
@@ -40,4 +49,4 @@ countline:
 	wc -l *.c *.h
 
 test: all
-	$(SH) ./test.sh brainfunk
+	$(SH) ./test.sh brainfunk bitfunk
