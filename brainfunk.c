@@ -37,7 +37,7 @@ void debug_output(void)
 
 void panic(char *msg)
 {
-	fputs(msg, stderr);
+	fprintf(stderr, "%s\n", msg);
 	exit(2);
 }
 

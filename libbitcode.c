@@ -116,9 +116,13 @@ void bitcode_interprete(bitcode_t *bitcode)
 			break;
 		case OP_FWD:
 			ptr += bitcode->arg;
+			if(ptr >= memsize)
+				panic("?>MEM");
 			break;
 		case OP_REW:
 			ptr -= bitcode->arg;
+			if(ptr >= memsize)
+				panic("?<MEM");
 			break;
 		case OP_JEZ:
 			if(memory[ptr] == 0)
