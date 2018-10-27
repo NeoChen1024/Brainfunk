@@ -44,6 +44,7 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				}
 				(bitcode + bitcode_ptr)->op=OP_ADD;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
+				bitcode_ptr++;
 				break;
 			case '-':
 				while(text[text_ptr] == '-')
@@ -53,6 +54,7 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				}
 				(bitcode + bitcode_ptr)->op=OP_SUB;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
+				bitcode_ptr++;
 				break;
 			case '>':
 				while(text[text_ptr] == '>')
@@ -62,6 +64,7 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				}
 				(bitcode + bitcode_ptr)->op=OP_FWD;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
+				bitcode_ptr++;
 				break;
 			case '<':
 				while(text[text_ptr] == '<')
@@ -71,11 +74,13 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				}
 				(bitcode + bitcode_ptr)->op=OP_REW;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
+				bitcode_ptr++;
 				break;
 			case '[':
 				push(stack, &stack_ptr, bitcode_ptr);
 				(bitcode + bitcode_ptr)->op=OP_JEZ;
 				text_ptr++;
+				bitcode_ptr++;
 				break;
 			case ']':
 				temp_arg=pop(stack, &stack_ptr);
@@ -83,23 +88,24 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				(bitcode + bitcode_ptr)->arg=temp_arg;
 				(bitcode + temp_arg)->arg=bitcode_ptr;
 				text_ptr++;
+				bitcode_ptr++;
 				break;
 			case '.':
 				(bitcode + bitcode_ptr)->op=OP_IO;
 				(bitcode + bitcode_ptr)->arg=ARG_OUT;
 				text_ptr++;
+				bitcode_ptr++;
 				break;
 			case ',':
 				(bitcode + bitcode_ptr)->op=OP_IO;
 				(bitcode + bitcode_ptr)->arg=ARG_IN;
 				text_ptr++;
+				bitcode_ptr++;
 				break;
 			default:
-				(bitcode + bitcode_ptr)->op=OP_NOP;
 				text_ptr++;
 				break;
 		}
-		bitcode_ptr++;
 	}
 	(bitcode + bitcode_ptr)->op=OP_HLT;
 }

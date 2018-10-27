@@ -28,10 +28,10 @@ brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
 
 bitfunk.o:
-	$(CC) $(CFLAGS) -c bitfunk.c
+	$(CC) $(CFLAGS) -DBITCODE -c brainfunk.c -o bitfunk.o
 
 visualbitfunk.o:
-	$(CC) $(CFLAGS) -c visualbitfunk.c
+	$(CC) $(CFLAGS) -DBITCODE -c visualbrainfunk.c -o visualbitfunk.o
 
 visualbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c visualbrainfunk.c

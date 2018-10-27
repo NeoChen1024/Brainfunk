@@ -12,6 +12,9 @@
 #include <getopt.h>
 #include <ncurses.h>
 #include <libbrainfunk.h>
+#ifdef BITCODE
+#	include <libbitcode.h>
+#endif
 
 /* init */
 
@@ -28,6 +31,12 @@ int delay=1000*100; /* Delay 100ms */
 unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
 unsigned int stacksize=DEF_STACKSIZE;
+
+#ifdef BITCODE
+bitcode_t *bitcode;
+unsigned int bitcode_ptr=0;
+unsigned int bitcodesize=DEF_BITCODESIZE;
+#endif
 
 #define IO_WINDOW io_win
 #define CODE_WINDOW code_win
@@ -91,6 +100,9 @@ void clean_up(void)
 	free(memory);
 	free(code);
 	free(stack);
+#ifdef BITCODE
+	free(bitcode);
+#endif
 }
 
 void parse_argument(int argc, char **argv)
@@ -109,8 +121,13 @@ void parse_argument(int argc, char **argv)
 			switch(opt)
 			{
 				case 's': /* Read size from argument */
+#ifdef BITCODE
+					sscanf(optarg, "%u,%u,%u,%u", &memsize, &codesize, &stacksize, &bitcodesize);
+					if(memsize == 0 || codesize == 0 || stacksize == 0 || bitcodesize == 0)
+#else
 					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0)
+#endif
 						panic("?SIZE=0");
 					free(memory);
 					free(code);
@@ -118,6 +135,10 @@ void parse_argument(int argc, char **argv)
 					memory	= calloc(memsize, sizeof(memory_t));
 					code	= calloc(codesize, sizeof(code_t));
 					stack	= calloc(stacksize, sizeof(stack_type));
+#ifdef BITCODE
+					free(bitcode);
+					bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
+#endif
 					break;
 				case 'f': /* File */
 					if((corefile = fopen(optarg, "r")) == NULL)
@@ -136,7 +157,11 @@ void parse_argument(int argc, char **argv)
 					delay *= 1000;
 					break;
 				case 'h': /* Help */
+#ifdef BITCODE
+					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize,bitcodesize] [-d] [-t msec]\n", argv[0]);
+#else
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d] [-t msec]\n", argv[0]);
+#endif
 					break;
 				case 'd': /* Debug */
 					wprintw(IO_WINDOW, "DEBUG=1");
@@ -168,11 +193,15 @@ void print_reg(void)
 {
 	wclear(REG_WINDOW);
 	wprintw(REG_WINDOW, "PTR       == %u\n", ptr);
+#ifdef BITCODE
+	wprintw(REG_WINDOW, "PC        == %u\n", code_ptr);
+#else
 	wprintw(REG_WINDOW, "CODE_PTR  == %u\n", code_ptr);
 	if(is_code(code[code_ptr]))
 		wprintw(REG_WINDOW, "CODE      == \'%c\'\n", code[code_ptr]);
 	else
 		wprintw(REG_WINDOW, "CODE      == \' \'\n");
+#endif
 	wprintw(REG_WINDOW, "STACK_PTR == %u\n", stack_ptr);
 	wrefresh(REG_WINDOW);
 }
@@ -198,6 +227,36 @@ void print_mem(void)
 	wrefresh(MEM_WINDOW);
 }
 
+#ifdef BITCODE
+void print_bitcode(unsigned int ptr, unsigned int *cursor)
+{
+	char temp_str[64];
+	unsigned int counter=0;
+
+	if(ptr <= 5)
+	{
+		while(counter <= 5)
+		{
+			bitcode_disassembly(bitcode + counter, counter, temp_str, 64);
+			wprintw(CODE_WINDOW, "%s\n", temp_str);
+			counter++;
+		}
+		(*cursor)=ptr;
+	}
+	else
+	{
+		while(counter <= 5)
+		{
+			bitcode_disassembly(bitcode + ptr + counter - 3, ptr + counter - 3, temp_str, 64);
+			wprintw(CODE_WINDOW, "%s\n", temp_str);
+			counter++;
+		}
+		(*cursor)=counter - 3;
+	}
+	return;
+}
+
+#else
 void calc_line_col(char *target, unsigned int pointer, unsigned int *line, unsigned int *col)
 {
 	unsigned int count=0;
@@ -257,15 +316,23 @@ void print_skipline(char *str, int line, unsigned int *y)
 		}
 	return;
 }
-
+#endif
 void print_code(void)
 {
+#ifdef BITCODE
+	unsigned int line;
+	wclear(CODE_WINDOW);
+	print_bitcode(bitcode_ptr, &line);
+	mvwchgat(CODE_WINDOW, line, 0, -1, A_REVERSE, 0, NULL);
+	wrefresh(CODE_WINDOW);
+#else
 	unsigned int x=0, y=0;
 	wclear(CODE_WINDOW);
 	calc_line_col(code, code_ptr, &y, &x);
 	print_skipline(code, y, &y);
 	mvwchgat(CODE_WINDOW, y, x, 1, A_REVERSE, 0, NULL);
 	wrefresh(CODE_WINDOW);
+#endif
 }
 
 int main(int argc, char **argv)
@@ -273,6 +340,9 @@ int main(int argc, char **argv)
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
 	code	= calloc(CODESIZE, sizeof(code_t));
 	stack	= calloc(STACKSIZE, sizeof(stack_type));
+#ifdef BITCODE
+	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
+#endif
 
 	initscr();
 
@@ -315,9 +385,9 @@ int main(int argc, char **argv)
 	init_pair(STACK_COLOR, COLOR_BLACK, COLOR_CYAN);
 
 	parse_argument(argc, argv);
-	wprintw(IO_WINDOW, "memory	= %p[%d]\n", memory, MEMSIZE);
-	wprintw(IO_WINDOW, "code	= %p[%d]\n", code, CODESIZE);
-	wprintw(IO_WINDOW, "stack	= %p[%d]\n", stack, STACKSIZE);
+	wprintw(IO_WINDOW, "memory	= %p[%d]\n", memory, memsize);
+	wprintw(IO_WINDOW, "code	= %p[%d]\n", code, codesize);
+	wprintw(IO_WINDOW, "stack	= %p[%d]\n", stack, stacksize);
 
 	wbkgd(MEM_WINDOW, COLOR_PAIR(MEM_COLOR));
 	wbkgd(CODE_WINDOW, COLOR_PAIR(CODE_COLOR));
@@ -337,6 +407,19 @@ int main(int argc, char **argv)
 
 	scrollok(IO_WINDOW, TRUE);
 
+#ifdef BITCODE
+	bitcodelize(bitcode, code);
+
+	while((bitcode + bitcode_ptr)->op != OP_HLT)
+	{
+		print_code();
+		print_reg();
+		print_mem();
+		if(delay)
+			usleep(delay);
+		bitcode_interprete(bitcode + bitcode_ptr);
+	}
+#else
 	while(code[code_ptr] != '\0')
 	{
 		if(is_code(code[code_ptr]))
@@ -351,7 +434,7 @@ int main(int argc, char **argv)
 		else
 			code_ptr++;
 	}
-
+#endif
 	wait_input("?HALT");
 	clean_up();
 	return 0;
