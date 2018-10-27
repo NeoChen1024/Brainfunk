@@ -143,40 +143,54 @@ void bitcode_interprete(bitcode_t *bitcode)
 	return;
 }
 
-void bitcode_disassembly_array(bitcode_t *bitcode)
+void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize)
 {
-	unsigned int counter=0;
-	while((bitcode + counter)->op != OP_HLT)
+	switch(bitcode->op)
 	{
-		switch((bitcode + counter)->op)
-		{
-			case OP_ADD:
-				printf("ADD %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_SUB:
-				printf("SUB %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_FWD:
-				printf("FWD %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_REW:
-				printf("REW %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_JEZ:
-				printf("JEZ %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_JNZ:
-				printf("JNZ %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_IO:
-				printf("IO %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_NOP:
-				printf("NOP %#x\n", (bitcode + counter)->arg);
-				break;
-			case OP_HLT:
-				printf("HLT\n");
-		}
+		case OP_ADD:
+			snprintf(str, strsize, "%#x: ADD %#x", address, bitcode->arg);
+			break;
+		case OP_SUB:
+			snprintf(str, strsize, "%#x: SUB %#x", address, bitcode->arg);
+			break;
+		case OP_FWD:
+			snprintf(str, strsize, "%#x: FWD %#x", address, bitcode->arg);
+			break;
+		case OP_REW:
+			snprintf(str, strsize, "%#x: REW %#x", address, bitcode->arg);
+			break;
+		case OP_JEZ:
+			snprintf(str, strsize, "%#x: JEZ %#x", address, bitcode->arg);
+			break;
+		case OP_JNZ:
+			snprintf(str, strsize, "%#x: JNZ %#x", address, bitcode->arg);
+			break;
+		case OP_IO:
+			if(bitcode->arg == ARG_OUT)
+				snprintf(str, strsize, "%#x: IO OUT", address);
+			else if(bitcode->arg == ARG_IN)
+				snprintf(str, strsize, "%#x: IO IN", address);
+			break;
+		case OP_NOP:
+			snprintf(str, strsize, "%#x: NOP %#x", address, bitcode->arg);
+			break;
+		case OP_HLT:
+			snprintf(str, strsize, "%#x: HLT %#x", address, bitcode->arg);
+			break;
+	}
+	return;
+}
+
+void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
+{
+	char temp_str[64];
+	unsigned int counter=0;
+
+	do
+	{
+		bitcode_disassembly(bitcode + counter, counter, temp_str, 64);
+		fprintf(fp, "%s\n", temp_str);
 		counter++;
 	}
+	while((bitcode + counter)->op != OP_HLT);
 }

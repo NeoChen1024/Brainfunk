@@ -35,4 +35,5 @@ typedef struct bitcode_struct bitcode_t;
 
 void bitcodelize(bitcode_t *bitcode, code_t *text);
 void bitcode_interprete(bitcode_t *bitcode);
-void bitcode_disassembly_array(bitcode_t *bitcode);
+void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize);
+void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp);

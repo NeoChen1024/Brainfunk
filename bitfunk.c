@@ -30,9 +30,12 @@ unsigned int codesize=DEF_CODESIZE;
 unsigned int stacksize=DEF_STACKSIZE;
 unsigned int bitcodesize=DEF_BITCODESIZE;
 
-void debug_function(bitcode_t *bitcode)
+void debug_function(void)
 {
-	fprintf(stderr, "code=%u:: OP=%d:: ARG=%d\n", bitcode_ptr, (bitcode + bitcode_ptr)->op, (bitcode + bitcode_ptr)->arg);
+	char disassembly_code[64];
+
+	bitcode_disassembly(bitcode + bitcode_ptr, bitcode_ptr, disassembly_code, 64);
+	fprintf(stderr, "code=%s\n", disassembly_code);
 	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
 	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
 	fprintf(stderr, "--------\n");
@@ -137,12 +140,12 @@ int main(int argc, char **argv)
 	bitcodelize(bitcode, code);
 
 	if(debug)
-		bitcode_disassembly_array(bitcode);
+		bitcode_disassembly_array_to_fp(bitcode, stdout);
 
 	while((bitcode + bitcode_ptr)->op != OP_HLT)
 	{
 		if(debug)
-			debug_function(bitcode + bitcode_ptr);
+			debug_function();
 		bitcode_interprete(bitcode + bitcode_ptr);
 	}
 
