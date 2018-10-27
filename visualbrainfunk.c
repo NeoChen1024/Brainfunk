@@ -371,11 +371,31 @@ int main(int argc, char **argv)
  * +-------------+-------+ 23
  */
 
+/* Window Layout #ifdef BITCODE
+ *
+ * 0		59	79
+ * +-------------+-------+ 0
+ * |         MEM         |	(BLACK on WHITE)
+ * +-------------+-------+ 4
+ * |             |       |
+ * |    CODE     |  REG  |	(BG == YELLOW) : (BG == GREEN)
+ * |             |       |
+ * |-------------+-------+ 9
+ * |                     |
+ * |         IO          |	(YELLOW / BLUE) : (BLACK / CYAN)
+ * |                     |
+ * +-------------+-------+ 23
+ */
+
 	MEM_WINDOW	= newwin(4, 80, 0, 0);
 	CODE_WINDOW	= newwin(6, 60, 4, 0);
-	IO_WINDOW	= newwin(13, 60, 10, 0);
 	REG_WINDOW	= newwin(6, 20, 4, 60);
+#ifdef BITCODE
+	IO_WINDOW       = newwin(13, 80, 10, 0);
+#else
 	STACK_WINDOW	= newwin(13, 20, 10, 60);
+	IO_WINDOW	= newwin(13, 60, 10, 0);
+#endif
 
 	init_pair(MSG_COLOR, COLOR_BLACK, COLOR_WHITE);
 	init_pair(MEM_COLOR, COLOR_BLACK, COLOR_WHITE);
