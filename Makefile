@@ -46,7 +46,7 @@ libbitcode.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbitcode.c
 
 clean:
-	rm -fv brainfunk visualbrainfunk bitfunk *.o
+	rm -fv brainfunk visualbrainfunk bitfunk visualbitfunk *.o
 
 clean-all: clean
 	rm -rfv test
