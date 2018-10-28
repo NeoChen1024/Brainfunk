@@ -6,9 +6,6 @@ SH?=	/bin/sh
 # If you needs LTO
 # CFLAGS	+= -flto
 # LDFLAGS	+= -flto
-#
-# For Profiling
-# CFLAGS	+= -fprofile
 
 all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode
 
