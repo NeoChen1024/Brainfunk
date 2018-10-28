@@ -2,10 +2,13 @@ CC	= cc
 CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -I.
 LDFLAGS	= -fPIE
 VLIBS	= -lncurses
+SH?=	/bin/sh
 # If you needs LTO
 # CFLAGS	+= -flto
 # LDFLAGS	+= -flto
-SH?=	/bin/sh
+#
+# For Profiling
+# CFLAGS	+= -fprofile
 
 all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode
 
