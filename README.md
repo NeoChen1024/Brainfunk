@@ -13,9 +13,10 @@ They all have some simple array bounds checking, so normally it won't coredumps.
 	brainfunk [-h] [-f file] [-c code] [-d]
 	bitfunk [-h] [-f file] [-c code] [-d]
 	visualbrainfunk [-h] [-f file] [-c code] [-d] [-t msec]
+	bf2bitcode [-h] [-f infile] [-o outfile] [-c code]
 
 * -d is for debugging, super verbose
 * -f is the file to read, "-" for reading from stdin
 * -c is run code directly from the argument
-* -s sets code, stack, and memory size
+* -s sets code, stack, memory, and bitcode size
 * -t is delay between instructions, in millisecond
