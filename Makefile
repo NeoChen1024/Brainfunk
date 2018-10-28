@@ -7,7 +7,7 @@ VLIBS	= -lncurses
 # LDFLAGS	+= -flto
 SH?=	/bin/sh
 
-all: brainfunk visualbrainfunk bitfunk visualbitfunk
+all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode
 
 brainfunk: brainfunk.o libbrainfunk.o
 	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
@@ -21,6 +21,9 @@ bitfunk: bitfunk.o libbrainfunk.o libbitcode.o
 visualbitfunk: libbitcode.o libvbrainfunk.o visualbitfunk.o
 	$(CC) $(LDFLAGS) visualbitfunk.o libvbrainfunk.o libbitcode.o -o visualbitfunk $(VLIBS)
 
+bf2bitcode: libbitcode.o libbrainfunk.o bf2bitcode.o
+	$(CC) $(LDFLAGS) bf2bitcode.o libbrainfunk.o libbitcode.o -o bf2bitcode
+
 brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
 
@@ -32,6 +35,9 @@ visualbitfunk.o:
 
 visualbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c visualbrainfunk.c
+
+bf2bitcode.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wno-unused-parameter -c bf2bitcode.c
 
 libbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
