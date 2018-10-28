@@ -80,6 +80,7 @@ int main(int argc, char **argv)
 	stack	= calloc(stacksize, sizeof(stack_type));
 #ifdef BITCODE
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
+	int load_bitcode=0;
 #endif
 
 	/* Parse Argument */
@@ -92,7 +93,11 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+#ifdef BITCODE
+		while((opt = getopt(argc, argv, "hdf:c:s:b:")) != -1)
+#else
 		while((opt = getopt(argc, argv, "hdf:c:s:")) != -1)
+#endif
 		{
 			switch(opt)
 			{
@@ -129,6 +134,23 @@ int main(int argc, char **argv)
 					else
 						read_code(stdin);
 					break;
+#ifdef BITCODE
+				case 'b':
+					if(strcmp(optarg, "-"))
+					{
+						if((corefile = fopen(optarg, "r")) == NULL)
+						{
+							perror(optarg);
+							exit(8);
+						}
+						bitcode_load_fp(bitcode, corefile);
+						fclose(corefile);
+					}
+					else
+						bitcode_load_fp(bitcode, stdin);
+					load_bitcode=1;
+					break;
+#endif
 				case 'c': /* Code */
 					strncpy(code, optarg, codesize);
 					break;
@@ -159,7 +181,8 @@ int main(int argc, char **argv)
 	}
 
 #ifdef BITCODE
-	bitcodelize(bitcode, code);
+	if(!load_bitcode)
+		bitcodelize(bitcode, code);
 
 	if(debug)
 		bitcode_disassembly_array_to_fp(bitcode, stdout);

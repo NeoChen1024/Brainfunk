@@ -204,3 +204,64 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 	}
 	while((bitcode + counter)->op != OP_HLT);
 }
+
+void bitcode_assembly(char *str, bitcode_t *bitcode)
+{
+	unsigned int address=0;
+	char temp_op_str[64];
+	char temp_arg_str[32];
+	char op=0;
+	unsigned int arg=0;
+
+	sscanf(str, "%x: %s %s\n", &address, temp_op_str, temp_arg_str);
+
+	if(!strncmp(temp_op_str, "ADD", 64))
+		op=OP_ADD;
+	else if(!strncmp(temp_op_str, "SUB", 64))
+		op=OP_SUB;
+	else if(!strncmp(temp_op_str, "FWD", 64))
+		op=OP_FWD;
+	else if(!strncmp(temp_op_str, "REW", 64))
+		op=OP_REW;
+	else if(!strncmp(temp_op_str, "JEZ", 64))
+		op=OP_JEZ;
+	else if(!strncmp(temp_op_str, "JNZ", 64))
+		op=OP_JNZ;
+	else if(!strncmp(temp_op_str, "IO", 64))
+		op=OP_IO;
+	else if(!strncmp(temp_op_str, "HLT", 64))
+		op=OP_HLT;
+	else if(!strncmp(temp_op_str, "NOP", 64))
+		op=OP_NOP;
+
+	if(op == OP_IO)
+	{
+		if(!strncmp(temp_arg_str, "IN", 32))
+			arg=ARG_IN;
+		else if(!strncmp(temp_arg_str, "OUT", 32))
+			arg=ARG_OUT;
+	}
+	else
+		sscanf(temp_arg_str, "%x", &arg);
+
+	if(debug)
+		printf("%x, %#x\n", op, arg);
+
+	(bitcode + address)->op = op;
+	(bitcode + address)->arg = arg;
+}
+
+
+void bitcode_load_fp(bitcode_t *bitcode, FILE *fp)
+{
+	char *temp_str=NULL;
+	size_t str_cap=0;
+	ssize_t str_length=0;
+
+	while((str_length = getline(&temp_str, &str_cap, fp)) > 0)
+	{
+		if(debug)
+			printf("LOAD [%ld]: %s\n", str_length, temp_str);
+		bitcode_assembly(temp_str, bitcode);
+	}
+}

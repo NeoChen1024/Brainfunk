@@ -27,6 +27,7 @@ unsigned int code_ptr=0;
 
 int debug=0;
 int delay=1000*100; /* Delay 100ms */
+int load_bitcode=0;
 
 unsigned int memsize=DEF_MEMSIZE;
 unsigned int codesize=DEF_CODESIZE;
@@ -116,7 +117,11 @@ void parse_argument(int argc, char **argv)
 	}
 	else
 	{
+#ifdef BITCODE
+		while((opt = getopt(argc, argv, "hdf:c:s:t:b:")) != -1)
+#else
 		while((opt = getopt(argc, argv, "hdf:c:s:t:")) != -1)
+#endif
 		{
 			switch(opt)
 			{
@@ -149,6 +154,23 @@ void parse_argument(int argc, char **argv)
 					read_code(corefile);
 					fclose(corefile);
 					break;
+#ifdef BITCODE
+				case 'b':
+					if(strcmp(optarg, "-"))
+					{
+						if((corefile = fopen(optarg, "r")) == NULL)
+						{
+							perror(optarg);
+							exit(8);
+						}
+						bitcode_load_fp(bitcode, corefile);
+						fclose(corefile);
+					}
+					else
+						bitcode_load_fp(bitcode, stdin);
+					load_bitcode=1;
+					break;
+#endif
 				case 'c': /* Code */
 					strncpy(code, optarg, CODESIZE);
 					break;
@@ -428,7 +450,8 @@ int main(int argc, char **argv)
 	scrollok(IO_WINDOW, TRUE);
 
 #ifdef BITCODE
-	bitcodelize(bitcode, code);
+	if(!load_bitcode)
+		bitcodelize(bitcode, code);
 
 	while((bitcode + bitcode_ptr)->op != OP_HLT)
 	{
