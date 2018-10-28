@@ -34,6 +34,8 @@ void panic(char *msg)
 	exit(2);
 }
 
+
+/* Placeholder Functions */
 void output(memory_t c)
 {
 	return;
