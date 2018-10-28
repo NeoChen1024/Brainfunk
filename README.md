@@ -13,6 +13,7 @@ They all have some simple array bounds checking, so normally it won't coredumps.
 	brainfunk [-h] [-f file] [-c code] [-d]
 	bitfunk [-h] [-f file] [-c code] [-d]
 	visualbrainfunk [-h] [-f file] [-c code] [-d] [-t msec]
+	visualbitfunk [-h] [-f file] [-c code] [-d] [-t msec]
 	bf2bitcode [-h] [-f infile] [-o outfile] [-c code]
 
 * -d is for debugging, super verbose
