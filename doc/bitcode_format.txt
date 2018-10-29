@@ -1,0 +1,13 @@
+Brainfunk's Bitcode Format Specification
+========================================
+
+NOP	1 Byte OP
+ADD	1 Byte OP, 4 Byte Operand (Non-Zero)
+SUB	1 Byte OP, 4 Byte Operand (Non-Zero)
+FWD	1 Byte OP, 4 Byte Operand (Non-Zero)
+REW	1 Byte OP, 4 Byte Operand (Non-Zero)
+JEZ	1 Byte OP, 4 Byte Jump Address
+JNZ	1 Byte OP, 4 Byte Jump Address
+IN	1 Byte OP
+OUT	1 Byte OP
+HLT	1 Byte OP
