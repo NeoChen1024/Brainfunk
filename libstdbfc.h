@@ -8,6 +8,8 @@ typedef unsigned int arg_t;
 memory_t *memory;
 unsigned int ptr=0;
 
+void panic(char *msg);
+
 void add(arg_t arg)
 {
 	memory[ptr]+=arg;
@@ -21,11 +23,19 @@ void sub(arg_t arg)
 void fwd(arg_t arg)
 {
 	ptr += arg;
+#ifndef FAST
+	if(ptr >= MEMSIZE)
+		panic("?MEM");
+#endif
 }
 
 void rew(arg_t arg)
 {
 	ptr -= arg;
+#ifndef FAST
+	if(ptr >= MEMSIZE)
+		panic("?MEM");
+#endif
 }
 
 memory_t in()
@@ -43,4 +53,10 @@ void hlt(arg_t arg)
 {
 	free(memory);
 	exit(arg);
+}
+
+void panic(char *msg)
+{
+	puts(msg);
+	hlt(4);
 }
