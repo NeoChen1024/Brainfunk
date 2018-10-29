@@ -3,5 +3,6 @@ bitfunk
 visualbrainfunk
 visualbitfunk
 bf2bitcode
+bf2c
 *.o
 test

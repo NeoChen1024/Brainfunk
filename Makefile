@@ -10,7 +10,7 @@ SH?=	/bin/sh
 # CFLAGS	+= -pg
 # LDFLAGS	+= -pg
 
-all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode
+all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode bf2c
 
 brainfunk: brainfunk.o libbrainfunk.o
 	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
@@ -27,6 +27,9 @@ visualbitfunk: libbitcode.o libvbrainfunk.o visualbitfunk.o
 bf2bitcode: libbitcode.o libbrainfunk.o bf2bitcode.o
 	$(CC) $(LDFLAGS) bf2bitcode.o libbrainfunk.o libbitcode.o -o bf2bitcode
 
+bf2c: libbitcode.o libbrainfunk.o bf2c.o
+	$(CC) $(LDFLAGS) libbitcode.o libbrainfunk.o bf2c.o -o bf2c
+
 brainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
 
@@ -42,6 +45,9 @@ visualbrainfunk.o:
 bf2bitcode.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -Wno-unused-parameter -c bf2bitcode.c
 
+bf2c.o:
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wno-unused-parameter -c bf2c.c
+
 libbrainfunk.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
 
@@ -52,7 +58,7 @@ libbitcode.o:
 	$(CC) $(CFLAGS) $(LDFLAGS) -c libbitcode.c
 
 clean:
-	rm -fv brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode *.o
+	rm -fv brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode bf2c *.o
 
 clean-all: clean
 	rm -rfv test
