@@ -22,3 +22,7 @@ They all have some simple array bounds checking, so normally it won't coredumps.
 * -c is run code directly from the argument
 * -s sets code, stack, memory, and bitcode size
 * -t is delay between instructions, in millisecond
+
+
+## bf2c Usage:
+Use bf2c to convert Brainfuck code to C, to compile it, add libstdbfc.h to compiler's search path (-I\<path\>)
