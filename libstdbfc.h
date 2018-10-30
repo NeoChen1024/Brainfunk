@@ -8,7 +8,12 @@ typedef unsigned int arg_t;
 memory_t *memory;
 unsigned int ptr=0;
 
-void panic(char *msg);
+void panic(char *msg)
+{
+	puts(msg);
+	free(memory);
+	exit(8);
+}
 
 void add(arg_t arg)
 {
@@ -53,10 +58,4 @@ void hlt(arg_t arg)
 {
 	free(memory);
 	exit(arg);
-}
-
-void panic(char *msg)
-{
-	puts(msg);
-	hlt(4);
 }
