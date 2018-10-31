@@ -86,10 +86,10 @@ void print_c(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize
 			snprintf(str, strsize, "/* %#x: REW %#x */\t\t\trew(%#x);\n", address, bitcode->arg, bitcode->arg);
 			break;
 		case OP_JEZ:
-			snprintf(str, strsize, "/* %#x: JEZ %#x */\t\t\twhile(memory[ptr]) {\n", address, bitcode->arg);
+			snprintf(str, strsize, "/* %#x: JEZ %#x */\t\t\tif(!memory[ptr]) goto L%#x; L%#x:\n", address, bitcode->arg, bitcode->arg, address);
 			break;
 		case OP_JNZ:
-			snprintf(str, strsize, "/* %#x: JNZ %#x */\t\t\t}\n", address, bitcode->arg);
+			snprintf(str, strsize, "/* %#x: JNZ %#x */\t\t\tif(memory[ptr]) goto L%#x; L%#x:\n", address, bitcode->arg, bitcode->arg, address);
 			break;
 		case OP_IO:
 			if(bitcode->arg == ARG_OUT)
