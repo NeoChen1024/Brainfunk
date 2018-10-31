@@ -172,7 +172,7 @@ void parse_argument(int argc, char **argv)
 					break;
 #endif
 				case 'c': /* Code */
-					strncpy(code, optarg, CODESIZE);
+					strncpy(code, optarg, codesize);
 					break;
 				case 't': /* Delay (in msec) */
 					sscanf(optarg, "%d", &delay);
@@ -236,7 +236,7 @@ void print_mem(void)
 	{
 		if(((signed)ptr + count) < 0)
 			waddstr(MEM_WINDOW, "    |");
-		else if((ptr + count) >= MEMSIZE)
+		else if((ptr + count) >= memsize)
 			waddstr(MEM_WINDOW, "    |");
 		else
 			wprintw(MEM_WINDOW, " %02x |", memory[ptr+count]);
@@ -312,7 +312,7 @@ void print_skipline(char *str, int line, unsigned int *y)
 	int row=0;
 
 	if(line <= 5)
-		waddnstr(CODE_WINDOW, code, CODESIZE);
+		waddnstr(CODE_WINDOW, code, codesize);
 	else
 		while(str[temp] != '\0')
 		{
@@ -359,9 +359,9 @@ void print_code(void)
 
 int main(int argc, char **argv)
 {
-	memory	= calloc(MEMSIZE, sizeof(memory_t));
-	code	= calloc(CODESIZE, sizeof(code_t));
-	stack	= calloc(STACKSIZE, sizeof(stack_type));
+	memory	= calloc(memsize, sizeof(memory_t));
+	code	= calloc(codesize, sizeof(code_t));
+	stack	= calloc(stacksize, sizeof(stack_type));
 #ifdef BITCODE
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 #endif

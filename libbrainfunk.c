@@ -62,7 +62,7 @@ void read_code(FILE* fp)
 	int c=0;
 	while((c=getc(fp)) != EOF)
 	{
-		if(i >= CODESIZE)
+		if(i >= codesize)
 			panic("?CODE");
 		if((is_code((char)c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
 		code[i++]=(char)c;
@@ -71,14 +71,14 @@ void read_code(FILE* fp)
 
 void push(stack_type *stack, unsigned int *ptr, stack_type content)
 {
-	if(*ptr >= STACKSIZE)
+	if(*ptr >= stacksize)
 		panic("?>STACK");
 	stack[++(*ptr)]=content;
 }
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-	if(*ptr >= STACKSIZE)
+	if(*ptr >= stacksize)
 		panic("?<STACK");
 	return stack[(*ptr)--];
 }
@@ -112,13 +112,13 @@ void interprete(code_t c)
 			break;
 		case '>':
 			ptr++;
-			if(ptr >= MEMSIZE)
+			if(ptr >= memsize)
 				panic("?>MEM");
 			++code_ptr;
 			break;
 		case '<':
 			ptr--;
-			if(ptr >= MEMSIZE)
+			if(ptr >= memsize)
 				panic("?<MEM");
 			++code_ptr;
 			break;
@@ -149,7 +149,7 @@ void interprete(code_t c)
 			{
 				code_ptr++;
 				stack_ptr--; /* Drop */
-				if(stack_ptr >= STACKSIZE)
+				if(stack_ptr >= stacksize)
 					panic("?<STACK");
 			}
 #ifdef VISUAL

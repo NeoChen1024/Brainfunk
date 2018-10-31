@@ -13,10 +13,6 @@
 #define DEF_CODESIZE 65536
 #define DEF_STACKSIZE 1024
 
-#define MEMSIZE memsize
-#define CODESIZE codesize
-#define STACKSIZE stacksize
-
 #define TRUE 1
 #define FALSE 0
 
