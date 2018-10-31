@@ -74,34 +74,34 @@ void print_c(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize
 	switch(bitcode->op)
 	{
 		case OP_ADD:
-			snprintf(str, strsize, "/* %#x: ADD %#x */\t\t\tadd(%#x);\n", address, bitcode->arg, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\tadd(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_SUB:
-			snprintf(str, strsize, "/* %#x: SUB %#x */\t\t\tsub(%#x);\n", address, bitcode->arg, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\tsub(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_FWD:
-			snprintf(str, strsize, "/* %#x: FWD %#x */\t\t\tfwd(%#x);\n", address, bitcode->arg, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\tfwd(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_REW:
-			snprintf(str, strsize, "/* %#x: REW %#x */\t\t\trew(%#x);\n", address, bitcode->arg, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\trew(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_JEZ:
-			snprintf(str, strsize, "/* %#x: JEZ %#x */\t\t\tif(!memory[ptr]) goto L%#x; L%#x:\n", address, bitcode->arg, bitcode->arg, address);
+			snprintf(str, strsize, "L%#x:\tif(!memory[ptr]) goto L%#x;\n", address, bitcode->arg);
 			break;
 		case OP_JNZ:
-			snprintf(str, strsize, "/* %#x: JNZ %#x */\t\t\tif(memory[ptr]) goto L%#x; L%#x:\n", address, bitcode->arg, bitcode->arg, address);
+			snprintf(str, strsize, "L%#x:\tif(memory[ptr]) goto L%#x;\n", address, bitcode->arg);
 			break;
 		case OP_IO:
 			if(bitcode->arg == ARG_OUT)
-				snprintf(str, strsize, "/* %#x: IO OUT */\t\t\tout(memory[ptr]);\n", address);
+				snprintf(str, strsize, "L%#x:\tout(memory[ptr]);\n", address);
 			else if(bitcode->arg == ARG_IN)
-				snprintf(str, strsize, "/* %#x: IO IN */\t\t\tmemory[ptr] = in();\n", address);
+				snprintf(str, strsize, "L%#x:\tmemory[ptr] = in();\n", address);
 			break;
 		case OP_NOP:
-			snprintf(str, strsize, "/* %#x: NOP %#x */\n", address, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\t/* NOP %#x */\n", address, bitcode->arg);
 			break;
 		case OP_HLT:
-			snprintf(str, strsize, "/* %#x: HLT %#x */\t\t\thlt(%#x);\n", address, bitcode->arg, bitcode->arg);
+			snprintf(str, strsize, "L%#x:\thlt(%#x);\n", address, bitcode->arg);
 			break;
 	}
 	return;
