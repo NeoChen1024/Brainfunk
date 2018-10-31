@@ -57,10 +57,10 @@ void print_head(FILE *fp)
 	"#include <stdio.h>\n"
 	"#include <stdlib.h>\n"
 	"#include <unistd.h>\n"
-	"#include <libstdbfc.h>\n"
+	"#include <libstdbfc.h>\n\n"
 	"int main(void)\n"
 	"{\n"
-	"memory = calloc(MEMSIZE, sizeof(char));\n", fp);
+	"\tmemory = calloc(MEMSIZE, sizeof(char));\n\n", fp);
 }
 
 void print_tail(FILE *fp)
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:o:b:")) != -1)
+		while((opt = getopt(argc, argv, "hdf:s:c:o:b:")) != -1)
 		{
 			switch(opt)
 			{
