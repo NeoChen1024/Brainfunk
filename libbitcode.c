@@ -1,5 +1,5 @@
 /* ==================================== *
- * Brainfunk -- A Brainf**k Interpreter *
+ * Brainfunk -- A Brainf**k Toolkit     *
  * Neo_Chen			        *
  * ==================================== */
 
