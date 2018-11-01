@@ -60,7 +60,9 @@ void print_head(FILE *fp)
 	"#include <libstdbfc.h>\n\n"
 	"int main(void)\n"
 	"{\n"
-	"\tmemory = calloc(MEMSIZE, sizeof(char));\n\n", fp);
+	"\tmemory = calloc(MEMSIZE, sizeof(char));\n\n"
+	"\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
+	"\tsetvbuf(stdin, NULL, _IONBF, 0);\n", fp);
 }
 
 void print_tail(FILE *fp)

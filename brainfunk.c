@@ -64,7 +64,6 @@ void debug_loop(char *fmt, unsigned int location)
 void output(memory_t c)
 {
 	putchar(c);
-	fflush(NULL);
 }
 
 memory_t input(void)
@@ -82,6 +81,8 @@ int main(int argc, char **argv)
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 	int load_bitcode=0;
 #endif
+	setvbuf(stdin, NULL, _IONBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
 
 	/* Parse Argument */
 	FILE *corefile;
