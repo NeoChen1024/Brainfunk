@@ -451,7 +451,7 @@ int main(int argc, char **argv)
 
 #ifdef BITCODE
 	if(!load_bitcode)
-		bitcodelize(bitcode, code);
+		bitcodelize(bitcode, bitcodesize, code);
 
 	while((bitcode + bitcode_ptr)->op != OP_HLT)
 	{

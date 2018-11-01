@@ -195,7 +195,7 @@ int main(int argc, char **argv)
 	}
 
 	if(!load_bitcode)
-		bitcodelize(bitcode, code);
+		bitcodelize(bitcode, bitcodesize, code);
 
 	char outstr[256];
 

@@ -183,7 +183,7 @@ int main(int argc, char **argv)
 
 #ifdef BITCODE
 	if(!load_bitcode)
-		bitcodelize(bitcode, code);
+		bitcodelize(bitcode, bitcodesize, code);
 
 	if(debug)
 		bitcode_disassembly_array_to_fp(bitcode, stdout);

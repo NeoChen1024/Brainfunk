@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	bitcodelize(bitcode, code);
+	bitcodelize(bitcode, bitcodesize, code);
 
 	char outstr[128];
 	do

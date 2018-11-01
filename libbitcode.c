@@ -24,7 +24,7 @@ extern unsigned int stacksize;
 extern bitcode_t *bitcode;
 extern unsigned int bitcode_ptr;
 
-void bitcodelize(bitcode_t *bitcode, code_t *text)
+void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 {
 	unsigned int temp_arg=0;
 	unsigned int text_ptr=0;
@@ -106,6 +106,9 @@ void bitcodelize(bitcode_t *bitcode, code_t *text)
 				text_ptr++;
 				break;
 		}
+
+		if(bitcode_ptr >= bitcodesize)
+			panic("?BITCODE");
 	}
 	(bitcode + bitcode_ptr)->op=OP_HLT;
 }
