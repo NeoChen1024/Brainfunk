@@ -85,8 +85,8 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 
 void jump_to_next_matching(void)
 {
-	int nest_level=0;
-	while(code[code_ptr] != '\0')
+	int nest_level=1;
+	while(code[++code_ptr] != '\0')
 	{
 		if(code[code_ptr] == '[')
 			++nest_level;
@@ -94,7 +94,6 @@ void jump_to_next_matching(void)
 			--nest_level;
 		else if(nest_level == 0)
 			return;
-		code_ptr++;
 	}
 }
 
