@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:o:")) != -1)
+		while((opt = getopt(argc, argv, "hdf:s:c:o:")) != -1)
 		{
 			switch(opt)
 			{
