@@ -62,7 +62,7 @@ void print_head(FILE *fp)
 	"{\n"
 	"\tmemory = calloc(MEMSIZE, sizeof(char));\n\n"
 	"\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
-	"\tsetvbuf(stdin, NULL, _IONBF, 0);\n", fp);
+	"\tsetvbuf(stdin, NULL, _IONBF, 0);\n\n", fp);
 }
 
 void print_tail(FILE *fp)
