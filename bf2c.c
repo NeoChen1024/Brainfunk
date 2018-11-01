@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 				case 'o':
 					if(strcmp(optarg, "-"))
 					{
-						if((outfile = fopen(optarg, "r")) == NULL)
+						if((outfile = fopen(optarg, "w")) == NULL)
 						{
 							perror(optarg);
 							exit(8);
