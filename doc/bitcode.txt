@@ -1,0 +1,20 @@
+0x00	NOP	Noop
+0x01	ADD	Add
+0x02	SUB	Subtract
+0x03	FWD	Forward
+0x04	REW	Rewind
+0x05	JEZ	Jump if equal to zero
+0x06	JNZ	Jump if not zero
+0x07	IO	IO
+0x08	SET	Set to a fixed interger
+0x09	POP	Pop
+0x0A	PUSH	Push
+0x0B	PSHI	Push a fixed integer
+0x0C	ADDS	Add to top of stack
+0x0D	SUBS	Subtract to top of stack
+0x0E	JMP	Jump unconditionally
+0x0F	JSEZ	Jump if top of stack is zero
+0x10	JSNZ	Jump if top of stack is not zero
+0x11	FRK	Fork
+0x12	HCF	HALT AND CATCH FIRE!
+0x13	HLT	Halt
