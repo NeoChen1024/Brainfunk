@@ -24,11 +24,12 @@
 #define OP_PSHI	0x0B
 #define OP_ADDS	0x0C
 #define OP_SUBS	0x0D
-#define OP_JSEZ	0x0E
-#define OP_JSNZ	0x0F
-#define OP_FRK	0x10
-#define OP_HCF	0x11
-#define OP_HLT	0x12
+#define OP_JMP	0x0E
+#define OP_JSEZ	0x0F
+#define OP_JSNZ	0x10
+#define OP_FRK	0x11
+#define OP_HCF	0x12
+#define OP_HLT	0x13
 
 #define ARG_IN	0
 #define ARG_OUT	1
@@ -44,6 +45,7 @@ struct bitcode_struct
 typedef struct bitcode_struct bitcode_t;
 
 #define DEF_BITCODESIZE 65536
+#define DEF_PSTACKSIZE	65536
 
 void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text);
 void bitcode_interprete(bitcode_t *bitcode);

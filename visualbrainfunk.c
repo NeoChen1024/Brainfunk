@@ -29,14 +29,17 @@ int debug=0;
 int delay=1000*100; /* Delay 100ms */
 int load_bitcode=0;
 
-unsigned int memsize=DEF_MEMSIZE;
-unsigned int codesize=DEF_CODESIZE;
-unsigned int stacksize=DEF_STACKSIZE;
+size_t memsize=DEF_MEMSIZE;
+size_t codesize=DEF_CODESIZE;
+size_t stacksize=DEF_STACKSIZE;
 
 #ifdef BITCODE
 bitcode_t *bitcode;
 unsigned int bitcode_ptr=0;
-unsigned int bitcodesize=DEF_BITCODESIZE;
+size_t bitcodesize=DEF_BITCODESIZE;
+memory_t *pstack;
+unsigned int pstack_ptr=0;
+size_t pstacksize=DEF_PSTACKSIZE;
 #endif
 
 #define IO_WINDOW io_win
@@ -103,6 +106,7 @@ void clean_up(void)
 	free(stack);
 #ifdef BITCODE
 	free(bitcode);
+	free(pstack);
 #endif
 }
 
@@ -127,10 +131,10 @@ void parse_argument(int argc, char **argv)
 			{
 				case 's': /* Read size from argument */
 #ifdef BITCODE
-					sscanf(optarg, "%u,%u,%u,%u", &memsize, &codesize, &stacksize, &bitcodesize);
+					sscanf(optarg, "%zu,%zu,%zu,%zu", &memsize, &codesize, &pstacksize, &bitcodesize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0 || bitcodesize == 0)
 #else
-					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
+					sscanf(optarg, "%zu,%zu,%zu", &memsize, &codesize, &stacksize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0)
 #endif
 						panic("?SIZE=0");
@@ -142,6 +146,8 @@ void parse_argument(int argc, char **argv)
 					stack	= calloc(stacksize, sizeof(stack_type));
 #ifdef BITCODE
 					free(bitcode);
+					free(pstack);
+					pstack	= calloc(pstacksize, sizeof(memory_t));
 					bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 #endif
 					break;
@@ -180,7 +186,7 @@ void parse_argument(int argc, char **argv)
 					break;
 				case 'h': /* Help */
 #ifdef BITCODE
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize,bitcodesize] [-d] [-t msec]\n", argv[0]);
+					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d] [-t msec]\n", argv[0]);
 #else
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d] [-t msec]\n", argv[0]);
 #endif

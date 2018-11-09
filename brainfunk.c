@@ -24,14 +24,17 @@ code_t *code;
 unsigned int code_ptr=0;
 int debug=0;
 
-unsigned int memsize=DEF_MEMSIZE;
-unsigned int codesize=DEF_CODESIZE;
-unsigned int stacksize=DEF_STACKSIZE;
+size_t memsize=DEF_MEMSIZE;
+size_t codesize=DEF_CODESIZE;
+size_t stacksize=DEF_STACKSIZE;
 
 #ifdef BITCODE
-unsigned int bitcodesize=DEF_BITCODESIZE;
+size_t bitcodesize=DEF_BITCODESIZE;
 bitcode_t *bitcode;
 unsigned int bitcode_ptr=0;
+memory_t *pstack;
+unsigned int pstack_ptr=0;
+size_t pstacksize=DEF_PSTACKSIZE;
 #endif
 
 void debug_function(void)
@@ -79,6 +82,7 @@ int main(int argc, char **argv)
 	stack	= calloc(stacksize, sizeof(stack_type));
 #ifdef BITCODE
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
+	pstack	= calloc(pstacksize, sizeof(memory_t));
 	int load_bitcode=0;
 #endif
 	setvbuf(stdin, NULL, _IONBF, 0);
@@ -104,10 +108,10 @@ int main(int argc, char **argv)
 			{
 				case 's': /* Read size from argument */
 #ifdef BITCODE
-					sscanf(optarg, "%u,%u,%u,%u", &memsize, &codesize, &stacksize, &bitcodesize);
+					sscanf(optarg, "%zu,%zu,%zu,%zu", &memsize, &codesize, &pstacksize, &bitcodesize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0 || bitcodesize == 0)
 #else
-					sscanf(optarg, "%u,%u,%u", &memsize, &codesize, &stacksize);
+					sscanf(optarg, "%zu,%zu,%zu", &memsize, &codesize, &stacksize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0)
 #endif
 						panic("?SIZE=0");
@@ -157,7 +161,7 @@ int main(int argc, char **argv)
 					break;
 				case 'h': /* Help */
 #ifdef BITCODE
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize,bitcodesize] [-d]\n", argv[0]);
+					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d]\n", argv[0]);
 #else
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
 #endif
@@ -175,9 +179,13 @@ int main(int argc, char **argv)
 
 	if(debug)
 	{
-		fprintf(stderr, "memory	= %p[%d]\n", memory, memsize);
-		fprintf(stderr, "code	= %p[%d]\n", code, codesize);
-		fprintf(stderr, "stack	= %p[%d]\n\n", stack, stacksize);
+		fprintf(stderr, "memory	= %p[%zu]\n", memory, memsize);
+		fprintf(stderr, "code	= %p[%zu]\n", code, codesize);
+#ifdef BITCODE
+		fprintf(stderr, "pstack = %p[%zu]\n", pstack, pstacksize);
+#else
+		fprintf(stderr, "stack	= %p[%zu]\n\n", stack, stacksize);
+#endif
 		fflush(NULL);
 	}
 
@@ -208,6 +216,7 @@ int main(int argc, char **argv)
 	free(stack);
 #ifdef BITCODE
 	free(bitcode);
+	free(pstack);
 #endif
 	return 0;
 }

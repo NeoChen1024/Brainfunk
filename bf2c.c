@@ -20,11 +20,14 @@ code_t *code;
 unsigned int code_ptr=0;
 bitcode_t *bitcode;
 unsigned int bitcode_ptr=0;
+memory_t *pstack;
+unsigned int pstack_ptr=0;
 
-unsigned int memsize=DEF_MEMSIZE;
-unsigned int codesize=DEF_CODESIZE;
-unsigned int stacksize=DEF_STACKSIZE;
-unsigned int bitcodesize=DEF_BITCODESIZE;
+size_t memsize=DEF_MEMSIZE;
+size_t codesize=DEF_CODESIZE;
+size_t stacksize=DEF_STACKSIZE;
+size_t bitcodesize=DEF_BITCODESIZE;
+size_t pstacksize=DEF_PSTACKSIZE;
 
 int debug=0;
 
@@ -33,7 +36,6 @@ void panic(char *msg)
 	fprintf(stderr, "%s\n", msg);
 	exit(2);
 }
-
 
 /* Placeholder Functions */
 void output(memory_t c)
@@ -78,8 +80,14 @@ void print_c(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize
 		case OP_ADD:
 			snprintf(str, strsize, "L%#x:\tadd(%#x);\n", address, bitcode->arg);
 			break;
+		case OP_ADDS:
+			snprintf(str, strsize, "L%#x:\tadds(%#x);\n", address, bitcode->arg);
+			break;
 		case OP_SUB:
 			snprintf(str, strsize, "L%#x:\tsub(%#x);\n", address, bitcode->arg);
+			break;
+		case OP_SUBS:
+			snprintf(str, strsize, "L%#x:\tsubs(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_FWD:
 			snprintf(str, strsize, "L%#x:\tfwd(%#x);\n", address, bitcode->arg);
@@ -90,14 +98,45 @@ void print_c(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize
 		case OP_JEZ:
 			snprintf(str, strsize, "L%#x:\tif(!memory[ptr]) goto L%#x;\n", address, bitcode->arg);
 			break;
+		case OP_JSEZ:
+			snprintf(str, strsize, "L%#x:\tif(!peek) goto L%#x;\n", address, bitcode->arg);
+			break;
 		case OP_JNZ:
 			snprintf(str, strsize, "L%#x:\tif(memory[ptr]) goto L%#x;\n", address, bitcode->arg);
+			break;
+		case OP_JSNZ:
+			snprintf(str, strsize, "L%#x:\tif(peek) goto L%#x;\n", address, bitcode->arg);
+			break;
+		case OP_JMP:
+			snprintf(str, strsize, "L%#x:\tgoto L%#x;\n", address, bitcode->arg);
 			break;
 		case OP_IO:
 			if(bitcode->arg == ARG_OUT)
 				snprintf(str, strsize, "L%#x:\tout(memory[ptr]);\n", address);
 			else if(bitcode->arg == ARG_IN)
 				snprintf(str, strsize, "L%#x:\tmemory[ptr] = in();\n", address);
+			else if(bitcode->arg == ARG_OUTS)
+				snprintf(str, strsize, "L%#x:\tout(pop(stack, &stack_ptr));\n", address);
+			else if(bitcode->arg == ARG_INS)
+				snprintf(str, strsize, "L%#x:\tpush(stack, &stack_ptr, in());\n", address);
+			break;
+		case OP_SET:
+			snprintf(str, strsize, "L%#x:\tset(%#x);\n", address, bitcode->arg);
+			break;
+		case OP_POP:
+			snprintf(str, strsize, "L%#x:\tmemory[ptr] = pop(stack, &stack_ptr); /* ARG=%#x */\n", address, bitcode->arg);
+			break;
+		case OP_PUSH:
+			snprintf(str, strsize, "L%#x:\tpush(stack, &stack, memory[ptr]); /* ARG=%#x */\n", address, bitcode->arg);
+			break;
+		case OP_PSHI:
+			snprintf(str, strsize, "L%#x:\tpush(stack, &stack, %#x);\n", address, bitcode->arg);
+			break;
+		case OP_FRK:
+			snprintf(str, strsize, "L%#x:\tfrk(); /* ARG=%#x */\n", address, bitcode->arg);
+			break;
+		case OP_HCF:
+			snprintf(str, strsize, "L%#x:\thcf(%#x);\n", address, bitcode->arg);
 			break;
 		case OP_NOP:
 			snprintf(str, strsize, "L%#x:\t/* NOP %#x */\n", address, bitcode->arg);
@@ -134,7 +173,7 @@ int main(int argc, char **argv)
 					debug=1;
 					break;
 				case 's': /* Read size from argument */
-					sscanf(optarg, "%u,%u", &codesize, &bitcodesize);
+					sscanf(optarg, "%zu,%zu", &codesize, &bitcodesize);
 					if(codesize == 0 || bitcodesize == 0)
 						panic("?SIZE=0");
 					free(memory);

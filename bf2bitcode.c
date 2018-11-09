@@ -20,11 +20,14 @@ code_t *code;
 unsigned int code_ptr=0;
 bitcode_t *bitcode;
 unsigned int bitcode_ptr=0;
+memory_t *pstack;
+unsigned int pstack_ptr=0;
 
-unsigned int memsize=DEF_MEMSIZE;
-unsigned int codesize=DEF_CODESIZE;
-unsigned int stacksize=DEF_STACKSIZE;
-unsigned int bitcodesize=DEF_BITCODESIZE;
+size_t memsize=DEF_MEMSIZE;
+size_t codesize=DEF_CODESIZE;
+size_t stacksize=DEF_STACKSIZE;
+size_t bitcodesize=DEF_BITCODESIZE;
+size_t pstacksize=DEF_PSTACKSIZE;
 
 int debug=0;
 
@@ -75,7 +78,7 @@ int main(int argc, char **argv)
 					debug=1;
 					break;
 				case 's': /* Read size from argument */
-					sscanf(optarg, "%u,%u,%u", &codesize, &stacksize, &bitcodesize);
+					sscanf(optarg, "%zu,%zu,%zu", &codesize, &stacksize, &bitcodesize);
 					if(codesize == 0 || stacksize == 0 || bitcodesize == 0)
 						panic("?SIZE=0");
 					free(memory);

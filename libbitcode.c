@@ -15,16 +15,33 @@ extern memory_t *memory;
 extern unsigned int ptr;
 extern stack_type *stack;
 extern unsigned int stack_ptr;
-extern memory_t *program_stack;
-extern unsigned int program_stack_ptr;
+extern memory_t *pstack;
+extern unsigned int pstack_ptr;
 
 extern int debug;
 
-extern unsigned int memsize;
-extern unsigned int codesize;
-extern unsigned int stacksize;
+extern size_t memsize;
+extern size_t codesize;
+extern size_t stacksize;
+extern size_t pstacksize;
 extern bitcode_t *bitcode;
 extern unsigned int bitcode_ptr;
+
+#define pstack_peek	pstack[pstack_ptr]
+
+void pstack_push(memory_t *stack, unsigned int *ptr, memory_t content)
+{
+	if(++*ptr >= pstacksize)
+		panic("?>STACK");
+	stack[(*ptr)]=content;
+}
+
+memory_t pstack_pop(memory_t *stack, unsigned int *ptr)
+{
+	if(*ptr == 0)
+		panic("?<STACK");
+	return stack[(*ptr)--];
+}
 
 void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 {
@@ -44,6 +61,7 @@ switch_start:	/* Entering stack mode jumps back to here */
 		{
 			case '$':	/* Stack Mode */
 				use_stack=TRUE;
+				text_ptr++;
 				goto switch_start;
 				break;
 			case '+':
@@ -162,7 +180,7 @@ switch_start:	/* Entering stack mode jumps back to here */
 					(bitcode + bitcode_ptr)->op=OP_PSHI;
 				else
 					(bitcode + bitcode_ptr)->op=OP_SET;
-				(bitcode + bitcode_ptr)->arg=temp_arg;
+				(bitcode + bitcode_ptr)->arg = temp_arg & 0xFF;
 				text_ptr++;
 				bitcode_ptr++;
 				break;
@@ -199,40 +217,93 @@ void bitcode_interprete(bitcode_t *bitcode)
 	{
 		case OP_ADD:
 			memory[ptr] += bitcode->arg;
+			bitcode_ptr++;
+			break;
+		case OP_ADDS:
+			pstack_peek += bitcode->arg;
+			bitcode_ptr++;
 			break;
 		case OP_SUB:
 			memory[ptr] -= bitcode->arg;
+			bitcode_ptr++;
+			break;
+		case OP_SUBS:
+			pstack_peek -= bitcode->arg;
+			bitcode_ptr++;
 			break;
 		case OP_FWD:
 			ptr += bitcode->arg;
 			if(ptr >= memsize)
 				panic("?>MEM");
+			bitcode_ptr++;
 			break;
 		case OP_REW:
 			ptr -= bitcode->arg;
 			if(ptr >= memsize)
 				panic("?<MEM");
+			bitcode_ptr++;
 			break;
 		case OP_JEZ:
 			if(memory[ptr] == 0)
+				bitcode_ptr = bitcode->arg;
+			break;
+		case OP_JSEZ:
+			if(pstack_peek == 0)
 				bitcode_ptr = bitcode->arg;
 			break;
 		case OP_JNZ:
 			if(memory[ptr] != 0)
 				bitcode_ptr = bitcode->arg;
 			break;
+		case OP_JSNZ:
+			if(pstack_peek != 0)
+				bitcode_ptr = bitcode->arg;
+			break;
+		case OP_JMP:
+			bitcode_ptr = bitcode->arg;
+			break;
+		case OP_SET:
+			memory[ptr] = (memory_t)bitcode->arg;
+			bitcode_ptr++;
+			break;
+		case OP_PUSH:
+			pstack_push(pstack, &pstack_ptr, memory[ptr]);
+			bitcode_ptr++;
+			break;
+		case OP_POP:
+			memory[ptr] = pstack_pop(pstack, &pstack_ptr);
+			bitcode_ptr++;
+			break;
+		case OP_PSHI:
+			pstack_push(pstack, &pstack_ptr, (memory_t)bitcode->arg);
+			bitcode_ptr++;
+			break;
 		case OP_IO:
 			if(bitcode->arg == ARG_OUT)
 				output(memory[ptr]);
-			else
+			else if(bitcode->arg == ARG_IN)
 				memory[ptr] = input();
+			else if(bitcode->arg == ARG_OUTS)
+				output(pstack_pop(pstack, &pstack_ptr));
+			else if(bitcode->arg == ARG_INS)
+				pstack_push(pstack, &pstack_ptr, input());
+			bitcode_ptr++;
+			break;
+		case OP_FRK:
+			memory[ptr] = (memory_t)fork();
+			bitcode_ptr++;
+			break;
+		case OP_HCF:
+			*(volatile int*)NULL=TRUE;
+			bitcode_ptr++;
 			break;
 		case OP_NOP:
 		case OP_HLT:
 		default:
 			break;
 	}
-	bitcode_ptr++;
+	if(bitcode_ptr >= codesize)
+		panic("?RUNCODE");
 	return;
 }
 
@@ -292,6 +363,9 @@ void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, si
 		case OP_JSNZ:
 			snprintf(str, strsize, "%#x: JSNZ %#x", address, bitcode->arg);
 			break;
+		case OP_JMP:
+			snprintf(str, strsize, "%#x: JMP %#x", address, bitcode->arg);
+			break;
 		case OP_FRK:
 			snprintf(str, strsize, "%#x: FRK %#x", address, bitcode->arg);
 			break;
@@ -334,18 +408,40 @@ void bitcode_assembly(char *str, bitcode_t *bitcode)
 
 	if(!strncmp(temp_op_str, "ADD", 16))
 		op=OP_ADD;
+	else if(!strncmp(temp_op_str, "ADDS", 16))
+		op=OP_ADDS;
 	else if(!strncmp(temp_op_str, "SUB", 16))
 		op=OP_SUB;
+	else if(!strncmp(temp_op_str, "SUBS", 16))
+		op=OP_SUBS;
 	else if(!strncmp(temp_op_str, "FWD", 16))
 		op=OP_FWD;
 	else if(!strncmp(temp_op_str, "REW", 16))
 		op=OP_REW;
 	else if(!strncmp(temp_op_str, "JEZ", 16))
 		op=OP_JEZ;
+	else if(!strncmp(temp_op_str, "JSEZ", 16))
+		op=OP_JSEZ;
 	else if(!strncmp(temp_op_str, "JNZ", 16))
 		op=OP_JNZ;
+	else if(!strncmp(temp_op_str, "JSNZ", 16))
+		op=OP_JSNZ;
+	else if(!strncmp(temp_op_str, "JMP", 16))
+		op=OP_JMP;
 	else if(!strncmp(temp_op_str, "IO", 16))
 		op=OP_IO;
+	else if(!strncmp(temp_op_str, "SET", 16))
+		op=OP_SET;
+	else if(!strncmp(temp_op_str, "POP", 16))
+		op=OP_POP;
+	else if(!strncmp(temp_op_str, "PUSH", 16))
+		op=OP_PUSH;
+	else if(!strncmp(temp_op_str, "PSHI", 16))
+		op=OP_PSHI;
+	else if(!strncmp(temp_op_str, "FRK", 16))
+		op=OP_FRK;
+	else if(!strncmp(temp_op_str, "HCF", 16))
+		op=OP_HCF;
 	else if(!strncmp(temp_op_str, "HLT", 16))
 		op=OP_HLT;
 	else if(!strncmp(temp_op_str, "NOP", 16))
@@ -357,6 +453,10 @@ void bitcode_assembly(char *str, bitcode_t *bitcode)
 			arg=ARG_IN;
 		else if(!strncmp(temp_arg_str, "OUT", 32))
 			arg=ARG_OUT;
+		else if(!strncmp(temp_arg_str, "INS", 32))
+			arg=ARG_INS;
+		else if(!strncmp(temp_arg_str, "OUTS", 32))
+			arg=ARG_OUTS;
 	}
 	else
 		sscanf(temp_arg_str, "%x", &arg);

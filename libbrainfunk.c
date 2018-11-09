@@ -37,9 +37,9 @@ extern unsigned int code_ptr;
 
 extern int debug;
 
-extern unsigned int memsize;
-extern unsigned int codesize;
-extern unsigned int stacksize;
+extern size_t memsize;
+extern size_t codesize;
+extern size_t stacksize;
 
 int is_code(char c)
 {
@@ -76,7 +76,7 @@ void push(stack_type *stack, unsigned int *ptr, stack_type content)
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-	if((*ptr == 0)
+	if(*ptr == 0)
 		panic("?<STACK");
 	return stack[(*ptr)--];
 }
