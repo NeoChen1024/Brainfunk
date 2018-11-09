@@ -1,0 +1,28 @@
+Brainfuck basic instructions:
+	+	Increment
+	-	Decrement
+	>	Forward
+	<	Rewind
+	[	Loop start
+	]	Loop end
+	.	Output
+	,	Input
+
+Neo_Chen's extension:
+	\	Pop stack
+	/	Push stack
+	(	If start
+	)	If end
+	'??	Set hexdecimal
+	$'??	Push hexdecimal
+	$+	Increment top of stack
+	$-	Decrement top of stack
+	$[	while(peek()) {
+	$]	}
+	$(	if(peek()) {
+	$)	}
+	$.	Output from stack
+	$,	Input to stack
+	~	Fork
+	!	Halt and catch fire!
+	_	Halt
