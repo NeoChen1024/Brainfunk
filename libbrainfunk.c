@@ -76,9 +76,9 @@ void push(stack_type *stack, unsigned int *ptr, stack_type content)
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-	if((*ptr)-- >= stacksize)
+	if((*ptr == 0)
 		panic("?<STACK");
-	return stack[(*ptr)];
+	return stack[(*ptr)--];
 }
 
 void jump_to_next_matching(void)
