@@ -163,7 +163,8 @@ switch_start:	/* Entering stack mode jumps back to here */
 				else
 					(bitcode + bitcode_ptr)->op=OP_SET;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
-				text_ptr+=3;
+				text_ptr++;
+				bitcode_ptr++;
 				break;
 			case '~':
 				(bitcode + bitcode_ptr)->op=OP_FRK;
@@ -262,6 +263,40 @@ void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, si
 				snprintf(str, strsize, "%#x: IO OUT", address);
 			else if(bitcode->arg == ARG_IN)
 				snprintf(str, strsize, "%#x: IO IN", address);
+			else if(bitcode->arg == ARG_OUTS)
+				snprintf(str, strsize, "%#x: IO OUTS", address);
+			else if(bitcode->arg == ARG_INS)
+				snprintf(str, strsize, "%#x: IO INS", address);
+			break;
+		case OP_SET:
+			snprintf(str, strsize, "%#x: SET %#x", address, bitcode->arg);
+			break;
+		case OP_POP:
+			snprintf(str, strsize, "%#x: POP %#x", address, bitcode->arg);
+			break;
+		case OP_PUSH:
+			snprintf(str, strsize, "%#x: PUSH %#x", address, bitcode->arg);
+			break;
+		case OP_PSHI:
+			snprintf(str, strsize, "%#x: PSHI %#x", address, bitcode->arg);
+			break;
+		case OP_ADDS:
+			snprintf(str, strsize, "%#x: ADDS %#x", address, bitcode->arg);
+			break;
+		case OP_SUBS:
+			snprintf(str, strsize, "%#x: SYBS %#x", address, bitcode->arg);
+			break;
+		case OP_JSEZ:
+			snprintf(str, strsize, "%#x: JSEZ %#x", address, bitcode->arg);
+			break;
+		case OP_JSNZ:
+			snprintf(str, strsize, "%#x: JSNZ %#x", address, bitcode->arg);
+			break;
+		case OP_FRK:
+			snprintf(str, strsize, "%#x: FRK %#x", address, bitcode->arg);
+			break;
+		case OP_HCF:
+			snprintf(str, strsize, "%#x: HCF %#x", address, bitcode->arg);
 			break;
 		case OP_NOP:
 			snprintf(str, strsize, "%#x: NOP %#x", address, bitcode->arg);
