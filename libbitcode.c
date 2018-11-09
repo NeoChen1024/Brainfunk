@@ -211,30 +211,30 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 void bitcode_assembly(char *str, bitcode_t *bitcode)
 {
 	unsigned int address=0;
-	char temp_op_str[64];
+	char temp_op_str[16];
 	char temp_arg_str[32];
 	char op=0;
 	unsigned int arg=0;
 
 	sscanf(str, "%x: %s %s\n", &address, temp_op_str, temp_arg_str);
 
-	if(!strncmp(temp_op_str, "ADD", 64))
+	if(!strncmp(temp_op_str, "ADD", 16))
 		op=OP_ADD;
-	else if(!strncmp(temp_op_str, "SUB", 64))
+	else if(!strncmp(temp_op_str, "SUB", 16))
 		op=OP_SUB;
-	else if(!strncmp(temp_op_str, "FWD", 64))
+	else if(!strncmp(temp_op_str, "FWD", 16))
 		op=OP_FWD;
-	else if(!strncmp(temp_op_str, "REW", 64))
+	else if(!strncmp(temp_op_str, "REW", 16))
 		op=OP_REW;
-	else if(!strncmp(temp_op_str, "JEZ", 64))
+	else if(!strncmp(temp_op_str, "JEZ", 16))
 		op=OP_JEZ;
-	else if(!strncmp(temp_op_str, "JNZ", 64))
+	else if(!strncmp(temp_op_str, "JNZ", 16))
 		op=OP_JNZ;
-	else if(!strncmp(temp_op_str, "IO", 64))
+	else if(!strncmp(temp_op_str, "IO", 16))
 		op=OP_IO;
-	else if(!strncmp(temp_op_str, "HLT", 64))
+	else if(!strncmp(temp_op_str, "HLT", 16))
 		op=OP_HLT;
-	else if(!strncmp(temp_op_str, "NOP", 64))
+	else if(!strncmp(temp_op_str, "NOP", 16))
 		op=OP_NOP;
 
 	if(op == OP_IO)
