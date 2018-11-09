@@ -15,6 +15,8 @@ extern memory_t *memory;
 extern unsigned int ptr;
 extern stack_type *stack;
 extern unsigned int stack_ptr;
+extern memory_t *program_stack;
+extern unsigned int program_stack_ptr;
 
 extern int debug;
 
@@ -29,20 +31,31 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 	unsigned int temp_arg=0;
 	unsigned int text_ptr=0;
 	unsigned int bitcode_ptr=0;
+	int use_stack=FALSE;
+
 	while(text[text_ptr] != '\0')
 	{
 		if(debug)
 			printf("text[%u] == '%c'\n", text_ptr, text[text_ptr]);
 		temp_arg=0;
+
+switch_start:	/* Entering stack mode jumps back to here */
 		switch(text[text_ptr])
 		{
+			case '$':	/* Stack Mode */
+				use_stack=TRUE;
+				goto switch_start;
+				break;
 			case '+':
 				while(text[text_ptr] == '+')
 				{
 					text_ptr++;
 					temp_arg++;
 				}
-				(bitcode + bitcode_ptr)->op=OP_ADD;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_ADDS;
+				else
+					(bitcode + bitcode_ptr)->op=OP_ADD;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
 				bitcode_ptr++;
 				break;
@@ -52,7 +65,10 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 					text_ptr++;
 					temp_arg++;
 				}
-				(bitcode + bitcode_ptr)->op=OP_SUB;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_SUBS;
+				else
+					(bitcode + bitcode_ptr)->op=OP_SUB;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
 				bitcode_ptr++;
 				break;
@@ -78,13 +94,19 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 				break;
 			case '[':
 				push(stack, &stack_ptr, bitcode_ptr);
-				(bitcode + bitcode_ptr)->op=OP_JEZ;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_JSEZ;
+				else
+					(bitcode + bitcode_ptr)->op=OP_JEZ;
 				text_ptr++;
 				bitcode_ptr++;
 				break;
 			case ']':
 				temp_arg=pop(stack, &stack_ptr);
-				(bitcode + bitcode_ptr)->op=OP_JNZ;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_JSNZ;
+				else
+					(bitcode + bitcode_ptr)->op=OP_JNZ;
 				(bitcode + bitcode_ptr)->arg=temp_arg;
 				(bitcode + temp_arg)->arg=bitcode_ptr;
 				text_ptr++;
@@ -92,13 +114,69 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 				break;
 			case '.':
 				(bitcode + bitcode_ptr)->op=OP_IO;
-				(bitcode + bitcode_ptr)->arg=ARG_OUT;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->arg=ARG_OUTS;
+				else
+					(bitcode + bitcode_ptr)->arg=ARG_OUT;
 				text_ptr++;
 				bitcode_ptr++;
 				break;
 			case ',':
 				(bitcode + bitcode_ptr)->op=OP_IO;
-				(bitcode + bitcode_ptr)->arg=ARG_IN;
+				if(use_stack)
+					(bitcode + bitcode_ptr)->arg=ARG_INS;
+				else
+					(bitcode + bitcode_ptr)->arg=ARG_IN;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '\\':
+				(bitcode + bitcode_ptr)->op=OP_POP;
+				(bitcode + bitcode_ptr)->arg=0;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '/':
+				(bitcode + bitcode_ptr)->op=OP_PUSH;
+				(bitcode + bitcode_ptr)->arg=0;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '(':
+				push(stack, &stack_ptr, bitcode_ptr);
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_JSEZ;
+				else
+					(bitcode + bitcode_ptr)->op=OP_JEZ;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case ')':
+				(bitcode + pop(stack, &stack_ptr))->arg=bitcode_ptr;
+				text_ptr++;
+				/* No jump back or special effect, so we don't increment bitcode_ptr */
+				break;
+			case '\'':
+				sscanf(text + text_ptr + 1, "%x", &temp_arg);
+				if(use_stack)
+					(bitcode + bitcode_ptr)->op=OP_PSHI;
+				else
+					(bitcode + bitcode_ptr)->op=OP_SET;
+				(bitcode + bitcode_ptr)->arg=temp_arg;
+				text_ptr+=3;
+				break;
+			case '~':
+				(bitcode + bitcode_ptr)->op=OP_FRK;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '!':
+				(bitcode + bitcode_ptr)->op=OP_HCF;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '_':
+				(bitcode + bitcode_ptr)->op=OP_HLT;
 				text_ptr++;
 				bitcode_ptr++;
 				break;
@@ -106,6 +184,7 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 				text_ptr++;
 				break;
 		}
+		use_stack=FALSE; /* Exit stack mode */
 
 		if(bitcode_ptr >= bitcodesize)
 			panic("?BITCODE");
