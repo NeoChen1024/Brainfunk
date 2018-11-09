@@ -15,8 +15,6 @@
 	,	*ptr = getchar()
 */
 
-/* If "FAST" is defined, will bypass all runtime checking */
-
 /* You need to define
  * 	void output(memory_t c)
  * and
@@ -71,16 +69,16 @@ void read_code(FILE* fp)
 
 void push(stack_type *stack, unsigned int *ptr, stack_type content)
 {
-	if(*ptr >= stacksize)
+	if(++(*ptr) >= stacksize)
 		panic("?>STACK");
-	stack[++(*ptr)]=content;
+	stack[(*ptr)]=content;
 }
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-	if(*ptr >= stacksize)
+	if((*ptr)-- >= stacksize)
 		panic("?<STACK");
-	return stack[(*ptr)--];
+	return stack[(*ptr)];
 }
 
 void jump_to_next_matching(void)
