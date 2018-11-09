@@ -370,6 +370,7 @@ int main(int argc, char **argv)
 	stack	= calloc(stacksize, sizeof(stack_type));
 #ifdef BITCODE
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
+	pstack	= calloc(pstacksize, sizeof(memory_t));
 #endif
 
 	initscr();
