@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <libbrainfunk.h>
-#include <libbitcode.h>
 
 memory_t *memory;
 unsigned int ptr=0;

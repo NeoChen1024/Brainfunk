@@ -10,9 +10,6 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <libbrainfunk.h>
-#ifdef BITCODE
-#	include <libbitcode.h>
-#endif
 
 /* init */
 
@@ -28,25 +25,19 @@ size_t memsize=DEF_MEMSIZE;
 size_t codesize=DEF_CODESIZE;
 size_t stacksize=DEF_STACKSIZE;
 
-#ifdef BITCODE
 size_t bitcodesize=DEF_BITCODESIZE;
 bitcode_t *bitcode;
 unsigned int bitcode_ptr=0;
 memory_t *pstack;
 unsigned int pstack_ptr=0;
 size_t pstacksize=DEF_PSTACKSIZE;
-#endif
 
 void debug_function(void)
 {
-#ifdef BITCODE
 	char disassembly_code[64];
 
 	bitcode_disassembly(bitcode + bitcode_ptr, bitcode_ptr, disassembly_code, 64);
 	fprintf(stderr, "code=%s\n", disassembly_code);
-#else
-	fprintf(stderr, "code=%u:%c\n", code_ptr, code[code_ptr]);
-#endif
 	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
 	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
 	fprintf(stderr, "--------\n");
@@ -80,11 +71,9 @@ int main(int argc, char **argv)
 	memory	= calloc(memsize, sizeof(memory_t));
 	code	= calloc(codesize, sizeof(code_t));
 	stack	= calloc(stacksize, sizeof(stack_type));
-#ifdef BITCODE
 	bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 	pstack	= calloc(pstacksize, sizeof(memory_t));
 	int load_bitcode=0;
-#endif
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -98,22 +87,13 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-#ifdef BITCODE
 		while((opt = getopt(argc, argv, "hdf:c:s:b:")) != -1)
-#else
-		while((opt = getopt(argc, argv, "hdf:c:s:")) != -1)
-#endif
 		{
 			switch(opt)
 			{
 				case 's': /* Read size from argument */
-#ifdef BITCODE
 					sscanf(optarg, "%zu,%zu,%zu,%zu", &memsize, &codesize, &pstacksize, &bitcodesize);
 					if(memsize == 0 || codesize == 0 || stacksize == 0 || bitcodesize == 0)
-#else
-					sscanf(optarg, "%zu,%zu,%zu", &memsize, &codesize, &stacksize);
-					if(memsize == 0 || codesize == 0 || stacksize == 0)
-#endif
 						panic("?SIZE=0");
 					free(memory);
 					free(code);
@@ -121,9 +101,7 @@ int main(int argc, char **argv)
 					memory	= calloc(memsize, sizeof(memory_t));
 					code	= calloc(codesize, sizeof(code_t));
 					stack	= calloc(stacksize, sizeof(stack_type));
-#ifdef BITCODE
 					bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
-#endif
 					break;
 				case 'f': /* File */
 					if(strcmp(optarg, "-"))
@@ -139,7 +117,6 @@ int main(int argc, char **argv)
 					else
 						read_code(stdin);
 					break;
-#ifdef BITCODE
 				case 'b':
 					if(strcmp(optarg, "-"))
 					{
@@ -155,16 +132,11 @@ int main(int argc, char **argv)
 						bitcode_load_fp(bitcode, stdin);
 					load_bitcode=1;
 					break;
-#endif
 				case 'c': /* Code */
 					strncpy(code, optarg, codesize);
 					break;
 				case 'h': /* Help */
-#ifdef BITCODE
 					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d]\n", argv[0]);
-#else
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,stacksize] [-d]\n", argv[0]);
-#endif
 					break;
 				case 'd': /* Debug */
 					puts("DEBUG=TRUE");
@@ -181,15 +153,10 @@ int main(int argc, char **argv)
 	{
 		fprintf(stderr, "memory	= %p[%zu]\n", memory, memsize);
 		fprintf(stderr, "code	= %p[%zu]\n", code, codesize);
-#ifdef BITCODE
 		fprintf(stderr, "pstack = %p[%zu]\n", pstack, pstacksize);
-#else
-		fprintf(stderr, "stack	= %p[%zu]\n\n", stack, stacksize);
-#endif
 		fflush(NULL);
 	}
 
-#ifdef BITCODE
 	if(!load_bitcode)
 		bitcodelize(bitcode, bitcodesize, code);
 
@@ -203,20 +170,10 @@ int main(int argc, char **argv)
 		bitcode_interprete(bitcode + bitcode_ptr);
 	}
 
-#else
-	while(code[code_ptr] != '\0')
-	{
-		if(debug)
-			debug_function();
-		interprete(code[code_ptr]);
-	}
-#endif
 	free(memory);
 	free(code);
 	free(stack);
-#ifdef BITCODE
 	free(bitcode);
 	free(pstack);
-#endif
 	return 0;
 }

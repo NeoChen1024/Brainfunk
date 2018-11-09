@@ -10,7 +10,7 @@ SH?=	/bin/sh
 # CFLAGS	+= -pg
 # LDFLAGS	+= -pg
 
-all: brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode bf2c
+all: brainfunk visualbrainfunk bf2bitcode bf2c
 
 brainfunk: brainfunk.o libbrainfunk.o
 	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
@@ -18,47 +18,32 @@ brainfunk: brainfunk.o libbrainfunk.o
 visualbrainfunk: visualbrainfunk.o libvbrainfunk.o
 	$(CC) $(LDFLAGS) visualbrainfunk.o libvbrainfunk.o -o visualbrainfunk $(VLIBS)
 
-bitfunk: bitfunk.o libbrainfunk.o libbitcode.o
-	$(CC) $(LDFLAGS) bitfunk.o libbrainfunk.o libbitcode.o -o bitfunk
+bf2bitcode: libbrainfunk.o bf2bitcode.o
+	$(CC) $(LDFLAGS) bf2bitcode.o libbrainfunk.o -o bf2bitcode
 
-visualbitfunk: libbitcode.o libvbrainfunk.o visualbitfunk.o
-	$(CC) $(LDFLAGS) visualbitfunk.o libvbrainfunk.o libbitcode.o -o visualbitfunk $(VLIBS)
-
-bf2bitcode: libbitcode.o libbrainfunk.o bf2bitcode.o
-	$(CC) $(LDFLAGS) bf2bitcode.o libbrainfunk.o libbitcode.o -o bf2bitcode
-
-bf2c: libbitcode.o libbrainfunk.o bf2c.o
-	$(CC) $(LDFLAGS) libbitcode.o libbrainfunk.o bf2c.o -o bf2c
+bf2c: libbrainfunk.o bf2c.o
+	$(CC) $(LDFLAGS) libbrainfunk.o bf2c.o -o bf2c
 
 brainfunk.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -c brainfunk.c
-
-bitfunk.o:
-	$(CC) $(CFLAGS) -DBITCODE -c brainfunk.c -o bitfunk.o
-
-visualbitfunk.o:
-	$(CC) $(CFLAGS) -DBITCODE -c visualbrainfunk.c -o visualbitfunk.o
+	$(CC) $(CFLAGS) -c brainfunk.c
 
 visualbrainfunk.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -c visualbrainfunk.c
+	$(CC) $(CFLAGS) -c visualbrainfunk.c
 
 bf2bitcode.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wno-unused-parameter -c bf2bitcode.c
+	$(CC) $(CFLAGS) -Wno-unused-parameter -c bf2bitcode.c
 
 bf2c.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wno-unused-parameter -c bf2c.c
+	$(CC) $(CFLAGS) -Wno-unused-parameter -c bf2c.c
 
 libbrainfunk.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -c libbrainfunk.c
+	$(CC) $(CFLAGS) -c libbrainfunk.c
 
 libvbrainfunk.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
-
-libbitcode.o:
-	$(CC) $(CFLAGS) $(LDFLAGS) -c libbitcode.c
+	$(CC) $(CFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
 
 clean:
-	rm -fv brainfunk visualbrainfunk bitfunk visualbitfunk bf2bitcode bf2c *.o
+	rm -fv brainfunk visualbrainfunk bf2bitcode bf2c *.o
 
 clean-all: clean
 	rm -rfv test
