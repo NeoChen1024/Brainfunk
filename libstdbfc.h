@@ -108,10 +108,10 @@ void io(arg_t arg)
 	switch(arg)
 	{
 		case 0: /* IN */
-			out(memory[ptr]);
+			memory[ptr] = in();
 			break;
 		case 1: /* OUT */
-			memory[ptr] = in();
+			out(memory[ptr]);
 			break;
 		case 2: /* INS */
 			push(stack, &stack_ptr, in());
