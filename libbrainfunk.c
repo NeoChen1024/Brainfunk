@@ -38,6 +38,7 @@ extern memory_t *pstack;
 extern arg_t pstack_ptr;
 
 extern int debug;
+extern int compat;
 
 extern size_t memsize;
 extern size_t codesize;
@@ -190,7 +191,7 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	}
 };
 
-char valid_code[256] =
+char valid_code[] =
 {
 	['+']=1,
 	['-']=1,
@@ -211,14 +212,24 @@ char valid_code[256] =
 	['_']=1
 };
 
+char compat_valid_code[] =
+{
+	['+']=1,
+	['-']=1,
+	['>']=1,
+	['<']=1,
+	['[']=1,
+	[']']=1,
+	['.']=1,
+	[',']=1
+};
+
 int is_code(int c)
 {
-	if(valid_code[c & 0xFF])
-	{
-		return TRUE;
-	}
+	if(compat)
+		return compat_valid_code[c & 0xFF];
 	else
-		return FALSE;
+		return valid_code[c & 0xFF];
 }
 
 /* Read Code */
@@ -628,8 +639,7 @@ void exec_frk(arg_t arg)
 
 void exec_hcf(arg_t arg)
 {
-	*(volatile int*)NULL=arg;
-	bitcode_ptr++;
+	exit(arg);
 }
 
 void exec_hlt(arg_t arg)

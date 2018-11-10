@@ -29,6 +29,7 @@ size_t bitcodesize=DEF_BITCODESIZE;
 size_t pstacksize=DEF_PSTACKSIZE;
 
 int debug=0;
+int compat=0;
 
 void panic(char *msg)
 {
@@ -89,7 +90,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:s:c:o:b:")) != -1)
+		while((opt = getopt(argc, argv, "hmdf:s:c:o:b:")) != -1)
 		{
 			switch(opt)
 			{
@@ -149,9 +150,12 @@ int main(int argc, char **argv)
 					else
 						outfile=stdout;
 					break;
+				case 'm': /* Compat */
+					compat=1;
+					break;
 				case 'h':
 				default:
-					printf("Usage: %s [-h] -f infile [-b bitcode] [-o outfile] [-s codesize,bitcodesize] [-d]\n", argv[0]);
+					printf("Usage: %s [-h] [-m] -f infile [-b bitcode] [-o outfile] [-s codesize,bitcodesize] [-d]\n", argv[0]);
 					exit(1);
 			}
 		}

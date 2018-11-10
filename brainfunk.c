@@ -20,6 +20,7 @@ arg_t stack_ptr=0;
 code_t *code;
 arg_t code_ptr=0;
 int debug=0;
+int compat=0;
 
 size_t memsize=DEF_MEMSIZE;
 size_t codesize=DEF_CODESIZE;
@@ -87,7 +88,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:s:b:")) != -1)
+		while((opt = getopt(argc, argv, "hdmf:c:s:b:")) != -1)
 		{
 			switch(opt)
 			{
@@ -136,11 +137,14 @@ int main(int argc, char **argv)
 					strncpy(code, optarg, codesize);
 					break;
 				case 'h': /* Help */
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d]\n", argv[0]);
+					printf("Usage: %s [-h] [-m] [-f file] [-b bitcode] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d]\n", argv[0]);
 					break;
 				case 'd': /* Debug */
 					puts("DEBUG=TRUE");
 					debug = TRUE;
+					break;
+				case 'm': /* Compat */
+					compat=1;
 					break;
 				default:
 					exit(1);

@@ -23,6 +23,7 @@ code_t *code;
 arg_t code_ptr=0;
 
 int debug=0;
+int compat=0;
 int delay=1000*100; /* Delay 100ms */
 int load_bitcode=0;
 
@@ -164,8 +165,11 @@ void parse_argument(int argc, char **argv)
 					sscanf(optarg, "%d", &delay);
 					delay *= 1000;
 					break;
+				case 'm':
+					compat=1;
+					break;
 				case 'h': /* Help */
-					printf("Usage: %s [-h] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d] [-t msec]\n", argv[0]);
+					printf("Usage: %s [-h] [-m] [-f file] [-c code] [-s memsize,codesize,pstacksize,bitcodesize] [-d] [-t msec]\n", argv[0]);
 					break;
 				case 'd': /* Debug */
 					wprintw(IO_WINDOW, "DEBUG=1");
