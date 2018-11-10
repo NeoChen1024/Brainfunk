@@ -21,3 +21,30 @@ They all have some simple array bounds checking, so normally it won't coredumps.
 
 ## bf2c Usage:
 Use bf2c to convert Brainfuck code to C, to compile it, add libstdbfc.h to compiler's search path (-I\<path\>)
+
+## Brainfunk Instructions:
+	+	Increment
+	-	Decrement
+	>	Forward
+	<	Rewind
+	[	Loop start
+	]	Loop end
+	.	Output
+	,	Input
+	\	Pop stack
+	/	Push stack
+	(	If start
+	)	If end
+	'??	Set hexdecimal
+	$'??	Push hexdecimal
+	$+	Increment top of stack
+	$-	Decrement top of stack
+	$[	while(peek()) {
+	$]	}
+	$(	if(peek()) {
+	$)	}
+	$.	Output from stack
+	$,	Input to stack
+	~	Fork
+	!	Halt and catch fire!
+	_	Halt
