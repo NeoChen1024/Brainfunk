@@ -193,6 +193,7 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 
 char valid_code[] =
 {
+	[0]=1,
 	['+']=1,
 	['-']=1,
 	['>']=1,
@@ -214,6 +215,7 @@ char valid_code[] =
 
 char compat_valid_code[] =
 {
+	[0]=1,
 	['+']=1,
 	['-']=1,
 	['>']=1,
@@ -288,6 +290,9 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 		if(debug)
 			printf("text[%u] == '%c'\n", text_ptr, text[text_ptr]);
 		temp_arg=0;
+
+		while(is_code(text[text_ptr]) == FALSE)
+			text_ptr++;
 
 switch_start:	/* Entering stack mode jumps back to here */
 		switch(text[text_ptr])
@@ -481,6 +486,8 @@ void bitcode_assembly(char *str, bitcode_t *bitcode)
 
 	while(ret != 2)
 	{
+		if(op >= OP_INSTS)
+			panic("?INVALID");
 		ret = sscanf(str, bitcode_ref[op].format, &address, &arg);
 		if(ret != 2)
 			op++;
