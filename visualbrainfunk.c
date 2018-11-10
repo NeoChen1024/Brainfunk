@@ -16,11 +16,11 @@
 /* init */
 
 memory_t *memory;
-unsigned int ptr=0;
+arg_t ptr=0;
 stack_type *stack;
-unsigned int stack_ptr=0;
+arg_t stack_ptr=0;
 code_t *code;
-unsigned int code_ptr=0;
+arg_t code_ptr=0;
 
 int debug=0;
 int delay=1000*100; /* Delay 100ms */
@@ -31,10 +31,10 @@ size_t codesize=DEF_CODESIZE;
 size_t stacksize=DEF_STACKSIZE;
 
 bitcode_t *bitcode;
-unsigned int bitcode_ptr=0;
+arg_t bitcode_ptr=0;
 size_t bitcodesize=DEF_BITCODESIZE;
 memory_t *pstack;
-unsigned int pstack_ptr=0;
+arg_t pstack_ptr=0;
 size_t pstacksize=DEF_PSTACKSIZE;
 
 #define IO_WINDOW io_win
@@ -75,7 +75,7 @@ void panic(char *msg)
 	exit(2);
 }
 
-void debug_loop(char *fmt, unsigned int location)
+void debug_loop(char *fmt, arg_t location)
 {
 	wprintw(IO_WINDOW, fmt, location);
 	wrefresh(IO_WINDOW);
@@ -181,9 +181,9 @@ void parse_argument(int argc, char **argv)
 
 }
 
-void print_stack(stack_type *target, unsigned int pointer)
+void print_stack(stack_type *target, arg_t pointer)
 {
-	unsigned int count=0;
+	arg_t count=0;
 	wclear(STACK_WINDOW);
 	for(count=0; count <= pointer; count++)
 	{
@@ -223,10 +223,10 @@ void print_mem(void)
 	wrefresh(MEM_WINDOW);
 }
 
-void print_bitcode(unsigned int ptr, unsigned int *cursor)
+void print_bitcode(arg_t ptr, arg_t *cursor)
 {
 	char temp_str[64];
-	unsigned int counter=0;
+	arg_t counter=0;
 
 	if(ptr <= 5)
 	{
@@ -253,7 +253,7 @@ void print_bitcode(unsigned int ptr, unsigned int *cursor)
 
 void print_code(void)
 {
-	unsigned int line;
+	arg_t line;
 	wclear(CODE_WINDOW);
 	print_bitcode(bitcode_ptr, &line);
 	mvwchgat(CODE_WINDOW, line, 0, -1, A_REVERSE, 0, NULL);

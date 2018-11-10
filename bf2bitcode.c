@@ -12,15 +12,15 @@
 #include <libbrainfunk.h>
 
 memory_t *memory;
-unsigned int ptr=0;
+arg_t ptr=0;
 stack_type *stack;
-unsigned int stack_ptr=0;
+arg_t stack_ptr=0;
 code_t *code;
-unsigned int code_ptr=0;
+arg_t code_ptr=0;
 bitcode_t *bitcode;
-unsigned int bitcode_ptr=0;
+arg_t bitcode_ptr=0;
 memory_t *pstack;
-unsigned int pstack_ptr=0;
+arg_t pstack_ptr=0;
 
 size_t memsize=DEF_MEMSIZE;
 size_t codesize=DEF_CODESIZE;
@@ -48,7 +48,7 @@ memory_t input(void)
 	return 0;
 }
 
-void debug_loop(char *fmt, unsigned int location)
+void debug_loop(char *fmt, arg_t location)
 {
 	return;
 }

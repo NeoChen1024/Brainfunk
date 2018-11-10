@@ -58,6 +58,8 @@ struct bitcode_ref_s
 {
 	char name[16];
 	char format[128];
+	char cformat[128];
+	void(*handler)(unsigned int);
 };
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS];
@@ -66,6 +68,7 @@ char vaild_code[256];
 typedef struct bitcode_struct bitcode_t;
 typedef uint8_t memory_t;
 typedef unsigned int stack_type;
+typedef unsigned int arg_t;
 typedef char code_t;
 
 void panic(char *msg);
@@ -90,3 +93,24 @@ void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, si
 void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp);
 void bitcode_assembly(char *str, bitcode_t *bitcode);
 void bitcode_load_fp(bitcode_t *bitcode, FILE *fp);
+
+void exec_add(arg_t arg);
+void exec_adds(arg_t arg);
+void exec_sub(arg_t arg);
+void exec_subs(arg_t arg);
+void exec_fwd(arg_t arg);
+void exec_rew(arg_t arg);
+void exec_jez(arg_t arg);
+void exec_jsez(arg_t arg);
+void exec_jnz(arg_t arg);
+void exec_jsnz(arg_t arg);
+void exec_jmp(arg_t arg);
+void exec_set(arg_t arg);
+void exec_push(arg_t arg);
+void exec_pop(arg_t arg);
+void exec_pshi(arg_t arg);
+void exec_io(arg_t arg);
+void exec_frk(arg_t arg);
+void exec_hcf(arg_t arg);
+void exec_hlt(arg_t arg);
+void exec_nop(arg_t arg);

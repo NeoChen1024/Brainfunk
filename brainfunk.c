@@ -14,11 +14,11 @@
 /* init */
 
 memory_t *memory;
-unsigned int ptr=0;
+arg_t ptr=0;
 stack_type *stack;
-unsigned int stack_ptr=0;
+arg_t stack_ptr=0;
 code_t *code;
-unsigned int code_ptr=0;
+arg_t code_ptr=0;
 int debug=0;
 
 size_t memsize=DEF_MEMSIZE;
@@ -27,9 +27,9 @@ size_t stacksize=DEF_STACKSIZE;
 
 size_t bitcodesize=DEF_BITCODESIZE;
 bitcode_t *bitcode;
-unsigned int bitcode_ptr=0;
+arg_t bitcode_ptr=0;
 memory_t *pstack;
-unsigned int pstack_ptr=0;
+arg_t pstack_ptr=0;
 size_t pstacksize=DEF_PSTACKSIZE;
 
 void debug_function(void)
@@ -50,7 +50,7 @@ void panic(char *msg)
 	exit(2);
 }
 
-void debug_loop(char *fmt, unsigned int location)
+void debug_loop(char *fmt, arg_t location)
 {
 	fprintf(stderr, fmt, location);
 }

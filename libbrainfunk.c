@@ -29,13 +29,13 @@
 #include <libbrainfunk.h>
 
 extern memory_t *memory;
-extern unsigned int ptr;
+extern arg_t ptr;
 extern stack_type *stack;
-extern unsigned int stack_ptr;
+extern arg_t stack_ptr;
 extern code_t *code;
-extern unsigned int code_ptr;
+extern arg_t code_ptr;
 extern memory_t *pstack;
-extern unsigned int pstack_ptr;
+extern arg_t pstack_ptr;
 
 extern int debug;
 
@@ -44,109 +44,149 @@ extern size_t codesize;
 extern size_t stacksize;
 extern size_t pstacksize;
 extern bitcode_t *bitcode;
-extern unsigned int bitcode_ptr;
+extern arg_t bitcode_ptr;
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 {
 	[OP_NOP] =
 	{
 		.name	= "NOP",
-		.format	= "%x: NOP %x"
+		.format	= "%x: NOP %x",
+		.cformat= "L%#x:	/* NOP %x */;\n",
+		.handler= exec_nop
 	},
 	[OP_ADD] =
 	{
 		.name	= "ADD",
-		.format = "%x: ADD %x"
+		.format = "%x: ADD %x",
+		.cformat= "L%#x:	add(%#x);\n",
+		.handler= exec_add
 	},
 	[OP_SUB] =
 	{
 		.name	= "SUB",
-		.format = "%x: SUB %x"
+		.format = "%x: SUB %x",
+		.cformat= "L%#x:	sub(%#x);\n",
+		.handler= exec_sub
 	},
 	[OP_FWD] =
 	{
 		.name	= "FWD",
-		.format = "%x: FWD %x"
+		.format = "%x: FWD %x",
+		.cformat= "L%#x:	fwd(%#x);\n",
+		.handler= exec_fwd
 	},
 	[OP_REW] =
 	{
 		.name	= "REW",
-		.format = "%x: REW %x"
+		.format = "%x: REW %x",
+		.cformat= "L%#x:	rew(%#x);\n",
+		.handler= exec_rew
 	},
 	[OP_JEZ] =
 	{
 		.name	= "JEZ",
-		.format = "%x: JEZ %x"
+		.format = "%x: JEZ %x",
+		.cformat= "L%#x:	if(!memory[ptr]) goto L%#x;\n",
+		.handler= exec_jez
 	},
 	[OP_JNZ] =
 	{
 		.name	= "JNZ",
-		.format = "%x: JNZ %x"
+		.format = "%x: JNZ %x",
+		.cformat= "L%#x:	if(memory[ptr]) goto L%#x;\n",
+		.handler= exec_jnz
 	},
 	[OP_IO] =
 	{
 		.name	= "IO",
-		.format = "%x: IO %x"
+		.format = "%x: IO %x",
+		.cformat= "L%#x:	io(%#x);\n",
+		.handler= exec_io
 	},
 	[OP_SET] =
 	{
 		.name	= "SET",
-		.format = "%x: SET %x"
+		.format = "%x: SET %x",
+		.cformat= "L%#x:	set(%#x);\n",
+		.handler= exec_set
 	},
 	[OP_POP] =
 	{
 		.name	= "POP",
-		.format = "%x: POP %x"
+		.format = "%x: POP %x",
+		.cformat= "L%#x:	memory[ptr] = pop(pstack, &pstack_ptr); /* ARG=%#x */\n",
+		.handler= exec_pop
 	},
 	[OP_PUSH] =
 	{
 		.name	= "PUSH",
-		.format = "%x: PUSH %x"
+		.format = "%x: PUSH %x",
+		.cformat= "L%#x:	push(pstack, &pstack_ptr, memory[ptr]); /* ARG=%#x */\n",
+		.handler= exec_push
 	},
 	[OP_PSHI] =
 	{
 		.name	= "PSHI",
-		.format = "%x: PSHI %x"
+		.format = "%x: PSHI %x",
+		.cformat= "L%#x:	push(pstack, &pstack_ptr, %#x);\n",
+		.handler= exec_pshi
 	},
 	[OP_ADDS] =
 	{
 		.name	= "ADDS",
-		.format = "%x: ADDS %x"
+		.format = "%x: ADDS %x",
+		.cformat= "L%#x:	adds(%#x);\n",
+		.handler= exec_adds
 	},
 	[OP_SUBS] =
 	{
 		.name	= "SUBS",
-		.format = "%x: SUBS %x"
+		.format = "%x: SUBS %x",
+		.cformat= "L%#x:	subs(%#x);\n",
+		.handler= exec_subs
 	},
 	[OP_JMP] =
 	{
 		.name	= "JMP",
-		.format = "%x: JMP %x"
+		.format = "%x: JMP %x",
+		.cformat= "L%#x:	goto L%#x;\n",
+		.handler= exec_jmp
 	},
 	[OP_JSEZ] =
 	{
 		.name	= "JSEZ",
-		.format = "%x: JSEZ %x"
+		.format = "%x: JSEZ %x",
+		.cformat= "L%#x:	if(!pstack_peek) goto L%#x;\n",
+		.handler= exec_jsez
 	},
 	[OP_JSNZ] =
 	{
 		.name	= "JSNZ",
-		.format = "%x: JSNZ %x"
+		.format = "%x: JSNZ %x",
+		.cformat= "L%#x:	if(pstack_peek) goto L%#x;\n",
+		.handler= exec_jsnz
 	},
 	[OP_FRK] =
 	{
 		.name	= "FRK",
-		.format = "%x: FRK %x"
+		.format = "%x: FRK %x",
+		.cformat= "L%#x:	frk(%#x);\n",
+		.handler= exec_frk
 	},
 	[OP_HCF] =
 	{
 		.name	= "HCF",
-		.format = "%x: HCF %x"
+		.format = "%x: HCF %x",
+		.cformat= "L%#x:	hcf(%#x);\n",
+		.handler= exec_hcf
 	},
 	[OP_HLT] =
 	{
 		.name	= "HLT",
-		.format = "%x: HLT %x"
+		.format = "%x: HLT %x",
+		.cformat= "L%#x:	hlt(%#x);\n",
+		.handler= exec_hlt
 	}
 };
 
@@ -182,25 +222,25 @@ int is_code(int c)
 /* Read Code */
 void read_code(char *code, FILE* fp)
 {
-	unsigned int i=0;
+	arg_t i=0;
 	int c=0;
 	while((c=getc(fp)) != EOF)
 	{
 		if(i >= codesize)
 			panic("?CODE");
-		if((is_code((char)c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
+		if((is_code(c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
 		code[i++]=(char)c;
 	}
 }
 
-void push(stack_type *stack, unsigned int *ptr, stack_type content)
+void push(stack_type *stack, arg_t *ptr, stack_type content)
 {
 	if(++(*ptr) >= stacksize)
 		panic("?>STACK");
 	stack[(*ptr)]=content;
 }
 
-stack_type pop(stack_type *stack, unsigned int *ptr)
+stack_type pop(stack_type *stack, arg_t *ptr)
 {
 	if(*ptr == 0)
 		panic("?<STACK");
@@ -209,14 +249,14 @@ stack_type pop(stack_type *stack, unsigned int *ptr)
 
 #define pstack_peek	pstack[pstack_ptr]
 
-void pstack_push(memory_t *stack, unsigned int *ptr, memory_t content)
+void pstack_push(memory_t *stack, arg_t *ptr, memory_t content)
 {
 	if(++*ptr >= pstacksize)
 		panic("?>STACK");
 	stack[(*ptr)]=content;
 }
 
-memory_t pstack_pop(memory_t *stack, unsigned int *ptr)
+memory_t pstack_pop(memory_t *stack, arg_t *ptr)
 {
 	if(*ptr == 0)
 		panic("?<STACK");
@@ -225,9 +265,9 @@ memory_t pstack_pop(memory_t *stack, unsigned int *ptr)
 
 void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 {
-	unsigned int temp_arg=0;
-	unsigned int text_ptr=0;
-	unsigned int bitcode_ptr=0;
+	arg_t temp_arg=0;
+	arg_t text_ptr=0;
+	arg_t bitcode_ptr=0;
 	int use_stack=FALSE;
 
 	while(text[text_ptr] != '\0')
@@ -393,109 +433,13 @@ switch_start:	/* Entering stack mode jumps back to here */
 
 void bitcode_interprete(bitcode_t *bitcode)
 {
-	switch(bitcode->op)
-	{
-		case OP_ADD:
-			memory[ptr] += bitcode->arg;
-			bitcode_ptr++;
-			break;
-		case OP_ADDS:
-			pstack_peek += bitcode->arg;
-			bitcode_ptr++;
-			break;
-		case OP_SUB:
-			memory[ptr] -= bitcode->arg;
-			bitcode_ptr++;
-			break;
-		case OP_SUBS:
-			pstack_peek -= bitcode->arg;
-			bitcode_ptr++;
-			break;
-		case OP_FWD:
-			ptr += bitcode->arg;
-			if(ptr >= memsize)
-				panic("?>MEM");
-			bitcode_ptr++;
-			break;
-		case OP_REW:
-			ptr -= bitcode->arg;
-			if(ptr >= memsize)
-				panic("?<MEM");
-			bitcode_ptr++;
-			break;
-		case OP_JEZ:
-			if(memory[ptr] == 0)
-				bitcode_ptr = bitcode->arg;
-			else
-				bitcode_ptr++;
-			break;
-		case OP_JSEZ:
-			if(pstack_peek == 0)
-				bitcode_ptr = bitcode->arg;
-			else
-				bitcode_ptr++;
-			break;
-		case OP_JNZ:
-			if(memory[ptr] != 0)
-				bitcode_ptr = bitcode->arg;
-			else
-				bitcode_ptr++;
-			break;
-		case OP_JSNZ:
-			if(pstack_peek != 0)
-				bitcode_ptr = bitcode->arg;
-			else
-				bitcode_ptr++;
-			break;
-		case OP_JMP:
-			bitcode_ptr = bitcode->arg;
-			break;
-		case OP_SET:
-			memory[ptr] = (memory_t)bitcode->arg;
-			bitcode_ptr++;
-			break;
-		case OP_PUSH:
-			pstack_push(pstack, &pstack_ptr, memory[ptr]);
-			bitcode_ptr++;
-			break;
-		case OP_POP:
-			memory[ptr] = pstack_pop(pstack, &pstack_ptr);
-			bitcode_ptr++;
-			break;
-		case OP_PSHI:
-			pstack_push(pstack, &pstack_ptr, (memory_t)bitcode->arg);
-			bitcode_ptr++;
-			break;
-		case OP_IO:
-			if(bitcode->arg == ARG_OUT)
-				output(memory[ptr]);
-			else if(bitcode->arg == ARG_IN)
-				memory[ptr] = input();
-			else if(bitcode->arg == ARG_OUTS)
-				output(pstack_pop(pstack, &pstack_ptr));
-			else if(bitcode->arg == ARG_INS)
-				pstack_push(pstack, &pstack_ptr, input());
-			bitcode_ptr++;
-			break;
-		case OP_FRK:
-			memory[ptr] = (memory_t)fork();
-			bitcode_ptr++;
-			break;
-		case OP_HCF:
-			*(volatile int*)NULL=TRUE;
-			bitcode_ptr++;
-			break;
-		case OP_NOP:
-		case OP_HLT:
-		default:
-			break;
-	}
+	(bitcode_ref[bitcode->op].handler)(bitcode->arg);
 	if(bitcode_ptr >= codesize)
 		panic("?RUNCODE");
 	return;
 }
 
-void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize)
+void bitcode_disassembly(bitcode_t *bitcode, arg_t address, char *str, size_t strsize)
 {
 	snprintf(str, strsize, bitcode_ref[bitcode->op].format, address, bitcode->arg);
 	return;
@@ -504,7 +448,7 @@ void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, si
 void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 {
 	char temp_str[64];
-	unsigned int counter=0;
+	arg_t counter=0;
 
 	do
 	{
@@ -517,12 +461,12 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 
 void bitcode_assembly(char *str, bitcode_t *bitcode)
 {
-	unsigned int address=0;
+	arg_t address=0;
 	int op=0;
-	unsigned int arg=0;
+	arg_t arg=0;
 	int ret=0;
 
-	while(ret != 2 && ret != EOF)
+	while(ret != 2)
 	{
 		ret = sscanf(str, bitcode_ref[op].format, &address, &arg);
 		if(ret != 2)
@@ -549,4 +493,149 @@ void bitcode_load_fp(bitcode_t *bitcode, FILE *fp)
 			printf("LOAD [%ld]: %s\n", str_length, temp_str);
 		bitcode_assembly(temp_str, bitcode);
 	}
+}
+
+void exec_add(arg_t arg)
+{
+	memory[ptr] += arg;
+	bitcode_ptr++;
+}
+
+void exec_adds(arg_t arg)
+{
+	pstack_peek += arg;
+	bitcode_ptr++;
+}
+
+void exec_sub(arg_t arg)
+{
+	memory[ptr] -= arg;
+	bitcode_ptr++;
+}
+
+void exec_subs(arg_t arg)
+{
+	pstack_peek -= arg;
+	bitcode_ptr++;
+}
+
+void exec_fwd(arg_t arg)
+{
+	ptr += arg;
+	if(ptr >= memsize)
+		panic("?>MEM");
+	bitcode_ptr++;
+}
+
+void exec_rew(arg_t arg)
+{
+	ptr -= arg;
+	if(ptr >= memsize)
+		panic("?<MEM");
+	bitcode_ptr++;
+}
+
+void exec_jez(arg_t arg)
+{
+	if(memory[ptr] == 0)
+		bitcode_ptr = arg;
+	else
+		bitcode_ptr++;
+}
+
+void exec_jsez(arg_t arg)
+{
+	if(pstack_peek == 0)
+		bitcode_ptr = arg;
+	else
+		bitcode_ptr++;
+}
+
+void exec_jnz(arg_t arg)
+{
+	if(memory[ptr] != 0)
+		bitcode_ptr = arg;
+	else
+		bitcode_ptr++;
+}
+
+void exec_jsnz(arg_t arg)
+{
+	if(pstack_peek != 0)
+		bitcode_ptr = arg;
+	else
+		bitcode_ptr++;
+}
+
+void exec_jmp(arg_t arg)
+{
+	bitcode_ptr = arg;
+}
+
+void exec_set(arg_t arg)
+{
+	memory[ptr] = (memory_t)arg;
+	bitcode_ptr++;
+}
+
+void exec_push(arg_t arg)
+{
+	pstack_push(pstack, &pstack_ptr, memory[ptr]);
+	bitcode_ptr++;
+	arg++; /* Do useless thing to emit compiler warning */
+}
+
+void exec_pop(arg_t arg)
+{
+	memory[ptr] = pstack_pop(pstack, &pstack_ptr);
+	bitcode_ptr++;
+	arg++;
+}
+
+void exec_pshi(arg_t arg)
+{
+	pstack_push(pstack, &pstack_ptr, (memory_t)arg);
+	bitcode_ptr++;
+}
+
+void exec_io(arg_t arg)
+{
+	switch(arg)
+	{
+		case ARG_OUT:
+			output(memory[ptr]);
+			break;
+		case ARG_IN:
+			memory[ptr] = input();
+			break;
+		case ARG_INS:
+			output(pstack_pop(pstack, &pstack_ptr));
+			break;
+		case ARG_OUTS:
+			pstack_push(pstack, &pstack_ptr, input());
+			break;
+	}
+	bitcode_ptr++;
+}
+
+void exec_frk(arg_t arg)
+{
+			memory[ptr] = (memory_t)fork() | arg;
+			bitcode_ptr++;
+}
+
+void exec_hcf(arg_t arg)
+{
+	*(volatile int*)NULL=arg;
+	bitcode_ptr++;
+}
+
+void exec_hlt(arg_t arg)
+{
+	arg++;
+}
+
+void exec_nop(arg_t arg)
+{
+	arg++;
 }
