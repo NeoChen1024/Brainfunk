@@ -18,26 +18,30 @@
 #define TRUE 1
 #define FALSE 0
 
-#define OP_NOP	0x00
-#define OP_ADD	0x01
-#define OP_SUB	0x02
-#define OP_FWD	0x03
-#define OP_REW	0x04
-#define OP_JEZ	0x05
-#define OP_JNZ	0x06
-#define OP_IO	0x07
-#define OP_SET	0x08
-#define OP_POP	0x09
-#define OP_PUSH	0x0A
-#define OP_PSHI	0x0B
-#define OP_ADDS	0x0C
-#define OP_SUBS	0x0D
-#define OP_JMP	0x0E
-#define OP_JSEZ	0x0F
-#define OP_JSNZ	0x10
-#define OP_FRK	0x11
-#define OP_HCF	0x12
-#define OP_HLT	0x13
+enum opcodes
+{
+	OP_NOP,
+	OP_ADD,
+	OP_SUB,
+	OP_FWD,
+	OP_REW,
+	OP_JEZ,
+	OP_JNZ,
+	OP_IO,
+	OP_SET,
+	OP_POP,
+	OP_PUSH,
+	OP_PSHI,
+	OP_ADDS,
+	OP_SUBS,
+	OP_JMP,
+	OP_JSEZ,
+	OP_JSNZ,
+	OP_FRK,
+	OP_HCF,
+	OP_HLT,
+	OP_INSTS /* Total number of instructions */
+};
 
 #define ARG_IN	0
 #define ARG_OUT	1
@@ -50,13 +54,22 @@ struct bitcode_struct
 	unsigned int arg;
 };
 
+struct bitcode_ref_s
+{
+	char name[16];
+	char format[128];
+};
+
+struct bitcode_ref_s bitcode_ref[OP_INSTS];
+char vaild_code[256];
+
 typedef struct bitcode_struct bitcode_t;
 typedef uint8_t memory_t;
 typedef unsigned int stack_type;
 typedef char code_t;
 
 void panic(char *msg);
-void read_code(FILE* fp);
+void read_code(char *code, FILE* fp);
 void push(stack_type *stack, unsigned int *ptr, stack_type content);
 stack_type pop(stack_type *stack, unsigned int *ptr);
 void debug_output(void);
@@ -65,7 +78,7 @@ void interprete(code_t c);
 void output(memory_t c);
 memory_t input(void);
 void debug_loop(char *fmt, unsigned int location);
-int is_code(char c);
+int is_code(int c);
 
 #ifdef VISUAL
 void print_stack(stack_type *target, unsigned int pointer);

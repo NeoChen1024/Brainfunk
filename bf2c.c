@@ -191,11 +191,11 @@ int main(int argc, char **argv)
 							perror(optarg);
 							exit(8);
 						}
-						read_code(corefile);
+						read_code(code, corefile);
 						fclose(corefile);
 					}
 					else
-						read_code(stdin);
+						read_code(code, stdin);
 					break;
 				case 'b':
 					if(strcmp(optarg, "-"))

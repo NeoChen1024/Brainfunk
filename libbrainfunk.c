@@ -46,10 +46,132 @@ extern size_t pstacksize;
 extern bitcode_t *bitcode;
 extern unsigned int bitcode_ptr;
 
-int is_code(char c)
+struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 {
-	if(c == '+' || c == '-' || c == '<' || c == '>' ||
-		c == '[' || c == ']' || c == '.' || c == ',')
+	[OP_NOP] =
+	{
+		.name	= "NOP",
+		.format	= "%x: NOP %x"
+	},
+	[OP_ADD] =
+	{
+		.name	= "ADD",
+		.format = "%x: ADD %x"
+	},
+	[OP_SUB] =
+	{
+		.name	= "SUB",
+		.format = "%x: SUB %x"
+	},
+	[OP_FWD] =
+	{
+		.name	= "FWD",
+		.format = "%x: FWD %x"
+	},
+	[OP_REW] =
+	{
+		.name	= "REW",
+		.format = "%x: REW %x"
+	},
+	[OP_JEZ] =
+	{
+		.name	= "JEZ",
+		.format = "%x: JEZ %x"
+	},
+	[OP_JNZ] =
+	{
+		.name	= "JNZ",
+		.format = "%x: JNZ %x"
+	},
+	[OP_IO] =
+	{
+		.name	= "IO",
+		.format = "%x: IO %x"
+	},
+	[OP_SET] =
+	{
+		.name	= "SET",
+		.format = "%x: SET %x"
+	},
+	[OP_POP] =
+	{
+		.name	= "POP",
+		.format = "%x: POP %x"
+	},
+	[OP_PUSH] =
+	{
+		.name	= "PUSH",
+		.format = "%x: PUSH %x"
+	},
+	[OP_PSHI] =
+	{
+		.name	= "PSHI",
+		.format = "%x: PSHI %x"
+	},
+	[OP_ADDS] =
+	{
+		.name	= "ADDS",
+		.format = "%x: ADDS %x"
+	},
+	[OP_SUBS] =
+	{
+		.name	= "SUBS",
+		.format = "%x: SUBS %x"
+	},
+	[OP_JMP] =
+	{
+		.name	= "JMP",
+		.format = "%x: JMP %x"
+	},
+	[OP_JSEZ] =
+	{
+		.name	= "JSEZ",
+		.format = "%x: JSEZ %x"
+	},
+	[OP_JSNZ] =
+	{
+		.name	= "JSNZ",
+		.format = "%x: JSNZ %x"
+	},
+	[OP_FRK] =
+	{
+		.name	= "FRK",
+		.format = "%x: FRK %x"
+	},
+	[OP_HCF] =
+	{
+		.name	= "HCF",
+		.format = "%x: HCF %x"
+	},
+	[OP_HLT] =
+	{
+		.name	= "HLT",
+		.format = "%x: HLT %x"
+	}
+};
+
+char vaild_code[256] =
+{
+	['+']=1,
+	['-']=1,
+	['>']=1,
+	['<']=1,
+	['[']=1,
+	[']']=1,
+	['$']=1,
+	['\\']=1,
+	['/']=1,
+	['(']=1,
+	[')']=1,
+	['\'']=1,
+	['~']=1,
+	['!']=1,
+	['_']=1
+};
+
+int is_code(int c)
+{
+	if(vaild_code[c & 0xFF])
 	{
 		return TRUE;
 	}
@@ -57,9 +179,8 @@ int is_code(char c)
 		return FALSE;
 }
 
-
 /* Read Code */
-void read_code(FILE* fp)
+void read_code(char *code, FILE* fp)
 {
 	unsigned int i=0;
 	int c=0;
@@ -376,76 +497,7 @@ void bitcode_interprete(bitcode_t *bitcode)
 
 void bitcode_disassembly(bitcode_t *bitcode, unsigned int address, char *str, size_t strsize)
 {
-	switch(bitcode->op)
-	{
-		case OP_ADD:
-			snprintf(str, strsize, "%#x: ADD %#x", address, bitcode->arg);
-			break;
-		case OP_SUB:
-			snprintf(str, strsize, "%#x: SUB %#x", address, bitcode->arg);
-			break;
-		case OP_FWD:
-			snprintf(str, strsize, "%#x: FWD %#x", address, bitcode->arg);
-			break;
-		case OP_REW:
-			snprintf(str, strsize, "%#x: REW %#x", address, bitcode->arg);
-			break;
-		case OP_JEZ:
-			snprintf(str, strsize, "%#x: JEZ %#x", address, bitcode->arg);
-			break;
-		case OP_JNZ:
-			snprintf(str, strsize, "%#x: JNZ %#x", address, bitcode->arg);
-			break;
-		case OP_IO:
-			if(bitcode->arg == ARG_OUT)
-				snprintf(str, strsize, "%#x: IO OUT", address);
-			else if(bitcode->arg == ARG_IN)
-				snprintf(str, strsize, "%#x: IO IN", address);
-			else if(bitcode->arg == ARG_OUTS)
-				snprintf(str, strsize, "%#x: IO OUTS", address);
-			else if(bitcode->arg == ARG_INS)
-				snprintf(str, strsize, "%#x: IO INS", address);
-			break;
-		case OP_SET:
-			snprintf(str, strsize, "%#x: SET %#x", address, bitcode->arg);
-			break;
-		case OP_POP:
-			snprintf(str, strsize, "%#x: POP %#x", address, bitcode->arg);
-			break;
-		case OP_PUSH:
-			snprintf(str, strsize, "%#x: PUSH %#x", address, bitcode->arg);
-			break;
-		case OP_PSHI:
-			snprintf(str, strsize, "%#x: PSHI %#x", address, bitcode->arg);
-			break;
-		case OP_ADDS:
-			snprintf(str, strsize, "%#x: ADDS %#x", address, bitcode->arg);
-			break;
-		case OP_SUBS:
-			snprintf(str, strsize, "%#x: SYBS %#x", address, bitcode->arg);
-			break;
-		case OP_JSEZ:
-			snprintf(str, strsize, "%#x: JSEZ %#x", address, bitcode->arg);
-			break;
-		case OP_JSNZ:
-			snprintf(str, strsize, "%#x: JSNZ %#x", address, bitcode->arg);
-			break;
-		case OP_JMP:
-			snprintf(str, strsize, "%#x: JMP %#x", address, bitcode->arg);
-			break;
-		case OP_FRK:
-			snprintf(str, strsize, "%#x: FRK %#x", address, bitcode->arg);
-			break;
-		case OP_HCF:
-			snprintf(str, strsize, "%#x: HCF %#x", address, bitcode->arg);
-			break;
-		case OP_NOP:
-			snprintf(str, strsize, "%#x: NOP %#x", address, bitcode->arg);
-			break;
-		case OP_HLT:
-			snprintf(str, strsize, "%#x: HLT %#x", address, bitcode->arg);
-			break;
-	}
+	snprintf(str, strsize, bitcode_ref[bitcode->op].format, address, bitcode->arg);
 	return;
 }
 
@@ -466,67 +518,16 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 void bitcode_assembly(char *str, bitcode_t *bitcode)
 {
 	unsigned int address=0;
-	char temp_op_str[16];
-	char temp_arg_str[32];
-	char op=0;
+	int op=0;
 	unsigned int arg=0;
+	int ret=0;
 
-	sscanf(str, "%x: %s %s\n", &address, temp_op_str, temp_arg_str);
-
-	if(!strncmp(temp_op_str, "ADD", 16))
-		op=OP_ADD;
-	else if(!strncmp(temp_op_str, "ADDS", 16))
-		op=OP_ADDS;
-	else if(!strncmp(temp_op_str, "SUB", 16))
-		op=OP_SUB;
-	else if(!strncmp(temp_op_str, "SUBS", 16))
-		op=OP_SUBS;
-	else if(!strncmp(temp_op_str, "FWD", 16))
-		op=OP_FWD;
-	else if(!strncmp(temp_op_str, "REW", 16))
-		op=OP_REW;
-	else if(!strncmp(temp_op_str, "JEZ", 16))
-		op=OP_JEZ;
-	else if(!strncmp(temp_op_str, "JSEZ", 16))
-		op=OP_JSEZ;
-	else if(!strncmp(temp_op_str, "JNZ", 16))
-		op=OP_JNZ;
-	else if(!strncmp(temp_op_str, "JSNZ", 16))
-		op=OP_JSNZ;
-	else if(!strncmp(temp_op_str, "JMP", 16))
-		op=OP_JMP;
-	else if(!strncmp(temp_op_str, "IO", 16))
-		op=OP_IO;
-	else if(!strncmp(temp_op_str, "SET", 16))
-		op=OP_SET;
-	else if(!strncmp(temp_op_str, "POP", 16))
-		op=OP_POP;
-	else if(!strncmp(temp_op_str, "PUSH", 16))
-		op=OP_PUSH;
-	else if(!strncmp(temp_op_str, "PSHI", 16))
-		op=OP_PSHI;
-	else if(!strncmp(temp_op_str, "FRK", 16))
-		op=OP_FRK;
-	else if(!strncmp(temp_op_str, "HCF", 16))
-		op=OP_HCF;
-	else if(!strncmp(temp_op_str, "HLT", 16))
-		op=OP_HLT;
-	else if(!strncmp(temp_op_str, "NOP", 16))
-		op=OP_NOP;
-
-	if(op == OP_IO)
+	while(ret != 2 && ret != EOF)
 	{
-		if(!strncmp(temp_arg_str, "IN", 32))
-			arg=ARG_IN;
-		else if(!strncmp(temp_arg_str, "OUT", 32))
-			arg=ARG_OUT;
-		else if(!strncmp(temp_arg_str, "INS", 32))
-			arg=ARG_INS;
-		else if(!strncmp(temp_arg_str, "OUTS", 32))
-			arg=ARG_OUTS;
+		ret = sscanf(str, bitcode_ref[op].format, &address, &arg);
+		if(ret != 2)
+			op++;
 	}
-	else
-		sscanf(temp_arg_str, "%x", &arg);
 
 	if(debug)
 		printf("%x, %#x\n", op, arg);

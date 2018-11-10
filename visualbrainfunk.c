@@ -139,7 +139,7 @@ void parse_argument(int argc, char **argv)
 						perror(optarg);
 						exit(8);
 					}
-					read_code(corefile);
+					read_code(code, corefile);
 					fclose(corefile);
 					break;
 				case 'b':
