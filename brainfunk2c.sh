@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 CC="cc"
-CFLAGS="-O2 -finline -fPIE -pipe -g3 -I."
+CFLAGS="-O3 -finline -fPIE -pipe -g3 -I."
 
 echo_cmd()
 {
