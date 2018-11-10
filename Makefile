@@ -52,4 +52,4 @@ countline:
 	wc -l *.c *.h
 
 test: all
-	$(SH) ./test.sh brainfunk bitfunk
+	$(SH) ./test.sh brainfunk
