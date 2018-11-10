@@ -1,7 +1,7 @@
 # Brainfunk
 ## Neo_Chen's Brainfuck Toolkit
 ### Passed all the tests
-Brainfunk is a simple speed-orientated interpreter, it have simple byte code,
+Brainfunk is a simple interpreter, it have simple byte code,
 but without dynamic memory allocation. VisualBrainfunk is just
 like Brainfunk, but with ncurses based UI and Visualization.
 They all have some simple array bounds checking, so normally it won't coredumps.
