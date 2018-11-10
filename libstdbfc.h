@@ -7,9 +7,9 @@
 typedef char memory_t;
 typedef unsigned int arg_t;
 memory_t *memory;
-arg_t ptr=0;
+unsigned int ptr=0;
 memory_t *stack;
-arg_t stack_ptr=0;
+unsigned int stack_ptr=0;
 
 #define peek stack[stack_ptr]
 
@@ -100,6 +100,26 @@ memory_t in()
 void out(memory_t arg)
 {
 	putchar(arg);
+	fflush(NULL);
+}
+
+void io(arg_t arg)
+{
+	switch(arg)
+	{
+		case 0: /* IN */
+			out(memory[ptr]);
+			break;
+		case 1: /* OUT */
+			memory[ptr] = in();
+			break;
+		case 2: /* INS */
+			push(stack, &stack_ptr, in());
+			break;
+		case 3: /* OUTS */
+			out(pop(stack, &stack_ptr));
+			break;
+	}
 }
 
 void hlt(arg_t arg)

@@ -115,21 +115,21 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	{
 		.name	= "POP",
 		.format = "%x: POP %x",
-		.cformat= "L%#x:	memory[ptr] = pop(pstack, &pstack_ptr); /* ARG=%#x */\n",
+		.cformat= "L%#x:	memory[ptr] = pop(stack, &stack_ptr); /* ARG=%#x */\n",
 		.handler= exec_pop
 	},
 	[OP_PUSH] =
 	{
 		.name	= "PUSH",
 		.format = "%x: PUSH %x",
-		.cformat= "L%#x:	push(pstack, &pstack_ptr, memory[ptr]); /* ARG=%#x */\n",
+		.cformat= "L%#x:	push(stack, &stack_ptr, memory[ptr]); /* ARG=%#x */\n",
 		.handler= exec_push
 	},
 	[OP_PSHI] =
 	{
 		.name	= "PSHI",
 		.format = "%x: PSHI %x",
-		.cformat= "L%#x:	push(pstack, &pstack_ptr, %#x);\n",
+		.cformat= "L%#x:	push(stack, &stack_ptr, %#x);\n",
 		.handler= exec_pshi
 	},
 	[OP_ADDS] =
@@ -190,7 +190,7 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	}
 };
 
-char vaild_code[256] =
+char valid_code[256] =
 {
 	['+']=1,
 	['-']=1,
@@ -198,6 +198,8 @@ char vaild_code[256] =
 	['<']=1,
 	['[']=1,
 	[']']=1,
+	['.']=1,
+	[',']=1,
 	['$']=1,
 	['\\']=1,
 	['/']=1,
@@ -211,7 +213,7 @@ char vaild_code[256] =
 
 int is_code(int c)
 {
-	if(vaild_code[c & 0xFF])
+	if(valid_code[c & 0xFF])
 	{
 		return TRUE;
 	}
