@@ -191,7 +191,7 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	}
 };
 
-char valid_code[] =
+char valid_code[256] =
 {
 	[0]=1,
 	['+']=1,
@@ -210,10 +210,11 @@ char valid_code[] =
 	['\'']=1,
 	['~']=1,
 	['!']=1,
-	['_']=1
+	['_']=1,
+	[255]=0
 };
 
-char compat_valid_code[] =
+char compat_valid_code[256] =
 {
 	[0]=1,
 	['+']=1,
@@ -223,7 +224,8 @@ char compat_valid_code[] =
 	['[']=1,
 	[']']=1,
 	['.']=1,
-	[',']=1
+	[',']=1,
+	[255]=0
 };
 
 int is_code(int c)
