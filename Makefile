@@ -1,5 +1,5 @@
 CC	= cc
-CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -I.
+CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -I. -std=c99
 LDFLAGS	= -fPIE
 VLIBS	= -lncurses
 SH?=	/bin/sh
