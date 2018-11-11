@@ -435,7 +435,6 @@ switch_start:	/* Entering stack mode jumps back to here */
 		if(bitcode_ptr >= bitcodesize)
 			panic("?BITCODE");
 	}
-	(bitcode + bitcode_ptr)->op=OP_HLT;
 }
 
 void bitcode_interprete(bitcode_t *bitcode)
