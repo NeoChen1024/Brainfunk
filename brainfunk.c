@@ -45,25 +45,14 @@ void debug_function(void)
 	fflush(NULL);
 }
 
-void panic(char *msg)
+void cleanup(arg_t arg)
 {
-	fprintf(stderr, "%s\n", msg);
-	exit(2);
-}
-
-void debug_loop(char *fmt, arg_t location)
-{
-	fprintf(stderr, fmt, location);
-}
-
-void output(memory_t c)
-{
-	putchar(c);
-}
-
-memory_t input(void)
-{
-	return (memory_t)getchar();
+	free(memory);
+	free(code);
+	free(stack);
+	free(bitcode);
+	free(pstack);
+	exit(arg);
 }
 
 int main(int argc, char **argv)
@@ -167,7 +156,7 @@ int main(int argc, char **argv)
 	if(debug)
 		bitcode_disassembly_array_to_fp(bitcode, stdout);
 
-	while((bitcode + bitcode_ptr)->op != OP_HLT)
+	while(1)
 	{
 		if(debug)
 			debug_function();
@@ -176,10 +165,5 @@ int main(int argc, char **argv)
 			panic("?EXEC");
 	}
 
-	free(memory);
-	free(code);
-	free(stack);
-	free(bitcode);
-	free(pstack);
 	return 0;
 }

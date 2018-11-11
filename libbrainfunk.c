@@ -15,12 +15,6 @@
 	,	*ptr = getchar()
 */
 
-/* You need to define
- * 	void output(memory_t c)
- * and
- * 	memory_t input(void)
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -49,12 +43,12 @@ extern arg_t bitcode_ptr;
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 {
-	[OP_NOP] =
+	[OP_HLT] =
 	{
-		.name	= "NOP",
-		.format	= "%x: NOP %x",
-		.cformat= "L%#x:	/* NOP %x */;\n",
-		.handler= exec_nop
+		.name	= "HLT",
+		.format = "%x: HLT %x",
+		.cformat= "L%#x:	hlt(%#x);\n",
+		.handler= exec_hlt
 	},
 	[OP_ADD] =
 	{
@@ -181,13 +175,6 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 		.format = "%x: HCF %x",
 		.cformat= "L%#x:	hcf(%#x);\n",
 		.handler= exec_hcf
-	},
-	[OP_HLT] =
-	{
-		.name	= "HLT",
-		.format = "%x: HLT %x",
-		.cformat= "L%#x:	hlt(%#x);\n",
-		.handler= exec_hlt
 	}
 };
 
@@ -245,7 +232,7 @@ void read_code(char *code, FILE* fp)
 	{
 		if(i >= codesize)
 			panic("?CODE");
-		if((is_code(c) == TRUE) || c == '\t' || c == ' ' || c == '\n')
+		if(is_code(c) == TRUE)
 		code[i++]=(char)c;
 	}
 }
@@ -517,6 +504,29 @@ void bitcode_load_fp(bitcode_t *bitcode, FILE *fp)
 	}
 }
 
+#ifndef VISUAL
+void panic(char *msg)
+{
+	fprintf(stderr, "%s\n", msg);
+	exit(2);
+}
+
+void debug_loop(char *fmt, arg_t location)
+{
+	fprintf(stderr, fmt, location);
+}
+
+void output(memory_t c)
+{
+	putchar(c);
+}
+
+memory_t input(void)
+{
+	return (memory_t)getchar();
+}
+#endif
+
 void exec_add(arg_t arg)
 {
 	memory[ptr] += arg;
@@ -653,10 +663,11 @@ void exec_hcf(arg_t arg)
 
 void exec_hlt(arg_t arg)
 {
-	arg++;
+	cleanup(arg);
 }
 
 void exec_nop(arg_t arg)
 {
-	arg++;
+	arg = (arg_t)memory[ptr];
+	memory[ptr] = (memory_t)arg;
 }

@@ -72,8 +72,7 @@ void panic(char *msg)
 {
 	wait_input(msg);
 	wrefresh(IO_WINDOW);
-	endwin();
-	exit(2);
+	cleanup(2);
 }
 
 void debug_loop(char *fmt, arg_t location)
@@ -94,7 +93,7 @@ memory_t input(void)
 	wrefresh(IO_WINDOW);
 }
 
-void clean_up(void)
+void cleanup(arg_t arg)
 {
 	endwin();
 	free(memory);
@@ -102,6 +101,7 @@ void clean_up(void)
 	free(stack);
 	free(bitcode);
 	free(pstack);
+	exit(arg);
 }
 
 void parse_argument(int argc, char **argv)
@@ -337,7 +337,7 @@ int main(int argc, char **argv)
 	if(!load_bitcode)
 		bitcodelize(bitcode, bitcodesize, code);
 
-	while((bitcode + bitcode_ptr)->op != OP_HLT)
+	while(TRUE)
 	{
 		print_code();
 		print_reg();
@@ -347,6 +347,6 @@ int main(int argc, char **argv)
 		bitcode_interprete(bitcode + bitcode_ptr);
 	}
 	wait_input("?HALT");
-	clean_up();
+	cleanup(0);
 	return 0;
 }

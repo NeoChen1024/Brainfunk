@@ -31,27 +31,8 @@ size_t pstacksize=DEF_PSTACKSIZE;
 int debug=0;
 int compat=0;
 
-void panic(char *msg)
-{
-	fprintf(stderr, "%s\n", msg);
-	exit(2);
-}
-
-/* Placeholder Functions */
-void output(memory_t c)
-{
-	return;
-}
-
-memory_t input(void)
-{
-	return 0;
-}
-
-void debug_loop(char *fmt, arg_t location)
-{
-	return;
-}
+FILE *corefile=NULL;
+FILE *outfile=NULL;
 
 void print_head(FILE *fp)
 {
@@ -73,6 +54,15 @@ void print_tail(FILE *fp)
 	"}\n", fp);
 }
 
+void cleanup(arg_t arg)
+{
+	fclose(outfile);
+	free(bitcode);
+	free(stack);
+	free(code);
+	exit(arg);
+}
+
 int main(int argc, char **argv)
 {
 	code	= calloc(codesize, sizeof(code_t));
@@ -80,8 +70,7 @@ int main(int argc, char **argv)
 	stack	= calloc(stacksize, sizeof(stack_type));
 
 	int load_bitcode=0;
-	FILE *corefile=NULL;
-	FILE *outfile=stdout;
+	outfile=stdout;
 	int opt;
 
 	if(argc <= 2)
@@ -172,8 +161,4 @@ int main(int argc, char **argv)
 	}
 	while((bitcode + bitcode_ptr++)->op != OP_HLT);
 	print_tail(outfile);
-
-	free(bitcode);
-	free(stack);
-	free(code);
 }

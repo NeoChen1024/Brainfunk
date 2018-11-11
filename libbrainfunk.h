@@ -20,7 +20,7 @@
 
 enum opcodes
 {
-	OP_NOP,
+	OP_HLT,
 	OP_ADD,
 	OP_SUB,
 	OP_FWD,
@@ -39,7 +39,6 @@ enum opcodes
 	OP_JSNZ,
 	OP_FRK,
 	OP_HCF,
-	OP_HLT,
 	OP_INSTS /* Total number of instructions */
 };
 
@@ -94,6 +93,7 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp);
 void bitcode_assembly(char *str, bitcode_t *bitcode);
 void bitcode_load_fp(bitcode_t *bitcode, FILE *fp);
 
+void exec_hlt(arg_t arg);
 void exec_add(arg_t arg);
 void exec_adds(arg_t arg);
 void exec_sub(arg_t arg);
@@ -112,5 +112,5 @@ void exec_pshi(arg_t arg);
 void exec_io(arg_t arg);
 void exec_frk(arg_t arg);
 void exec_hcf(arg_t arg);
-void exec_hlt(arg_t arg);
-void exec_nop(arg_t arg);
+
+void cleanup(arg_t arg);

@@ -31,10 +31,10 @@ visualbrainfunk.o:
 	$(CC) $(CFLAGS) -c visualbrainfunk.c
 
 bf2bitcode.o:
-	$(CC) $(CFLAGS) -Wno-unused-parameter -c bf2bitcode.c
+	$(CC) $(CFLAGS) -c bf2bitcode.c
 
 bf2c.o:
-	$(CC) $(CFLAGS) -Wno-unused-parameter -c bf2c.c
+	$(CC) $(CFLAGS) -c bf2c.c
 
 libbrainfunk.o:
 	$(CC) $(CFLAGS) -c libbrainfunk.c
