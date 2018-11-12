@@ -664,9 +664,3 @@ void exec_hlt(arg_t arg)
 {
 	cleanup(arg);
 }
-
-void exec_nop(arg_t arg)
-{
-	arg = (arg_t)memory[ptr];
-	memory[ptr] = (memory_t)arg;
-}
