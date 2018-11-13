@@ -62,7 +62,7 @@ typedef char code_t;
 struct bitcode_struct
 {
 	unsigned char op;
-	unsigned int arg;
+	arg_t arg;
 };
 
 struct bitcode_ref_s
@@ -86,18 +86,19 @@ char valid_code[256];
 
 void panic(char *msg);
 void read_code(char *code, FILE* fp);
-void push(stack_type *stack, unsigned int *ptr, stack_type content);
-stack_type pop(stack_type *stack, unsigned int *ptr);
+void push(stack_type *stack, arg_t *ptr, stack_type content);
+stack_type pop(stack_type *stack, arg_t *ptr);
 void debug_output(void);
 void jump_to_next_matching(void);
 void interprete(code_t c);
 void output(memory_t c);
 memory_t input(void);
-void debug_loop(char *fmt, unsigned int location);
+void debug_loop(char *fmt, arg_t location);
 int is_code(int c);
 
 #ifdef VISUAL
-void print_stack(stack_type *target, unsigned int pointer);
+void print_stack(memory_t *target, arg_t pointer);
+void wait_input(char *msg);
 #endif
 
 void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text);

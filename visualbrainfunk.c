@@ -115,7 +115,7 @@ void parse_argument(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:c:s:t:b:")) != -1)
+		while((opt = getopt(argc, argv, "hmdf:c:s:t:b:")) != -1)
 		{
 			switch(opt)
 			{
@@ -185,14 +185,14 @@ void parse_argument(int argc, char **argv)
 
 }
 
-void print_stack(stack_type *target, arg_t pointer)
+void print_stack(memory_t *target, arg_t pointer)
 {
 	arg_t count=0;
 	wclear(STACK_WINDOW);
 	for(count=0; count <= pointer; count++)
 	{
-		if((pointer - count) <= 14)
-			wprintw(STACK_WINDOW, "stack[%4u] == %u\n", count, target[count]);
+		if((pointer - count) <= 13)
+			wprintw(STACK_WINDOW, "stack[%4u] == %2x\n", count, target[count]);
 	}
 	wrefresh(STACK_WINDOW);
 }
@@ -293,16 +293,17 @@ int main(int argc, char **argv)
  * |    CODE     |  REG  |	(BG == YELLOW) : (BG == GREEN)
  * |             |       |
  * |-------------+-------+ 9
- * |                     |
- * |         IO          |	(YELLOW / BLUE) : (BLACK / CYAN)
- * |                     |
+ * |             |       |
+ * |     IO      | STACK |	(YELLOW / BLUE) : (BLACK / CYAN)
+ * |             |       |
  * +-------------+-------+ 23
  */
 
 	MEM_WINDOW	= newwin(4, 80, 0, 0);
 	CODE_WINDOW	= newwin(6, 60, 4, 0);
 	REG_WINDOW	= newwin(6, 20, 4, 60);
-	IO_WINDOW       = newwin(13, 80, 10, 0);
+	IO_WINDOW       = newwin(13, 60, 10, 0);
+	STACK_WINDOW	= newwin(13, 20, 10, 60);
 
 	init_pair(MSG_COLOR, COLOR_BLACK, COLOR_WHITE);
 	init_pair(MEM_COLOR, COLOR_BLACK, COLOR_WHITE);
@@ -314,7 +315,7 @@ int main(int argc, char **argv)
 	parse_argument(argc, argv);
 	wprintw(IO_WINDOW, "memory	= %p[%d]\n", memory, memsize);
 	wprintw(IO_WINDOW, "code	= %p[%d]\n", code, codesize);
-	wprintw(IO_WINDOW, "stack	= %p[%d]\n", stack, stacksize);
+	wprintw(IO_WINDOW, "pstack	= %p[%d]\n", pstack, pstacksize);
 
 	wbkgd(MEM_WINDOW, COLOR_PAIR(MEM_COLOR));
 	wbkgd(CODE_WINDOW, COLOR_PAIR(CODE_COLOR));

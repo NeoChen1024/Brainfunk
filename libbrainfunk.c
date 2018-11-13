@@ -640,6 +640,9 @@ void exec_push(arg_t arg)
 	pstack_push(pstack, &pstack_ptr, memory[ptr]);
 	bitcode_ptr++;
 	arg++; /* Do useless thing to emit compiler warning */
+#ifdef VISUAL
+	print_stack(pstack, pstack_ptr);
+#endif
 }
 
 void exec_pop(arg_t arg)
@@ -647,12 +650,18 @@ void exec_pop(arg_t arg)
 	memory[ptr] = pstack_pop(pstack, &pstack_ptr);
 	bitcode_ptr++;
 	arg++;
+#ifdef VISUAL
+	print_stack(pstack, pstack_ptr);
+#endif
 }
 
 void exec_pshi(arg_t arg)
 {
 	pstack_push(pstack, &pstack_ptr, (memory_t)arg);
 	bitcode_ptr++;
+#ifdef VISUAL
+	print_stack(pstack, pstack_ptr);
+#endif
 }
 
 void exec_io(arg_t arg)
@@ -683,11 +692,17 @@ void exec_frk(arg_t arg)
 
 void exec_hcf(arg_t arg)
 {
+#ifdef VISUAL
+	wait_input("?FIRE");
+#endif
 	exit(arg);
 }
 
 void exec_hlt(arg_t arg)
 {
+#ifdef VISUAL
+	wait_input("?HALT");
+#endif
 	cleanup(arg);
 }
 
