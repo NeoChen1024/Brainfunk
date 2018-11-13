@@ -280,9 +280,6 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 			printf("text[%u] == '%c'\n", text_ptr, text[text_ptr]);
 		temp_arg=0;
 
-		while(is_code(text[text_ptr]) == FALSE)
-			text_ptr++;
-
 switch_start:	/* Entering stack mode jumps back to here */
 		switch(text[text_ptr])
 		{
