@@ -42,7 +42,7 @@ enum opcodes
 	OP_INSTS /* Total number of instructions */
 };
 
-enum known_structures
+enum code_structures
 {
 	ST_SET0,
 	ST_NUM /* Total number of known structures */
@@ -73,7 +73,7 @@ struct bitcode_ref_s
 	void(*handler)(arg_t arg);
 };
 
-struct known_structure_s
+struct code_structure_s
 {
 	char text[128];
 	arg_t length;
@@ -81,7 +81,7 @@ struct known_structure_s
 };
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS];
-struct known_structure_s known_structure[ST_NUM];
+struct code_structure_s known_structure[ST_NUM];
 char valid_code[256];
 
 void panic(char *msg);

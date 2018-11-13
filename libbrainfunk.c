@@ -178,7 +178,7 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	}
 };
 
-struct known_structure_s known_structure[ST_NUM] =
+struct code_structure_s code_structure[ST_NUM] =
 {
 	[ST_SET0] =
 	{
@@ -294,16 +294,16 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 		cmpret=1;
 		index=0;
 
-/* Detect known structures */
+/* Detect code structures */
 		while(cmpret != 0)
 		{
 			if(index >= ST_NUM)
 				break;
-			cmpret = strncmp(known_structure[index].text, text + text_ptr, known_structure[index].length);
+			cmpret = strncmp(code_structure[index].text, text + text_ptr, code_structure[index].length);
 			if(cmpret == 0)
 			{
-				known_structure[index].handler(bitcode + bitcode_ptr, &bitcode_ptr);
-				text_ptr += known_structure[index].length;
+				code_structure[index].handler(bitcode + bitcode_ptr, &bitcode_ptr);
+				text_ptr += code_structure[index].length;
 			}
 			else
 				index++;
