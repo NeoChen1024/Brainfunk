@@ -178,6 +178,16 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 	}
 };
 
+struct known_structure_s known_structure[ST_NUM] =
+{
+	[ST_SET0] =
+	{
+		.text	= "[-]",
+		.length	= 3,
+		.handler= handle_set0
+	}
+};
+
 char valid_code[256] =
 {
 	[0]=1,
@@ -273,12 +283,31 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 	arg_t text_ptr=0;
 	arg_t bitcode_ptr=0;
 	int use_stack=FALSE;
+	arg_t cmpret=0;
+	arg_t index=0;
 
 	while(text[text_ptr] != '\0')
 	{
 		if(debug)
 			printf("text[%u] == '%c'\n", text_ptr, text[text_ptr]);
 		temp_arg=0;
+		cmpret=1;
+		index=0;
+
+/* Detect known structures */
+		while(cmpret != 0)
+		{
+			if(index >= ST_NUM)
+				break;
+			cmpret = strncmp(known_structure[index].text, text + text_ptr, known_structure[index].length);
+			if(cmpret == 0)
+			{
+				known_structure[index].handler(bitcode + bitcode_ptr, &bitcode_ptr);
+				text_ptr += known_structure[index].length;
+			}
+			else
+				index++;
+		}
 
 switch_start:	/* Entering stack mode jumps back to here */
 		switch(text[text_ptr])
@@ -660,4 +689,11 @@ void exec_hcf(arg_t arg)
 void exec_hlt(arg_t arg)
 {
 	cleanup(arg);
+}
+
+void handle_set0(bitcode_t *bitcode, arg_t *ptr)
+{
+	bitcode->op=OP_SET;
+	bitcode->arg=0;
+	++(*ptr);
 }

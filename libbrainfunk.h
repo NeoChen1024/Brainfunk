@@ -42,10 +42,22 @@ enum opcodes
 	OP_INSTS /* Total number of instructions */
 };
 
+enum known_structures
+{
+	ST_SET0,
+	ST_NUM /* Total number of known structures */
+};
+
 #define ARG_IN	0
 #define ARG_OUT	1
 #define ARG_INS	2
 #define ARG_OUTS	3
+
+typedef struct bitcode_struct bitcode_t;
+typedef uint8_t memory_t;
+typedef unsigned int stack_type;
+typedef unsigned int arg_t;
+typedef char code_t;
 
 struct bitcode_struct
 {
@@ -58,17 +70,19 @@ struct bitcode_ref_s
 	char name[16];
 	char format[128];
 	char cformat[128];
-	void(*handler)(unsigned int);
+	void(*handler)(arg_t arg);
+};
+
+struct known_structure_s
+{
+	char text[128];
+	arg_t length;
+	void(*handler)(bitcode_t *bitcode, arg_t *ptr);
 };
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS];
-char vaild_code[256];
-
-typedef struct bitcode_struct bitcode_t;
-typedef uint8_t memory_t;
-typedef unsigned int stack_type;
-typedef unsigned int arg_t;
-typedef char code_t;
+struct known_structure_s known_structure[ST_NUM];
+char valid_code[256];
 
 void panic(char *msg);
 void read_code(char *code, FILE* fp);
@@ -114,3 +128,6 @@ void exec_frk(arg_t arg);
 void exec_hcf(arg_t arg);
 
 void cleanup(arg_t arg);
+
+/* Known Structures */
+void handle_set0(bitcode_t *bitcode, arg_t *ptr);
