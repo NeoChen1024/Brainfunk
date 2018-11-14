@@ -533,7 +533,7 @@ void bitcode_load_fp(bitcode_t *bitcode, FILE *fp)
 void panic(char *msg)
 {
 	fprintf(stderr, "%s\n", msg);
-	exit(2);
+	cleanup(2);
 }
 
 void debug_loop(char *fmt, arg_t location)
@@ -694,8 +694,11 @@ void exec_hcf(arg_t arg)
 {
 #ifdef VISUAL
 	wait_input("?FIRE");
+	cleanup(arg);
+#else
+	panic("?FIRE");
+	exit(arg); /* Add this so compiler won't give "Unused parameter" warning */
 #endif
-	exit(arg);
 }
 
 void exec_hlt(arg_t arg)
