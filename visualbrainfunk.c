@@ -246,9 +246,14 @@ void print_bitcode(arg_t ptr, arg_t *cursor)
 	{
 		while(counter <= 5)
 		{
+			if((counter + ptr - 3) >= codesize)
+				wprintw(CODE_WINDOW, "\n");
+			else
+			{
 			bitcode_disassembly(bitcode + ptr + counter - 3, ptr + counter - 3, temp_str, 64);
 			wprintw(CODE_WINDOW, "%s\n", temp_str);
 			counter++;
+			}
 		}
 		(*cursor)=counter - 3;
 	}
