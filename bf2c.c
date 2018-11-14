@@ -43,7 +43,8 @@ void print_head(FILE *fp)
 	"#include <libstdbfc.h>\n\n"
 	"int main(void)\n"
 	"{\n"
-	"\tmemory = calloc(MEMSIZE, sizeof(char));\n\n"
+	"\tmemory = calloc(MEMSIZE, sizeof(char));\n"
+	"\tpstack = calloc(MEMSIZE, sizeof(char));\n\n"
 	"\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
 	"\tsetvbuf(stdin, NULL, _IONBF, 0);\n\n", fp);
 }
