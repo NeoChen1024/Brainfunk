@@ -100,7 +100,6 @@ memory_t in()
 void out(memory_t arg)
 {
 	putchar(arg);
-	fflush(NULL);
 }
 
 void io(arg_t arg)
