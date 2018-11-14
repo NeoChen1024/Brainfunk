@@ -191,7 +191,7 @@ void print_stack(memory_t *target, arg_t pointer)
 	wclear(STACK_WINDOW);
 	for(count=0; count <= pointer; count++)
 	{
-		if((pointer - count) <= 13)
+		if((pointer - count) < 13)
 			wprintw(STACK_WINDOW, "stack[%4u] == %2x\n", count, target[count]);
 	}
 	wrefresh(STACK_WINDOW);
@@ -202,7 +202,7 @@ void print_reg(void)
 	wclear(REG_WINDOW);
 	wprintw(REG_WINDOW, "PTR       == %u\n", ptr);
 	wprintw(REG_WINDOW, "PC        == %u\n", bitcode_ptr);
-	wprintw(REG_WINDOW, "STACK_PTR == %u\n", stack_ptr);
+	wprintw(REG_WINDOW, "STACK_PTR == %u\n", pstack_ptr);
 	wrefresh(REG_WINDOW);
 }
 
