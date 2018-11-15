@@ -2,7 +2,7 @@
 ## Neo_Chen's Brainfuck Toolkit
 ### Passed all the tests
 
-![Brainfunk Logo](https://gitlab.com/Neo_Chen/Brainfunk/raw/master/Logo512px.png "Yes, this is our logo")
+![Brainfunk Logo](https://gitlab.com/Neo_Chen/Brainfunk/raw/master/Logo/Logo256px.png "Yes, this is our logo")
 
 Brainfunk is a simple interpreter, it have simple byte code,
 but without dynamic memory allocation. VisualBrainfunk is just
