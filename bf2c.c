@@ -44,7 +44,7 @@ void print_head(FILE *fp)
 	"int main(void)\n"
 	"{\n"
 	"\tmemory = calloc(MEMSIZE, sizeof(char));\n"
-	"\tpstack = calloc(MEMSIZE, sizeof(char));\n\n"
+	"\tstack = calloc(MEMSIZE, sizeof(char));\n\n"
 	"\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
 	"\tsetvbuf(stdin, NULL, _IONBF, 0);\n\n", fp);
 }
