@@ -3,18 +3,6 @@
  * Neo_Chen			        *
  * ==================================== */
 
-/* Instructions:
-
-	+	++(*ptr)
-	-	--(*ptr)
-	>	++ptr
-	<	--ptr
-	[	while(*ptr) {
-	]	}
-	.	putchar(*ptr)
-	,	*ptr = getchar()
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
