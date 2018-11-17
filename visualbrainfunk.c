@@ -125,12 +125,10 @@ void parse_argument(int argc, char **argv)
 						panic("?SIZE=0");
 					free(memory);
 					free(code);
-					free(stack);
-					memory	= calloc(memsize, sizeof(memory_t));
-					code	= calloc(codesize, sizeof(code_t));
-					stack	= calloc(stacksize, sizeof(stack_type));
 					free(bitcode);
 					free(pstack);
+					memory	= calloc(memsize, sizeof(memory_t));
+					code	= calloc(codesize, sizeof(code_t));
 					pstack	= calloc(pstacksize, sizeof(memory_t));
 					bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 					break;

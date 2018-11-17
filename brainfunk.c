@@ -87,10 +87,10 @@ int main(int argc, char **argv)
 						panic("?SIZE=0");
 					free(memory);
 					free(code);
-					free(stack);
+					free(pstack);
 					memory	= calloc(memsize, sizeof(memory_t));
 					code	= calloc(codesize, sizeof(code_t));
-					stack	= calloc(stacksize, sizeof(stack_type));
+					pstack	= calloc(pstacksize, sizeof(memory_t));
 					bitcode	= calloc(bitcodesize, sizeof(bitcode_t));
 					break;
 				case 'f': /* File */
