@@ -2,7 +2,7 @@ CC	= cc
 CFLAGS	= -O3 -finline -g3 -Wall -Wextra -pipe -fPIE -I.
 LDFLAGS	= -fPIE
 VLIBS	= -lncurses
-SH?=	/bin/sh
+SH	?= /bin/sh
 # If you needs LTO
 # CFLAGS	+= -flto
 # LDFLAGS	+= -flto
