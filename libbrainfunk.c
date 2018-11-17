@@ -486,10 +486,8 @@ void bitcode_assembly(char *str, bitcode_t *bitcode)
 	arg_t arg=0;
 	int ret=0;
 
-	while(ret != 2)
+	while(ret != 2 && op <= OP_INSTS)
 	{
-		if(op >= OP_INSTS)
-			panic("?INVALID");
 		ret = sscanf(str, bitcode_ref[op].format, &address, &arg);
 		if(ret != 2)
 			op++;
