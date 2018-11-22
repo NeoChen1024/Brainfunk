@@ -1,4 +1,7 @@
 # Brainfunk
+
+[![Join the chat at https://gitter.im/Brainfunk/Lobby](https://badges.gitter.im/Brainfunk/Lobby.svg)](https://gitter.im/Brainfunk/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 ## Neo_Chen's Brainfuck Toolkit
 ### Passed all the tests
 
