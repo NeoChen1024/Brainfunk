@@ -24,21 +24,6 @@ bf2bitcode: libbrainfunk.o bf2bitcode.o
 bf2c: libbrainfunk.o bf2c.o
 	$(CC) $(LDFLAGS) libbrainfunk.o bf2c.o -o bf2c
 
-brainfunk.o:
-	$(CC) $(CFLAGS) -c brainfunk.c
-
-visualbrainfunk.o:
-	$(CC) $(CFLAGS) -c visualbrainfunk.c
-
-bf2bitcode.o:
-	$(CC) $(CFLAGS) -c bf2bitcode.c
-
-bf2c.o:
-	$(CC) $(CFLAGS) -c bf2c.c
-
-libbrainfunk.o:
-	$(CC) $(CFLAGS) -c libbrainfunk.c
-
 libvbrainfunk.o:
 	$(CC) $(CFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
 
