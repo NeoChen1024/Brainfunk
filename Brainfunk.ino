@@ -25,7 +25,7 @@ stack_type stack[STACKSIZE];
 ptr_t code_ptr=0;
 ptr_t ptr=0;
 ptr_t stack_ptr=0;
-unsigned long int time=0;
+unsigned long int starttime=0;
 
 void exit(int a)
 {
@@ -142,9 +142,8 @@ void interprete(code_t c)
 			break;
 		case '#':
 			Serial.println("?DONE");
-			time = millis();
 			Serial.print("TIME=");
-			Serial.println(time);
+			Serial.println(millis() - starttime);
 			exit(1);
 			break;
 		default:
@@ -159,6 +158,7 @@ void setup() {
 	read_code();
 	Serial.println("\n");
 	Serial.println("?LOADED");
+	starttime = millis();
 }
 
 void loop() {
