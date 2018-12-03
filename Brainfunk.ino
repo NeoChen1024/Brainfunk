@@ -34,7 +34,7 @@ void exit(int a)
 
 void panic(char *msg)
 {
-	Serial.println('\n');
+	Serial.write('\n');
 	Serial.println(msg);
 	exit(2);
 }
@@ -46,11 +46,11 @@ void read_code(void)
 	char c=0;
 	while((c=Serial.read()) != '#') /* Use '#' to replace EOF */
 	{
+		/* Echo back code (Arduino seems don't have other low-level I/O function) */
+		Serial.write(c);
 		while(Serial.available() < 1); /* Wait until there's data to read */
 		if(i >= CODESIZE)
 			panic("?CODE");
-	/* Echo back code (Arduino seems don't have other low-level I/O function) */
-		Serial.print(c);
 		code[i++]=(char)c;
 	}
 	code[i]='#';
@@ -65,10 +65,8 @@ void push(stack_type *stack, unsigned int *ptr, stack_type content)
 
 stack_type pop(stack_type *stack, unsigned int *ptr)
 {
-#ifdef FAST
 	if(*ptr >= STACKSIZE)
 		panic("?<STACK");
-#endif
 	return stack[(*ptr)--];
 }
 
