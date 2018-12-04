@@ -150,8 +150,7 @@ void interprete(code_t c)
 			++code_ptr;
 			break;
 		case '\0':
-			Serial.print("\r\n?DONE");q
-			Serial.print("\r\n#TIME=");
+			Serial.print("\r\n?DONE=");
 			Serial.println(millis() - starttime);
 			exit(1);
 			break;
