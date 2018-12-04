@@ -44,6 +44,14 @@ char readchar(void)
 	return c;
 }
 
+void writechar(char c)
+{
+	if(c == '\n')
+		Serial.write("\r\n");
+	else
+		Serial.write(c);
+}
+
 void panic(char *msg)
 {
 	Serial.write("\r\n");
@@ -145,7 +153,7 @@ void interprete(code_t c)
 			++code_ptr;
 			break;
 		case '.':
-			Serial.write(memory[ptr]);
+			writechar(memory[ptr]);
 			fflush(NULL);
 			++code_ptr;
 			break;
