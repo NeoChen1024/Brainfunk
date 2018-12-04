@@ -16,7 +16,7 @@ typedef char code_t;
 typedef unsigned int ptr_t;
 
 #define MEMSIZE 512
-#define CODESIZE 512
+#define CODESIZE 768
 #define STACKSIZE 16
 
 code_t code[CODESIZE];
@@ -27,10 +27,12 @@ ptr_t ptr=0;
 ptr_t stack_ptr=0;
 unsigned long int starttime=0;
 
+void (*reset)(void) = 0x0000;
+
 void exit(int a)
 {
 	digitalWrite(LED_BUILTIN, LOW);
-	while(a);
+	reset();
 }
 
 char readchar(void)
@@ -68,6 +70,8 @@ void read_code(void)
 	{
 		if(i >= CODESIZE)
 			panic("?CODE");
+		if(c == '+' || c == '-' || c == '>' || c == '<' ||
+			c == '[' || c == ']' || c == '.' || c == ',')
 		code[i++]=(char)c;
 	}
 	code[i]='\0';
@@ -170,7 +174,12 @@ void interprete(code_t c)
 
 void setup() {
 	Serial.begin(9600);
-	Serial.println("\r\n\\");
+	Serial.print("\a\r\n\\\r\n");
+	Serial.print("CODESIZE:\t0x");
+	Serial.println(CODESIZE, HEX);
+	Serial.print("MEMSIZE:\t0x");
+	Serial.println(MEMSIZE, HEX);
+	Serial.println("\r\n\READY");
 	read_code();
 	Serial.println("\r\n?LOADED");
 	pinMode(LED_BUILTIN, OUTPUT);
