@@ -32,6 +32,7 @@ void (*reset)(void) = 0x0000;
 void exit(int a)
 {
 	digitalWrite(LED_BUILTIN, LOW);
+	Serial.flush();
 	reset();
 }
 
