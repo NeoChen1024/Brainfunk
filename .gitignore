@@ -2,5 +2,6 @@ brainfunk
 visualbrainfunk
 bf2bitcode
 bf2c
+bfstrip
 *.o
 test

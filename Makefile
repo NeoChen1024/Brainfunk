@@ -10,31 +10,35 @@ SH	?= /bin/sh
 # CFLAGS	+= -pg
 # LDFLAGS	+= -pg
 
-all: brainfunk visualbrainfunk bf2bitcode bf2c
+PROG= brainfunk visualbrainfunk bf2bitcode bf2c bfstrip
+all: $(PROG)
 
 brainfunk: brainfunk.o libbrainfunk.o
-	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
+	$(CC) $(LDFLAGS) $> -o brainfunk
 
 visualbrainfunk: visualbrainfunk.o libvbrainfunk.o
-	$(CC) $(LDFLAGS) visualbrainfunk.o libvbrainfunk.o -o visualbrainfunk $(VLIBS)
+	$(CC) $(LDFLAGS) $> -o visualbrainfunk $(VLIBS)
 
 bf2bitcode: libbrainfunk.o bf2bitcode.o
-	$(CC) $(LDFLAGS) bf2bitcode.o libbrainfunk.o -o bf2bitcode
+	$(CC) $(LDFLAGS) $> -o bf2bitcode
 
 bf2c: libbrainfunk.o bf2c.o
-	$(CC) $(LDFLAGS) libbrainfunk.o bf2c.o -o bf2c
+	$(CC) $(LDFLAGS) $> -o bf2c
+
+bfstrip: bfstrip.o libbrainfunk.o
+	$(CC) $(LDFLAGS) $> -o bfstrip
 
 libvbrainfunk.o:
 	$(CC) $(CFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
 
 clean:
-	rm -fv brainfunk visualbrainfunk bf2bitcode bf2c *.o
+	rm -fv $(PROG) *.o
 
 clean-all: clean
 	rm -rfv test
 
 countline:
-	wc -l *.c *.h
+	wc -l *.c *.h *.ino
 
 test: all
 	$(SH) ./test.sh brainfunk
