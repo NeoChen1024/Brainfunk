@@ -29,12 +29,24 @@ unsigned long int starttime=0;
 
 void exit(int a)
 {
+	digitalWrite(LED_BUILTIN, LOW);
 	while(a);
+}
+
+char readchar(void)
+{
+	char c=0;
+	while(Serial.available() < 1); /* Wait until there's data to read */
+	c = Serial.read();
+	Serial.print(c);
+	if(c == '\r')
+		Serial.print("\n");
+	return c;
 }
 
 void panic(char *msg)
 {
-	Serial.write('\n');
+	Serial.write("\r\n");
 	Serial.println(msg);
 	exit(2);
 }
@@ -44,16 +56,13 @@ void read_code(void)
 {
 	ptr_t i=0;
 	char c=0;
-	while((c=Serial.read()) != '#') /* Use '#' to replace EOF */
+	while((c=readchar()) != '#') /* Use '#' to replace EOF */
 	{
-		/* Echo back code (Arduino seems don't have other low-level I/O function) */
-		Serial.write(c);
-		while(Serial.available() < 1); /* Wait until there's data to read */
 		if(i >= CODESIZE)
 			panic("?CODE");
 		code[i++]=(char)c;
 	}
-	code[i]='#';
+	code[i]='\0';
 }
 
 void push(stack_type *stack, unsigned int *ptr, stack_type content)
@@ -132,7 +141,7 @@ void interprete(code_t c)
 			}
 			break;
 		case ',':
-			memory[ptr]=(memory_t)Serial.read();
+			memory[ptr]=(memory_t)readchar();
 			++code_ptr;
 			break;
 		case '.':
@@ -140,9 +149,9 @@ void interprete(code_t c)
 			fflush(NULL);
 			++code_ptr;
 			break;
-		case '#':
-			Serial.println("?DONE");
-			Serial.print("TIME=");
+		case '\0':
+			Serial.print("\r\n?DONE");q
+			Serial.print("\r\n#TIME=");
 			Serial.println(millis() - starttime);
 			exit(1);
 			break;
@@ -154,14 +163,15 @@ void interprete(code_t c)
 
 void setup() {
 	Serial.begin(9600);
-	Serial.println("\n\\");
+	Serial.println("\r\n\\");
 	read_code();
-	Serial.println("\n");
-	Serial.println("?LOADED");
+	Serial.println("\r\n?LOADED");
+	pinMode(LED_BUILTIN, OUTPUT);
+	digitalWrite(LED_BUILTIN, HIGH);
 	starttime = millis();
 }
 
 void loop() {
-	while(TRUE)
+	while(TRUE) /* Ensure the loop won't get the overhead of function call */
 		interprete(code[code_ptr]);
 }
