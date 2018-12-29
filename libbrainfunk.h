@@ -29,12 +29,13 @@ enum opcodes
 	OP_JNZ,
 	OP_IO,
 	OP_SET,
+	OP_STP,
+	OP_JMP,
 	OP_POP,
 	OP_PUSH,
 	OP_PSHI,
 	OP_ADDS,
 	OP_SUBS,
-	OP_JMP,
 	OP_JSEZ,
 	OP_JSNZ,
 	OP_FRK,
@@ -119,8 +120,9 @@ void exec_jez(arg_t arg);
 void exec_jsez(arg_t arg);
 void exec_jnz(arg_t arg);
 void exec_jsnz(arg_t arg);
-void exec_jmp(arg_t arg);
 void exec_set(arg_t arg);
+void exec_stp(arg_t arg);
+void exec_jmp(arg_t arg);
 void exec_push(arg_t arg);
 void exec_pop(arg_t arg);
 void exec_pshi(arg_t arg);

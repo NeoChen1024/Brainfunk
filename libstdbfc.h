@@ -63,6 +63,11 @@ void set(arg_t arg)
 	memory[ptr] = (memory_t)arg;
 }
 
+void stp(arg_t arg)
+{
+	ptr = arg;
+}
+
 void push(memory_t *stack, unsigned int *ptr, memory_t content)
 {
 	if(++(*ptr) >= STACKSIZE)

@@ -94,6 +94,20 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 		.cformat= "L%#x:	set(%#x);\n",
 		.handler= exec_set
 	},
+	[OP_JMP] =
+	{
+		.name	= "JMP",
+		.format = "%x: JMP %x",
+		.cformat= "L%#x:	goto L%#x;\n",
+		.handler= exec_jmp
+	},
+	[OP_STP] =
+	{
+		.name	= "STP",
+		.format = "%x: STP %x",
+		.cformat= "L%#x:	stp(%#x);\n",
+		.handler= exec_stp
+	},
 	[OP_POP] =
 	{
 		.name	= "POP",
@@ -128,13 +142,6 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 		.format = "%x: SUBS %x",
 		.cformat= "L%#x:	subs(%#x);\n",
 		.handler= exec_subs
-	},
-	[OP_JMP] =
-	{
-		.name	= "JMP",
-		.format = "%x: JMP %x",
-		.cformat= "L%#x:	goto L%#x;\n",
-		.handler= exec_jmp
 	},
 	[OP_JSEZ] =
 	{
@@ -425,6 +432,20 @@ switch_start:	/* Entering stack mode jumps back to here */
 				text_ptr++;
 				bitcode_ptr++;
 				break;
+			case '@':
+				sscanf(text + text_ptr + 1, "%x", &temp_arg);
+				(bitcode + bitcode_ptr)->op=OP_JMP;
+				(bitcode + bitcode_ptr)->arg = temp_arg;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
+			case '^':
+				sscanf(text + text_ptr + 1, "%x", &temp_arg);
+				(bitcode + bitcode_ptr)->op=OP_STP;
+				(bitcode + bitcode_ptr)->arg = temp_arg;
+				text_ptr++;
+				bitcode_ptr++;
+				break;
 			case '~':
 				(bitcode + bitcode_ptr)->op=OP_FRK;
 				text_ptr++;
@@ -618,6 +639,12 @@ void exec_jmp(arg_t arg)
 void exec_set(arg_t arg)
 {
 	memory[ptr] = (memory_t)arg;
+	bitcode_ptr++;
+}
+
+void exec_stp(arg_t arg)
+{
+	ptr = arg;
 	bitcode_ptr++;
 }
 
