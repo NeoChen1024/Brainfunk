@@ -11,28 +11,6 @@
 #include <getopt.h>
 #include <libbrainfunk.h>
 
-/* init */
-
-memory_t *memory;
-arg_t ptr=0;
-stack_type *stack;
-arg_t stack_ptr=0;
-code_t *code;
-arg_t code_ptr=0;
-int debug=0;
-int compat=0;
-
-size_t memsize=DEF_MEMSIZE;
-size_t codesize=DEF_CODESIZE;
-size_t stacksize=DEF_STACKSIZE;
-
-size_t bitcodesize=DEF_BITCODESIZE;
-bitcode_t *bitcode;
-arg_t bitcode_ptr=0;
-memory_t *pstack;
-arg_t pstack_ptr=0;
-size_t pstacksize=DEF_PSTACKSIZE;
-
 void debug_function(void)
 {
 	char disassembly_code[64];

@@ -13,30 +13,8 @@
 #include <ncurses.h>
 #include <libbrainfunk.h>
 
-/* init */
-
-memory_t *memory;
-arg_t ptr=0;
-stack_type *stack;
-arg_t stack_ptr=0;
-code_t *code;
-arg_t code_ptr=0;
-
-int debug=0;
-int compat=0;
 int delay=1000*100; /* Delay 100ms */
 int load_bitcode=0;
-
-size_t memsize=DEF_MEMSIZE;
-size_t codesize=DEF_CODESIZE;
-size_t stacksize=DEF_STACKSIZE;
-
-bitcode_t *bitcode;
-arg_t bitcode_ptr=0;
-size_t bitcodesize=DEF_BITCODESIZE;
-memory_t *pstack;
-arg_t pstack_ptr=0;
-size_t pstacksize=DEF_PSTACKSIZE;
 
 #define IO_WINDOW io_win
 #define CODE_WINDOW code_win

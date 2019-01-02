@@ -11,26 +11,6 @@
 #include <getopt.h>
 #include <libbrainfunk.h>
 
-memory_t *memory;
-arg_t ptr=0;
-stack_type *stack;
-arg_t stack_ptr=0;
-code_t *code;
-arg_t code_ptr=0;
-bitcode_t *bitcode;
-arg_t bitcode_ptr=0;
-memory_t *pstack;
-arg_t pstack_ptr=0;
-
-size_t memsize=DEF_MEMSIZE;
-size_t codesize=DEF_CODESIZE;
-size_t stacksize=DEF_STACKSIZE;
-size_t bitcodesize=DEF_BITCODESIZE;
-size_t pstacksize=DEF_PSTACKSIZE;
-
-int debug=0;
-int compat=0;
-
 FILE *corefile=NULL;
 FILE *outfile=NULL;
 

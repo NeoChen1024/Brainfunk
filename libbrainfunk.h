@@ -85,6 +85,28 @@ struct bitcode_ref_s bitcode_ref[OP_INSTS];
 struct code_structure_s known_structure[ST_NUM];
 char valid_code[256];
 
+/* Variables */
+extern memory_t *memory;
+extern arg_t ptr;
+extern stack_type *stack;
+extern arg_t stack_ptr;
+extern code_t *code;
+extern arg_t code_ptr;
+extern memory_t *pstack;
+extern arg_t pstack_ptr;
+
+extern int debug;
+extern int compat;
+
+extern size_t memsize;
+extern size_t codesize;
+extern size_t stacksize;
+extern size_t pstacksize;
+extern bitcode_t *bitcode;
+extern arg_t bitcode_ptr;
+extern size_t bitcodesize;
+
+/* Function Prototype */
 void panic(char *msg);
 void read_code(char *code, FILE* fp);
 void push(stack_type *stack, arg_t *ptr, stack_type content);

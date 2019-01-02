@@ -10,24 +10,26 @@
 #include <unistd.h>
 #include <libbrainfunk.h>
 
-extern memory_t *memory;
-extern arg_t ptr;
-extern stack_type *stack;
-extern arg_t stack_ptr;
-extern code_t *code;
-extern arg_t code_ptr;
-extern memory_t *pstack;
-extern arg_t pstack_ptr;
+memory_t *memory;
+arg_t ptr=0;
+stack_type *stack;
+arg_t stack_ptr=0;
+code_t *code;
+arg_t code_ptr=0;
+int debug=0;
+int compat=0;
 
-extern int debug;
-extern int compat;
+size_t memsize=DEF_MEMSIZE;
+size_t codesize=DEF_CODESIZE;
+size_t stacksize=DEF_STACKSIZE;
 
-extern size_t memsize;
-extern size_t codesize;
-extern size_t stacksize;
-extern size_t pstacksize;
-extern bitcode_t *bitcode;
-extern arg_t bitcode_ptr;
+size_t bitcodesize=DEF_BITCODESIZE;
+bitcode_t *bitcode;
+arg_t bitcode_ptr=0;
+memory_t *pstack;
+arg_t pstack_ptr=0;
+size_t pstacksize=DEF_PSTACKSIZE;
+
 
 struct bitcode_ref_s bitcode_ref[OP_INSTS] =
 {
