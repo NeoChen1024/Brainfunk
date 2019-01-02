@@ -45,7 +45,7 @@ for i in "$@"; do
 	fetch http://www.kotay.com/sree/bf/brainf_progs.tar
 	tar -xpf brainf_progs.tar
 
-	for i in bench.b long.b; do
+	for i in bench.b long.b mandel.b; do
 		msg_echo "Testing ${i%.b}"
 		${BF} -f $i && response "PASS" || response "FAIL"
 	done
