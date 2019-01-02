@@ -38,7 +38,7 @@ clean-all: clean
 	rm -rfv test
 
 countline:
-	wc -l *.c *.h *.ino
+	wc -l *.c *.h
 
 test: all
 	$(SH) ./test.sh brainfunk
