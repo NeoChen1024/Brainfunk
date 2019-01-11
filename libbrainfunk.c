@@ -3,11 +3,6 @@
  * Neo_Chen			        *
  * ==================================== */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <unistd.h>
 #include <libbrainfunk.h>
 
 memory_t *memory;
@@ -185,40 +180,44 @@ struct code_structure_s code_structure[ST_NUM] =
 	}
 };
 
+#define SET1(x)	[x]=1
+
 char valid_code[256] =
 {
-	[0]=1,
-	['+']=1,
-	['-']=1,
-	['>']=1,
-	['<']=1,
-	['[']=1,
-	[']']=1,
-	['.']=1,
-	[',']=1,
-	['$']=1,
-	['\\']=1,
-	['/']=1,
-	['(']=1,
-	[')']=1,
-	['\'']=1,
-	['~']=1,
-	['!']=1,
-	['_']=1,
+	SET1(0),
+	SET1('+'),
+	SET1('-'),
+	SET1('>'),
+	SET1('<'),
+	SET1('['),
+	SET1(']'),
+	SET1('.'),
+	SET1(','),
+	SET1('$'),
+	SET1('\\'),
+	SET1('/'),
+	SET1('('),
+	SET1(')'),
+	SET1('~'),
+	SET1('!'),
+	SET1('_'),
+	SET1('@'),
+	SET1('^'),
+	SET1('='),
 	[255]=0
 };
 
 char compat_valid_code[256] =
 {
-	[0]=1,
-	['+']=1,
-	['-']=1,
-	['>']=1,
-	['<']=1,
-	['[']=1,
-	[']']=1,
-	['.']=1,
-	[',']=1,
+	SET1(0),
+	SET1('+'),
+	SET1('-'),
+	SET1('>'),
+	SET1('<'),
+	SET1('['),
+	SET1(']'),
+	SET1('.'),
+	SET1(','),
 	[255]=0
 };
 
@@ -227,7 +226,7 @@ int is_code(int c)
 	if(compat)
 		return compat_valid_code[c & 0xFF];
 	else
-		return valid_code[c & 0xFF];
+		return valid_code[c & 0xFF] || isxdigit(c);
 }
 
 /* Read Code */
@@ -274,6 +273,7 @@ memory_t pstack_pop(memory_t *stack, arg_t *ptr)
 	return stack[(*ptr)--];
 }
 
+/* A Strange Lexical Analyzer */
 void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 {
 	arg_t temp_arg=0;
@@ -285,8 +285,6 @@ void bitcodelize(bitcode_t *bitcode, size_t bitcodesize, code_t *text)
 
 	while(text[text_ptr] != '\0')
 	{
-		if(debug)
-			printf("text[%u] == '%c'\n", text_ptr, text[text_ptr]);
 		temp_arg=0;
 		cmpret=1;
 		index=0;
@@ -424,7 +422,7 @@ switch_start:	/* Entering stack mode jumps back to here */
 				text_ptr++;
 				/* No jump back or special effect, so we don't increment bitcode_ptr */
 				break;
-			case '\'':
+			case '=':
 				sscanf(text + text_ptr + 1, "%x", &temp_arg);
 				if(use_stack)
 					(bitcode + bitcode_ptr)->op=OP_PSHI;
@@ -497,9 +495,8 @@ void bitcode_disassembly_array_to_fp(bitcode_t *bitcode, FILE *fp)
 	{
 		bitcode_disassembly(bitcode + counter, counter, temp_str, 64);
 		fprintf(fp, "%s\n", temp_str);
-		counter++;
 	}
-	while((bitcode + counter)->op != OP_HLT);
+	while((bitcode + counter++)->op != OP_HLT);
 }
 
 void bitcode_assembly(char *str, bitcode_t *bitcode)
@@ -515,9 +512,6 @@ void bitcode_assembly(char *str, bitcode_t *bitcode)
 		if(ret != 2)
 			op++;
 	}
-
-	if(debug)
-		printf("%x, %#x\n", op, arg);
 
 	(bitcode + address)->op = op;
 	(bitcode + address)->arg = arg;
