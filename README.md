@@ -39,7 +39,7 @@ Use bf2c to convert Brainfuck code to C, to compile it, add libstdbfc.h to compi
 	/	Push stack
 	(	If start
 	)	If end
-	'??	Set hexdecimal
+	=??	Set hexdecimal
 	@??	Jump to address
 	^??	Set pointer to address
 	$'??	Push hexdecimal
