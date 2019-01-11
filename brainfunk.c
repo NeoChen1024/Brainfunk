@@ -3,12 +3,6 @@
  * Neo_Chen			        *
  * ==================================== */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <unistd.h>
-#include <getopt.h>
 #include <libbrainfunk.h>
 
 void debug_function(void)
@@ -16,10 +10,15 @@ void debug_function(void)
 	char disassembly_code[64];
 
 	bitcode_disassembly(bitcode + bitcode_ptr, bitcode_ptr, disassembly_code, 64);
-	fprintf(stderr, "code=%s\n", disassembly_code);
-	fprintf(stderr, "stack=%u:0x%0x\n", stack_ptr, stack[stack_ptr]);
-	fprintf(stderr, "ptr=%0x:0x%0x\n", ptr, memory[ptr]);
+	fputs("\033[1;34m", stderr);
+	fprintf(stderr, "code=\033[1;33;44m%s\033[0m\n", disassembly_code);
+	fputs("\033[1;32m", stderr);
+	fprintf(stderr, "stack[%u]=%#0x\n", stack_ptr, stack[stack_ptr]);
+	fputs("\033[1;31m", stderr);
+	fprintf(stderr, "ptr[%u]=%#0x\n", ptr, memory[ptr]);
+	fputs("\033[1;33m", stderr);
 	fprintf(stderr, "--------\n");
+	fputs("\033[0m", stderr);
 	fflush(NULL);
 }
 
@@ -124,7 +123,7 @@ int main(int argc, char **argv)
 	{
 		fprintf(stderr, "memory	= %p[%zu]\n", memory, memsize);
 		fprintf(stderr, "code	= %p[%zu]\n", code, codesize);
-		fprintf(stderr, "pstack = %p[%zu]\n", pstack, pstacksize);
+		fprintf(stderr, "pstack	= %p[%zu]\n", pstack, pstacksize);
 		fflush(NULL);
 	}
 
