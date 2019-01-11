@@ -3,11 +3,15 @@
  * Neo_Chen			        *
  * ==================================== */
 
+#pragma once
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <getopt.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #define DEF_MEMSIZE 262144
 #define DEF_CODESIZE 65536

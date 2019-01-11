@@ -3,13 +3,6 @@
  * Neo_Chen			        *
  * ==================================== */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <signal.h>
-#include <unistd.h>
-#include <getopt.h>
 #include <ncurses.h>
 #include <libbrainfunk.h>
 
