@@ -14,19 +14,19 @@ PROG= brainfunk visualbrainfunk bf2bitcode bf2c bfstrip
 all: $(PROG)
 
 brainfunk: brainfunk.o libbrainfunk.o
-	$(CC) $(LDFLAGS) $> -o brainfunk
+	$(CC) $(LDFLAGS) brainfunk.o libbrainfunk.o -o brainfunk
 
 visualbrainfunk: visualbrainfunk.o libvbrainfunk.o
-	$(CC) $(LDFLAGS) $> -o visualbrainfunk $(VLIBS)
+	$(CC) $(LDFLAGS) visualbrainfunk.o libvbrainfunk.o -o visualbrainfunk $(VLIBS)
 
 bf2bitcode: libbrainfunk.o bf2bitcode.o
-	$(CC) $(LDFLAGS) $> -o bf2bitcode
+	$(CC) $(LDFLAGS) libbrainfunk.o bf2bitcode.o -o bf2bitcode
 
 bf2c: libbrainfunk.o bf2c.o
-	$(CC) $(LDFLAGS) $> -o bf2c
+	$(CC) $(LDFLAGS) libbrainfunk.o bf2c.o -o bf2c
 
 bfstrip: bfstrip.o libbrainfunk.o
-	$(CC) $(LDFLAGS) $> -o bfstrip
+	$(CC) $(LDFLAGS) bfstrip.o libbrainfunk.o -o bfstrip
 
 libvbrainfunk.o:
 	$(CC) $(CFLAGS) -DVISUAL -c libbrainfunk.c -o libvbrainfunk.o
