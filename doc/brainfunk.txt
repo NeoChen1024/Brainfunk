@@ -17,8 +17,8 @@ Neo_Chen's extension:
 	@??	Jump to hexdecimal
 	^??	Set pointer to hexdecimal
 	$'??	Push hexdecimal
-	$+	Increment top of stack
-	$-	Decrement top of stack
+	$+	Add top of stack to current cell
+	$-	Subtract top of stack from current cell
 	$[	while(peek()) {
 	$]	}
 	$(	if(peek()) {

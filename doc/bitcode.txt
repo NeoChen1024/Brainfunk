@@ -1,21 +1,18 @@
-0x00	NOP	Noop
-0x01	ADD	Add
-0x02	SUB	Subtract
-0x03	FWD	Forward
-0x04	REW	Rewind
-0x05	JEZ	Jump if equal to zero
-0x06	JNZ	Jump if not zero
-0x07	IO	IO
-0x08	SET	Set to a fixed integer
-0x09	STP	Set Pointer to a fixed integer
-0x0A	POP	Pop
-0x0B	PUSH	Push
-0x0C	PSHI	Push a fixed integer
-0x0D	ADDS	Add to top of stack
-0x0E	SUBS	Subtract to top of stack
-0x0F	JMP	Jump unconditionally
-0x10	JSEZ	Jump if top of stack is zero
-0x11	JSNZ	Jump if top of stack is not zero
-0x12	FRK	Fork
-0x13	HCF	HALT AND CATCH FIRE!
-0x14	HLT	Halt
+OP	MNEMONIC	Description
+
+0x00	HLT		Halt
+0x01	ALU		ALU operation (Add or Subtract)
+0x02	ALUS		ALU operation from stack
+0x03	SET		Set to a fixed integer
+0x04	POP		Pop
+0x05	PUSH		Push
+0x06	PSHI		Push a fixed integer
+0x07	MOV		Move Data Pointer (Forward and Reverse)
+0x08	STP		Set Pointer to a fixed integer
+0x09	JMP		Jump unconditionally
+0x0A	JEZ		Jump if equal to zero
+0x0B	JNZ		Jump if not zero
+0x0C	JSEZ		Jump if top of stack is zero
+0x0D	JSNZ		Jump if top of stack is not zero
+0x0E	IO		IO
+0x0F	FRK		Fork
