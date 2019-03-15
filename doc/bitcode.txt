@@ -12,7 +12,7 @@ OP	MNEMONIC	Description
 0x09	JMP		Jump unconditionally
 0x0A	JEZ		Jump if equal to zero
 0x0B	JNZ		Jump if not zero
-0x0C	JSEZ		Jump if top of stack is zero
-0x0D	JSNZ		Jump if top of stack is not zero
+0x0C	JSEZ		Jump if top of stack is zero, then pop it
+0x0D	JSNZ		Jump if top of stack is not zero, then pop it
 0x0E	IO		IO
 0x0F	FRK		Fork

@@ -17,14 +17,13 @@ Neo_Chen's extension:
 	@??	Jump to hexdecimal
 	^??	Set pointer to hexdecimal
 	$'??	Push hexdecimal
-	$+	Add top of stack to current cell
-	$-	Subtract top of stack from current cell
-	$[	while(peek()) {
+	$+	Add top of stack to current cell and pop
+	$-	Subtract top of stack from current cell and pop
+	$[	while(pop()) {
 	$]	}
-	$(	if(peek()) {
+	$(	if(pop()) {
 	$)	}
 	$.	Output from stack
 	$,	Input to stack
 	~	Fork
-	!	Halt and catch fire!
 	_	Halt
