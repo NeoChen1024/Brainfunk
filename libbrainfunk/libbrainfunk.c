@@ -31,9 +31,20 @@ void brainfunk_destroy(brainfunk_t *brainfunk)
 void brainfunk_execute(brainfunk_t cpu)
 {
 	int status = CONT;
-	while(status != HALT)
+	if(cpu->debug)
 	{
-		status = handler[cpu->code[cpu->pc].op].exec(cpu);
+		fprintf(stderr, "%lld:\t%hhd\t%lld\n", cpu->pc, cpu->code[cpu->pc].op, cpu->code[cpu->pc].arg);
+		while(status != HALT)
+		{
+			status = handler[cpu->code[cpu->pc].op].exec(cpu);
+		}
+	}
+	else
+	{
+		while(status != HALT)
+		{
+			status = handler[cpu->code[cpu->pc].op].exec(cpu);
+		}
 	}
 	return;
 }

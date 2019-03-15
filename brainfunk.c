@@ -15,7 +15,6 @@ int main(int argc, char **argv)
 {
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, DEBUG);
 	bitcode_read(cpu, stdin);
-	bitcode_dump(cpu, stdout);
 	brainfunk_execute(cpu);
 	brainfunk_destroy(&cpu);
 }
