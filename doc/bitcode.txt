@@ -16,3 +16,4 @@ OP	MNEMONIC	Description
 0x0D	JSNZ		Jump if top of stack is not zero, then pop it
 0x0E	IO		IO
 0x0F	FRK		Fork
+0x10	INV		Invaild Instruction, to indicate it's the end of code

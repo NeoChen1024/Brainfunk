@@ -13,21 +13,30 @@
 #define CONT	1
 #define HALT	0
 
+#define LEXERR	-1
+
 #define DEBUG	1
 #define NODEBUG	0
 
+#define IO_OUT	0
+#define IO_IN	1
+#define IO_OUTS	2
+#define IO_INS	3
+
 #define STRLENGTH	4096
+
+typedef uint8_t data_t;
+typedef data_t * mem_t;
+typedef long long int arg_t;
 
 struct _bitcode
 {
 	uint8_t op;	/* Op-code */
-	int32_t arg;	/* Operand */
+	arg_t arg;	/* Operand */
 };
 
 typedef struct _bitcode code_t;
 typedef struct _bitcode * bitcode_t;
-typedef uint8_t data_t;
-typedef data_t * mem_t;
 
 struct _size
 {
@@ -38,10 +47,10 @@ struct _size
 
 struct _bf
 {
-	long long int pc;	/* Program Counter */
-	long long int codelen;	/* Total Code Length */
-	long long int ptr;	/* Memory Pointer */
-	long long int sp;	/* Stack Pointer */
+	arg_t pc;	/* Program Counter */
+	arg_t codelen;	/* Total Code Length */
+	arg_t ptr;	/* Memory Pointer */
+	arg_t sp;	/* Stack Pointer */
 	bitcode_t code;		/* Code Space */
 	mem_t mem;		/* Data Space */
 	mem_t stack;		/* Stack Space */
@@ -55,7 +64,7 @@ typedef struct _bf * brainfunk_t;
 struct _handler
 {
 	int(*exec)(brainfunk_t cpu);
-	size_t(*scan)(bitcode_t code, char *text);	/* Brainfunk to Bitcode */
+	arg_t(*scan)(bitcode_t code, arg_t pc, arg_t *textptr, char *text);	/* Brainfunk to Bitcode */
 };
 
 typedef struct _handler handler_t;
@@ -78,6 +87,7 @@ enum opcodes
 	OP_JSNZ,
 	OP_IO,
 	OP_FRK,
+	OP_INV,
 	OP_INSTS /* Total number of instructions */
 };
 

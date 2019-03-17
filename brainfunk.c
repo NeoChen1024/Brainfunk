@@ -11,6 +11,16 @@
 
 brainfunk_t cpu;
 
+data_t io_in(void)
+{
+	return (data_t)(getc(stdout) & 0xFF);
+}
+
+void io_out(data_t data)
+{
+	putc((char)data, stdout);
+}
+
 int main(int argc, char **argv)
 {
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, DEBUG);

@@ -2,6 +2,8 @@
 
 #define _DEF(name)								\
 	int exec_ ## name(brainfunk_t cpu);					\
-	size_t scan_ ## name(bitcode_t code, char *text)
+	arg_t scan_ ## name(bitcode_t code, arg_t pc, arg_t *textptr, char *text)
 
 _DEF(hlt);
+_DEF(io);
+_DEF(alu);

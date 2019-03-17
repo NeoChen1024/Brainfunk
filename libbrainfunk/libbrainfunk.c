@@ -1,5 +1,10 @@
 #include <libbrainfunk.h>
 
+void panic(char *msg)
+{
+	fprintf(stderr, "%s\n", msg);
+}
+
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug)
 {
 	/* Allocate itself */
@@ -15,6 +20,9 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, in
 	brainfunk->size.stack = stacksize;
 
 	brainfunk->debug = debug;
+
+	/* Insert a Invaild Instruction */
+	brainfunk->code[codesize - 1].op = OP_INV;
 
 	return brainfunk;
 }
@@ -36,14 +44,16 @@ void brainfunk_execute(brainfunk_t cpu)
 		fprintf(stderr, "%lld:\t%hhd\t%lld\n", cpu->pc, cpu->code[cpu->pc].op, cpu->code[cpu->pc].arg);
 		while(status != HALT)
 		{
-			status = handler[cpu->code[cpu->pc].op].exec(cpu);
+			fprintf(stderr, "\tPC = %lld\n", cpu->pc);
+			cpu->pc += status = handler[cpu->code[cpu->pc].op].exec(cpu);
+			fprintf(stderr, "\tMEM[%lld] = %hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
 		}
 	}
 	else
 	{
 		while(status != HALT)
 		{
-			status = handler[cpu->code[cpu->pc].op].exec(cpu);
+			cpu->pc += status = handler[cpu->code[cpu->pc].op].exec(cpu);
 		}
 	}
 	return;
@@ -51,11 +61,11 @@ void brainfunk_execute(brainfunk_t cpu)
 
 void bitcode_read(brainfunk_t cpu, FILE *fp)
 {
-	int op=0;
-	long long int arg=0;
-	long long int pc;
-	long long int codelength;
-	while(fscanf(fp, "%lld:\t%hhd\t%lld\n", &pc, &op, &arg) > 0)
+	uint8_t op=0;
+	int32_t arg=0;
+	long long int pc=0;
+	long long int codelength=0;
+	while(fscanf(fp, "%lld:\t%hhu\t%d\n", &pc, &op, &arg) > 0)
 	{
 		cpu->code[pc].op = op;
 		cpu->code[pc].arg = arg;
@@ -68,11 +78,10 @@ void bitcode_read(brainfunk_t cpu, FILE *fp)
 
 void bitcode_dump(brainfunk_t cpu, FILE *fp)
 {
-	char str[STRLENGTH];
 	long long int pc = 0;
 	while(pc <= cpu->codelen)
 	{
-		fprintf(fp, "%lld:\t%hd\t%lld\n", pc, cpu->code[pc].op, cpu->code[pc].arg);
+		fprintf(fp, "%lld:\t%hhu\t%lld\n", pc, cpu->code[pc].op, cpu->code[pc].arg);
 		pc++;
 	}
 }
