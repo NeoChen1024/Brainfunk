@@ -23,7 +23,7 @@ void io_out(data_t data)
 
 int main(int argc, char **argv)
 {
-	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, DEBUG);
+	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, NODEBUG);
 	bitcode_read(cpu, stdin);
 	brainfunk_execute(cpu);
 	brainfunk_destroy(&cpu);

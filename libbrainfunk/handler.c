@@ -17,9 +17,29 @@ handler_t handler[OP_INSTS] =
 	{
 		DEFINE(alu)
 	},
+	[OP_MOV] =
+	{
+		DEFINE(mov)
+	},
+	[OP_JEZ] =
+	{
+		DEFINE(jez)
+	},
+	[OP_JNZ] =
+	{
+		DEFINE(jnz)
+	},
 	[OP_IO] =
 	{
 		DEFINE(io)
+	},
+	[OP_SET] =
+	{
+		DEFINE(set)
+	},
+	[OP_INV] =
+	{
+		DEFINE(inv)
 	}
 };
 
@@ -103,4 +123,55 @@ SCAN(alu)
 		code[pc].arg = plus - minus;
 		return 1;
 	}
+}
+
+SCAN(mov)
+{
+}
+
+EXEC(mov)
+{
+	cpu->ptr += cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(jez)
+{
+}
+
+EXEC(jez)
+{
+	if(cpu->mem[cpu->ptr] == 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(jnz)
+{
+}
+
+EXEC(jnz)
+{
+	if(cpu->mem[cpu->ptr] != 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(set)
+{
+}
+
+EXEC(set)
+{
+	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(inv)
+{
+}
+
+EXEC(inv)
+{
+	return HALT;
 }

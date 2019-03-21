@@ -7,3 +7,8 @@
 _DEF(hlt);
 _DEF(io);
 _DEF(alu);
+_DEF(mov);
+_DEF(jez);
+_DEF(jnz);
+_DEF(inv);
+_DEF(set);
