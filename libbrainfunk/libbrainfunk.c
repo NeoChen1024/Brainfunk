@@ -86,7 +86,39 @@ void bitcode_dump(brainfunk_t cpu, FILE *fp)
 	}
 }
 
+void bitcode_readcode(brainfunk_t cpu, FILE *fp)
+{
+}
+
 void quit(int32_t arg)
 {
 	exit(arg);
+}
+
+pcstack_t pcstack_create(size_t size)
+{
+	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
+	stack->stack = calloc(size, sizeof(arg_t));
+	stack->ptr = 0;
+	stack->size = size;
+
+	return stack;
+}
+
+arg_t pcstack_pop(pcstack_t stack)
+{
+	return stack->stack[--(stack->ptr)];
+}
+
+void pcstack_push(pcstack_t stack, arg_t data)
+{
+	stack->stack[stack->ptr++] = data;
+	return;
+}
+
+void pcstack_destroy(pcstack_t *stack)
+{
+	free((*stack)->stack);
+	free(*stack);
+	*stack = NULL;
 }

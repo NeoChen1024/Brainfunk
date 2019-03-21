@@ -7,6 +7,12 @@ void bitcode_dump(brainfunk_t cpu, FILE *fp);
 void bitcode_read(brainfunk_t cpu, FILE *fp);
 void quit(int32_t arg);
 
+
+pcstack_t pcstack_create(size_t size);
+arg_t pcstack_pop(pcstack_t stack);
+void pcstack_push(pcstack_t stack, arg_t data);
+void pcstack_destroy(pcstack_t *stack);
+
 /* These functions must be provided externally */
 extern data_t io_in(void);
 extern void io_out(data_t data);

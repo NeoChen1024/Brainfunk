@@ -69,6 +69,15 @@ struct _handler
 
 typedef struct _handler handler_t;
 
+struct _pcstack
+{
+	size_t size;
+	arg_t ptr;
+	arg_t *stack;
+};
+
+typedef struct _pcstack * pcstack_t;
+
 enum opcodes
 {
 	OP_HLT,
