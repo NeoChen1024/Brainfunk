@@ -127,6 +127,7 @@ SCAN(alu)
 
 SCAN(mov)
 {
+	return 0;
 }
 
 EXEC(mov)
@@ -137,6 +138,7 @@ EXEC(mov)
 
 SCAN(jez)
 {
+	return 0;
 }
 
 EXEC(jez)
@@ -148,6 +150,7 @@ EXEC(jez)
 
 SCAN(jnz)
 {
+	return 0;
 }
 
 EXEC(jnz)
@@ -159,6 +162,7 @@ EXEC(jnz)
 
 SCAN(set)
 {
+	return 0;
 }
 
 EXEC(set)
@@ -169,6 +173,7 @@ EXEC(set)
 
 SCAN(inv)
 {
+	return 0;
 }
 
 EXEC(inv)

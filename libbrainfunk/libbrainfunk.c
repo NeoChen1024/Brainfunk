@@ -86,8 +86,60 @@ void bitcode_dump(brainfunk_t cpu, FILE *fp)
 	}
 }
 
-void bitcode_readcode(brainfunk_t cpu, FILE *fp)
+int codefilter(FILE *fp)
 {
+	int code=0;
+	while((code = getc(fp)) != EOF)
+	{
+		switch(code)
+		{
+			case '+':
+			case '-':
+			case '>':
+			case '<':
+			case '[':
+			case ']':
+			case '.':
+			case ',':
+				return code;
+				break;
+		}
+	}
+	return code;	/* EOF */
+}
+
+char *brainfunk_readtext(FILE *fp, size_t size)
+{
+	char *code = malloc(size);
+	int c=0;
+	size_t ptr=0;
+
+	while((c = codefilter(fp)) != EOF)
+	{
+		code[ptr++] = (char)c;
+
+		if((ptr + 1) >= size) /* 1 extra space for NUL */
+			code = realloc(code, size += 4096);
+	}
+	code[ptr] = '\0';
+	return code;
+}
+
+void brainfunk_dumptext(char *code, FILE *fp)
+{
+	int counter=0;
+	arg_t ptr=0;
+
+	while(code[ptr] != '\0')
+	{
+		putc(code[ptr++], fp);
+		counter++;
+		if(counter >= (1<<6))
+		{
+			putc('\n', fp);
+			counter=0;
+		}
+	}
 }
 
 void quit(int32_t arg)
