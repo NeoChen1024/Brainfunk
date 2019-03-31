@@ -28,6 +28,7 @@ int main(int argc, char **argv)
 	FILE* input = stdin;
 	int opt=0;
 	int debug = NODEBUG;
+	char *code=NULL;
 
 	while((opt = getopt(argc, argv, "hdf:")) != -1)
 	{
@@ -58,7 +59,10 @@ int main(int argc, char **argv)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
-	bitcode_read(cpu, input);
+	code = brainfunk_readtext(input, STRLENGTH);
+	puts(code);
+	bitcode_convert(cpu, code);
+	bitcode_dump(cpu, stdout);
 	brainfunk_execute(cpu);
 	brainfunk_destroy(&cpu);
 }

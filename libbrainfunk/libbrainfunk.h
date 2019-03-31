@@ -24,6 +24,7 @@
 #define IO_INS	3
 
 #define STRLENGTH	4096
+#define PCSTACK_SIZE	4096
 
 typedef uint8_t data_t;
 typedef data_t * mem_t;
@@ -61,14 +62,6 @@ struct _bf
 
 typedef struct _bf * brainfunk_t;
 
-struct _handler
-{
-	int(*exec)(brainfunk_t cpu);
-	arg_t(*scan)(bitcode_t code, arg_t pc, arg_t *textptr, char *text);	/* Brainfunk to Bitcode */
-};
-
-typedef struct _handler handler_t;
-
 struct _pcstack
 {
 	size_t size;
@@ -77,6 +70,19 @@ struct _pcstack
 };
 
 typedef struct _pcstack * pcstack_t;
+
+struct _handler
+{
+	int(*exec)(brainfunk_t cpu);
+	arg_t(*scan)(
+		bitcode_t code,
+		arg_t pc,
+		pcstack_t pcstack,
+		arg_t *textptr,
+		char *text);	/* Brainfunk to Bitcode */
+};
+
+typedef struct _handler handler_t;
 
 enum opcodes
 {

@@ -1,12 +1,5 @@
 #include <libbrainfunk.h>
 
-#define DEFINE(name)			\
-	.exec = &exec_ ## name,		\
-	.scan = &scan_ ## name
-
-#define EXEC(name)	int exec_ ## name(brainfunk_t cpu)
-#define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t pc, arg_t *textptr, char *text)
-
 handler_t handler[OP_INSTS] =
 {
 	[OP_HLT] =
@@ -17,9 +10,37 @@ handler_t handler[OP_INSTS] =
 	{
 		DEFINE(alu)
 	},
+	[OP_ALUS] =
+	{
+		DEFINE(alus)
+	},
+	[OP_SET] =
+	{
+		DEFINE(set)
+	},
+	[OP_POP] =
+	{
+		DEFINE(pop)
+	},
+	[OP_PUSH] =
+	{
+		DEFINE(push)
+	},
+	[OP_PSHI] =
+	{
+		DEFINE(pshi)
+	},
 	[OP_MOV] =
 	{
 		DEFINE(mov)
+	},
+	[OP_STP] =
+	{
+		DEFINE(stp)
+	},
+	[OP_JMP] =
+	{
+		DEFINE(jmp)
 	},
 	[OP_JEZ] =
 	{
@@ -29,13 +50,21 @@ handler_t handler[OP_INSTS] =
 	{
 		DEFINE(jnz)
 	},
+	[OP_JSEZ] =
+	{
+		DEFINE(jsez)
+	},
+	[OP_JSNZ] =
+	{
+		DEFINE(jsnz)
+	},
 	[OP_IO] =
 	{
 		DEFINE(io)
 	},
-	[OP_SET] =
+	[OP_FRK] =
 	{
-		DEFINE(set)
+		DEFINE(frk)
 	},
 	[OP_INV] =
 	{
@@ -58,6 +87,160 @@ SCAN(hlt)
 	}
 	else
 		return LEXERR;
+}
+
+EXEC(alu)
+{
+	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(alu)
+{
+	arg_t plus=0;
+	arg_t minus=0;
+	while(text[*textptr] == '+' || text[*textptr] == '-')
+	{
+		if(text[*textptr] == '+')
+			plus++;
+		else if(text[*textptr] == '-')
+			minus++;
+		(*textptr)++;
+	}
+	if(plus == 0 && minus == 0)
+		return LEXERR;
+	else
+	{
+		code[pc].op = OP_ALU;
+		code[pc].arg = plus - minus;
+		return 1;
+	}
+}
+
+EXEC(alus)
+{
+	return CONT;
+}
+
+SCAN(alus)
+{
+	return LEXERR;
+}
+
+SCAN(set)
+{
+	return LEXERR;
+}
+
+EXEC(set)
+{
+	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+EXEC(pop)
+{
+	return CONT;
+}
+
+SCAN(pop)
+{
+	return LEXERR;
+}
+
+EXEC(push)
+{
+	return CONT;
+}
+
+SCAN(push)
+{
+	return LEXERR;
+}
+
+EXEC(pshi)
+{
+	return CONT;
+}
+
+SCAN(pshi)
+{
+	return LEXERR;
+}
+
+SCAN(mov)
+{
+	return LEXERR;
+}
+
+EXEC(mov)
+{
+	cpu->ptr += cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+EXEC(stp)
+{
+	return CONT;
+}
+
+SCAN(stp)
+{
+	return LEXERR;
+}
+
+EXEC(jmp)
+{
+	return CONT;
+}
+
+SCAN(jmp)
+{
+	return LEXERR;
+}
+
+SCAN(jez)
+{
+	return LEXERR;
+}
+
+EXEC(jez)
+{
+	if(cpu->mem[cpu->ptr] == 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+SCAN(jnz)
+{
+	return LEXERR;
+}
+
+EXEC(jnz)
+{
+	if(cpu->mem[cpu->ptr] != 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
+	return CONT;
+}
+
+EXEC(jsez)
+{
+	return CONT;
+}
+
+SCAN(jsez)
+{
+	return LEXERR;
+}
+
+EXEC(jsnz)
+{
+	return CONT;
+}
+
+SCAN(jsnz)
+{
+	return LEXERR;
 }
 
 EXEC(io)
@@ -97,83 +280,20 @@ SCAN(io)
 		return LEXERR;
 }
 
-EXEC(alu)
+EXEC(frk)
 {
-	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
-SCAN(alu)
+SCAN(frk)
 {
-	arg_t plus=0;
-	arg_t minus=0;
-	while(text[*textptr] == '+' || text[*textptr] == '-')
-	{
-		if(text[*textptr] == '+')
-			plus++;
-		else if(text[*textptr] == '-')
-			minus++;
-		(*textptr)++;
-	}
-	if(plus == 0 && minus == 0)
-		return LEXERR;
-	else
-	{
-		code[pc].op = OP_ALU;
-		code[pc].arg = plus - minus;
-		return 1;
-	}
+	return LEXERR;
 }
 
-SCAN(mov)
-{
-	return 0;
-}
-
-EXEC(mov)
-{
-	cpu->ptr += cpu->code[cpu->pc].arg;
-	return CONT;
-}
-
-SCAN(jez)
-{
-	return 0;
-}
-
-EXEC(jez)
-{
-	if(cpu->mem[cpu->ptr] == 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
-	return CONT;
-}
-
-SCAN(jnz)
-{
-	return 0;
-}
-
-EXEC(jnz)
-{
-	if(cpu->mem[cpu->ptr] != 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
-	return CONT;
-}
-
-SCAN(set)
-{
-	return 0;
-}
-
-EXEC(set)
-{
-	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg;
-	return CONT;
-}
 
 SCAN(inv)
 {
-	return 0;
+	return LEXERR;
 }
 
 EXEC(inv)

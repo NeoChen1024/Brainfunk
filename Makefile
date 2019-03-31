@@ -1,9 +1,10 @@
 CC	= cc
 AR	= ar
 RANLIB	= ranlib
-CFLAGS	= -O3 -pipe -fPIE -I./libbrainfunk -gdwarf-4 -g3 -std=c99 -pedantic -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter
+OPT	= -O3
+CFLAGS	= $(OPT) -pipe -fPIE -I./libbrainfunk -gdwarf-4 -g3 -std=c99 -pedantic -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter
 
-LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o
+LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o libbrainfunk/converter.o
 BFOBJS	= brainfunk.o
 
 .PHONY: all clean countline
