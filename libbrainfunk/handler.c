@@ -282,12 +282,19 @@ SCAN(io)
 
 EXEC(frk)
 {
+	cpu->mem[cpu->ptr] = (mem_t)fork();
 	return CONT;
 }
 
 SCAN(frk)
 {
-	return LEXERR;
+	if(text[(*textptr)++] == '~')
+	{
+		code[pc].op = OP_FRK;
+		return 1;
+	}
+	else
+		return LEXERR;
 }
 
 
