@@ -32,9 +32,10 @@ int main(int argc, char **argv)
 	FILE* input = stdin;
 	int opt=0;
 	int debug = NODEBUG;
+	int code_loaded=FALSE;
 	char *code=NULL;
 
-	while((opt = getopt(argc, argv, "hdf:")) != -1)
+	while((opt = getopt(argc, argv, "hdf:c:")) != -1)
 	{
 		switch(opt)
 		{
@@ -49,6 +50,13 @@ int main(int argc, char **argv)
 						exit(8);
 					}
 				}
+				code = brainfunk_readtext(input, STRLENGTH);
+				code_loaded=TRUE;
+				break;
+			case 'c':
+				code = calloc(strlen(optarg) + 1, sizeof(char));
+				strcpy(code, optarg);
+				code_loaded=TRUE;
 				break;
 			case 'd':
 				debug = DEBUG;
@@ -59,12 +67,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if(code_loaded == FALSE)
+		panic("?CODE");
+
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
-	code = brainfunk_readtext(input, STRLENGTH);
 
 	if(debug)
 		puts(code);
