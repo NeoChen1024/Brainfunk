@@ -1,8 +1,30 @@
 #include <libbrainfunk.h>
 
+char opname[OP_INSTS][16] =
+{
+	"HLT",
+	"ALU",
+	"ALUS",
+	"SET",
+	"POP",
+	"PUSH",
+	"PSHI",
+	"MOV",
+	"STP",
+	"JMP",
+	"JEZ",
+	"JNZ",
+	"JSEZ",
+	"JSNZ",
+	"IO",
+	"FRK",
+	"INV"
+};
+
 void panic(char *msg)
 {
 	fprintf(stderr, "%s\n", msg);
+	quit(8);
 }
 
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug)
@@ -41,9 +63,9 @@ void brainfunk_execute(brainfunk_t cpu)
 	int status = CONT;
 	if(cpu->debug)
 	{
-		fprintf(stderr, "%lld:\t%hhd\t%lld\n", cpu->pc, cpu->code[cpu->pc].op, cpu->code[cpu->pc].arg);
 		while(status != HALT)
 		{
+			fprintf(stderr, "%lld:\t%s\t%lld\n", cpu->pc, opname[cpu->code[cpu->pc].op], cpu->code[cpu->pc].arg);
 			fprintf(stderr, "\tPC = %lld\n", cpu->pc);
 			cpu->pc += status = handler[cpu->code[cpu->pc].op].exec(cpu);
 			fprintf(stderr, "\tMEM[%lld] = %hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
@@ -81,7 +103,7 @@ void bitcode_dump(brainfunk_t cpu, FILE *fp)
 	long long int pc = 0;
 	while(pc <= cpu->codelen)
 	{
-		fprintf(fp, "%lld:\t%hhu\t%lld\n", pc, cpu->code[pc].op, cpu->code[pc].arg);
+		fprintf(fp, "%lld:\t%s\t%lld\n", pc, opname[cpu->code[pc].op], cpu->code[pc].arg);
 		pc++;
 	}
 }
@@ -159,11 +181,15 @@ pcstack_t pcstack_create(size_t size)
 
 arg_t pcstack_pop(pcstack_t stack)
 {
+	if(stack->ptr == 0)
+		panic("?PCSTACK_UNDERFLOW");
 	return stack->stack[--(stack->ptr)];
 }
 
 void pcstack_push(pcstack_t stack, arg_t data)
 {
+	if((size_t)stack->ptr >= stack->size)
+		panic("?PCSTACK_OVERFLOW");
 	stack->stack[stack->ptr++] = data;
 	return;
 }

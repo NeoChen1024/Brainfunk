@@ -15,7 +15,11 @@ brainfunk_t cpu;
 
 data_t io_in(void)
 {
-	return (data_t)(getc(stdout) & 0xFF);
+	int c = getc(stdin);
+	if(c != EOF)
+		return (data_t)(c & 0xFF);
+	else
+		return 0;
 }
 
 void io_out(data_t data)
@@ -58,11 +62,15 @@ int main(int argc, char **argv)
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
+
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
 	code = brainfunk_readtext(input, STRLENGTH);
-	puts(code);
+
+	if(debug)
+		puts(code);
 	bitcode_convert(cpu, code);
-	bitcode_dump(cpu, stdout);
+	if(debug)
+		bitcode_dump(cpu, stdout);
 	brainfunk_execute(cpu);
 	brainfunk_destroy(&cpu);
 }

@@ -4,7 +4,7 @@
 	.scan = &scan_ ## name
 
 #define EXEC(name)	int exec_ ## name(brainfunk_t cpu)
-#define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t pc, pcstack_t pcstack, arg_t *textptr, char *text)
+#define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t *pc, pcstack_t pcstack, arg_t *textptr, char *text)
 
 #define _DEF(name)	\
 	EXEC(name);	\

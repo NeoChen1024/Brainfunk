@@ -1,5 +1,7 @@
 #include <libbrainfunk.h>
 
+#define ADV	1	/* Advance 1 character at a time */
+
 handler_t handler[OP_INSTS] =
 {
 	[OP_HLT] =
@@ -83,7 +85,7 @@ SCAN(hlt)
 	{
 		code->op = OP_HLT;
 		(*textptr)++;
-		return 1;
+		return ADV;
 	}
 	else
 		return LEXERR;
@@ -111,9 +113,10 @@ SCAN(alu)
 		return LEXERR;
 	else
 	{
-		code[pc].op = OP_ALU;
-		code[pc].arg = plus - minus;
-		return 1;
+		code[*pc].op = OP_ALU;
+		code[*pc].arg = plus - minus;
+		++*pc;
+		return ADV;
 	}
 }
 
@@ -170,7 +173,25 @@ SCAN(pshi)
 
 SCAN(mov)
 {
-	return LEXERR;
+	arg_t forward=0;
+	arg_t backward=0;
+	while(text[*textptr] == '>' || text[*textptr] == '<')
+	{
+		if(text[*textptr] == '>')
+			forward++;
+		else if(text[*textptr] == '<')
+			backward++;
+		(*textptr)++;
+	}
+	if(forward == 0 && backward == 0)
+		return LEXERR;
+	else
+	{
+		code[*pc].op = OP_MOV;
+		code[*pc].arg = forward - backward;
+		++*pc;
+		return ADV;
+	}
 }
 
 EXEC(mov)
@@ -201,7 +222,16 @@ SCAN(jmp)
 
 SCAN(jez)
 {
-	return LEXERR;
+	if(text[(*textptr)] == '[')
+	{
+		code[*pc].op = OP_JEZ;
+		pcstack_push(pcstack, *pc);
+		++*textptr;
+		++*pc;
+		return ADV;
+	}
+	else
+		return LEXERR;
 }
 
 EXEC(jez)
@@ -213,7 +243,20 @@ EXEC(jez)
 
 SCAN(jnz)
 {
-	return LEXERR;
+	arg_t temp_pc=0;
+
+	if(text[(*textptr)] == ']')
+	{
+		temp_pc = pcstack_pop(pcstack);
+		code[*pc].op = OP_JNZ;
+		code[*pc].arg = temp_pc;
+		code[temp_pc].arg = *pc;
+		++*textptr;
+		++*pc;
+		return ADV;
+	}
+	else
+		return LEXERR;
 }
 
 EXEC(jnz)
@@ -264,17 +307,19 @@ SCAN(io)
 {
 	if(text[*textptr] == '.')
 	{
-		code[pc].op = OP_IO;
-		code[pc].arg = IO_OUT;
+		code[*pc].op = OP_IO;
+		code[*pc].arg = IO_OUT;
 		(*textptr)++;
-		return 1;
+		++*pc;
+		return ADV;
 	}
 	else if (text[*textptr] == ',')
 	{
-		code[pc].op = OP_IO;
-		code[pc].arg = IO_IN;
+		code[*pc].op = OP_IO;
+		code[*pc].arg = IO_IN;
 		(*textptr)++;
-		return 1;
+		++*pc;
+		return ADV;
 	}
 	else
 		return LEXERR;
@@ -282,7 +327,7 @@ SCAN(io)
 
 EXEC(frk)
 {
-	cpu->mem[cpu->ptr] = (mem_t)fork();
+	cpu->mem[cpu->ptr] = (data_t)fork();
 	return CONT;
 }
 
@@ -290,8 +335,9 @@ SCAN(frk)
 {
 	if(text[(*textptr)++] == '~')
 	{
-		code[pc].op = OP_FRK;
-		return 1;
+		code[*pc].op = OP_FRK;
+		++*pc;
+		return ADV;
 	}
 	else
 		return LEXERR;
@@ -305,5 +351,6 @@ SCAN(inv)
 
 EXEC(inv)
 {
+	panic("?INV");
 	return HALT;
 }

@@ -14,6 +14,7 @@
 #define HALT	0
 
 #define LEXERR	-1
+#define ADV	1
 
 #define DEBUG	1
 #define NODEBUG	0
@@ -76,7 +77,7 @@ struct _handler
 	int(*exec)(brainfunk_t cpu);
 	arg_t(*scan)(
 		bitcode_t code,
-		arg_t pc,
+		arg_t *pc,
 		pcstack_t pcstack,
 		arg_t *textptr,
 		char *text);	/* Brainfunk to Bitcode */
@@ -110,3 +111,4 @@ enum opcodes
 #include "handler.h"
 
 extern handler_t handler[OP_INSTS];
+extern char opname[OP_INSTS][16];
