@@ -74,6 +74,22 @@ handler_t handler[OP_INSTS] =
 	}
 };
 
+#define DIFF	-1
+#define SAME	0
+
+int lexcmp(char *code, char *lex)
+{
+	arg_t i=0;
+	while(lex[i] != '\0')
+	{
+		if(code[i] != lex[i])
+			return DIFF;
+		else
+			i++;
+	}
+	return SAME;
+}
+
 EXEC(hlt)
 {
 	return HALT;
@@ -132,6 +148,14 @@ SCAN(alus)
 
 SCAN(set)
 {
+	if(lexcmp(text + *textptr, "[-]") == SAME)
+	{
+		code[*pc].op = OP_SET;
+		code[*pc].arg = 0;
+		*textptr += 3;
+		++*pc;
+		return ADV;
+	}
 	return LEXERR;
 }
 
