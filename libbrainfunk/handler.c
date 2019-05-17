@@ -152,7 +152,7 @@ SCAN(set)
 	{
 		code[*pc].op = OP_SET;
 		code[*pc].arg = 0;
-		*textptr += 3;
+		*textptr += 3; /* 3 characters, so increment by 3 */
 		++*pc;
 		return ADV;
 	}
@@ -167,26 +167,45 @@ EXEC(set)
 
 EXEC(pop)
 {
+	cpu->mem[cpu->ptr] = pop(cpu);
 	return CONT;
 }
 
 SCAN(pop)
 {
+	if(text[*textptr] == '\\')
+	{
+		code[*pc].op = OP_POP;
+		code[*pc].arg = 0;
+		++*textptr;
+		++*pc;
+		return ADV;
+	}
 	return LEXERR;
 }
 
 EXEC(push)
 {
+	push(cpu, cpu->mem[cpu->ptr]);
 	return CONT;
 }
 
 SCAN(push)
 {
+	if(text[*textptr] == '/')
+	{
+		code[*pc].op = OP_PUSH;
+		code[*pc].arg = 0;
+		++*textptr;
+		++*pc;
+		return ADV;
+	}
 	return LEXERR;
 }
 
 EXEC(pshi)
 {
+	push(cpu, cpu->code[cpu->pc].arg);
 	return CONT;
 }
 
@@ -226,6 +245,7 @@ EXEC(mov)
 
 EXEC(stp)
 {
+	cpu->ptr = cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
@@ -236,6 +256,7 @@ SCAN(stp)
 
 EXEC(jmp)
 {
+	cpu->pc = cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
@@ -321,7 +342,10 @@ EXEC(io)
 			io_out(cpu->mem[cpu->ptr]);
 			break;
 		case IO_INS:
+			push(cpu, io_in());
+			break;
 		case IO_OUTS:
+			io_out(pop(cpu));
 			break;
 	}
 	return CONT;

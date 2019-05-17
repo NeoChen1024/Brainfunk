@@ -164,6 +164,32 @@ void brainfunk_dumptext(char *code, FILE *fp)
 	}
 }
 
+void bitcode_convert(brainfunk_t cpu, char *text)
+{
+	arg_t textptr=0;
+	arg_t pc=0;
+	arg_t ret=0;
+	int try=0;
+
+	pcstack_t pcstack = pcstack_create(PCSTACK_SIZE);
+
+	while(text[textptr] != '\0')
+	{
+		try=0;
+		while(try < OP_INSTS)
+		{
+			ret = handler[try++].scan(cpu->code, &pc, pcstack, &textptr, text);
+			if(ret != LEXERR)
+			{
+				break;
+			}
+		}
+	}
+
+	cpu->codelen = pc;
+	pcstack_destroy(&pcstack);
+}
+
 void quit(int32_t arg)
 {
 	exit(arg);
@@ -199,4 +225,19 @@ void pcstack_destroy(pcstack_t *stack)
 	free((*stack)->stack);
 	free(*stack);
 	*stack = NULL;
+}
+
+/* Ignore Overflow and Underflow */
+void push(brainfunk_t cpu, data_t data)
+{
+	if((size_t)cpu->sp >= cpu->size.stack)
+		return;
+	cpu->stack[cpu->sp++] = data;
+}
+
+data_t pop(brainfunk_t cpu)
+{
+	if(cpu->sp == 0)
+		return 0;
+	return cpu->stack[--(cpu->sp)];
 }
