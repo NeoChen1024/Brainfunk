@@ -100,7 +100,8 @@ SCAN(hlt)
 	if(text[*textptr] == '_')
 	{
 		code->op = OP_HLT;
-		(*textptr)++;
+		++*textptr;
+		++*pc;
 		return ADV;
 	}
 	else
@@ -239,7 +240,12 @@ SCAN(mov)
 
 EXEC(mov)
 {
-	cpu->ptr += cpu->code[cpu->pc].arg;
+	if(cpu->ptr + cpu->code[cpu->pc].arg < 0)
+		cpu->ptr += cpu->code[cpu->pc].arg + cpu->size.mem;
+	else if(cpu->ptr + cpu->code[cpu->pc].arg >= cpu->size.mem)
+		cpu->ptr += cpu->code[cpu->pc].arg - cpu->size.mem;
+	else
+		cpu->ptr += cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
@@ -313,6 +319,8 @@ EXEC(jnz)
 
 EXEC(jsez)
 {
+	if(pop(cpu) == 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
@@ -323,6 +331,8 @@ SCAN(jsez)
 
 EXEC(jsnz)
 {
+	if(pop(cpu) != 0)
+		cpu->pc = cpu->code[cpu->pc].arg;
 	return CONT;
 }
 
