@@ -385,7 +385,11 @@ SCAN(io)
 
 EXEC(frk)
 {
-	cpu->mem[cpu->ptr] = (data_t)fork();
+	pid_t p = fork();
+	if((p & 0xFF) == 0)
+		cpu->mem[cpu->ptr] = (data_t)p + 1;
+	else
+		cpu->mem[cpu->ptr] = (data_t)p;
 	return CONT;
 }
 
