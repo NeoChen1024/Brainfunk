@@ -4,7 +4,7 @@ RANLIB	= ranlib
 OPT	= -O3
 CFLAGS	= $(OPT) -pipe -fPIE -I./libbrainfunk -gdwarf-4 -g3 -std=c99 -pedantic -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter
 
-LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o libbrainfunk/converter.o
+LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o
 BFOBJS	= brainfunk.o
 
 .PHONY: all clean countline
@@ -17,6 +17,9 @@ brainfunk: $(BFOBJS) libbrainfunk.a
 libbrainfunk.a: $(LIBOBJS)
 	$(AR) rvD libbrainfunk.a $(LIBOBJS)
 	$(RANLIB) libbrainfunk.a
+
+test:	brainfunk
+	./test.sh brainfunk
 
 countline:
 	wc -l */*.c */*.h *.c
