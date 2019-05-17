@@ -242,7 +242,7 @@ EXEC(mov)
 {
 	if(cpu->ptr + cpu->code[cpu->pc].arg < 0)
 		cpu->ptr += cpu->code[cpu->pc].arg + cpu->size.mem;
-	else if(cpu->ptr + cpu->code[cpu->pc].arg >= cpu->size.mem)
+	else if(cpu->ptr + cpu->code[cpu->pc].arg >= (arg_t)cpu->size.mem)
 		cpu->ptr += cpu->code[cpu->pc].arg - cpu->size.mem;
 	else
 		cpu->ptr += cpu->code[cpu->pc].arg;
