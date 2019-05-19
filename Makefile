@@ -1,7 +1,7 @@
 CC	= cc
 AR	= ar
 RANLIB	= ranlib
-OPT	= -O3
+OPT	= -O3 -finline
 CFLAGS	= $(OPT) -pipe -fPIE -I./libbrainfunk -gdwarf-4 -g3 -std=c99 -pedantic -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter
 
 LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o

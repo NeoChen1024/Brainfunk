@@ -13,10 +13,6 @@ Neo_Chen's extension:
 	/	Push stack
 	(	If start
 	)	If end
-	=??	Set hexdecimal
-	@??	Jump to hexdecimal
-	^??	Set pointer to hexdecimal
-	$'??	Push hexdecimal
 	$+	Add top of stack to current cell and pop
 	$-	Subtract top of stack from current cell and pop
 	$[	while(pop()) {
