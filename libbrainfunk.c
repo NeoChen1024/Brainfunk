@@ -32,6 +32,13 @@ char opname[OP_INSTS][16] =
 	"inv"
 };
 
+int opcode(char *name)
+{
+	int i=0;
+	while(strcmp(name, opname[i]) != 0 && i < OP_INSTS) ++i;
+	return i;
+}
+
 void panic(char *msg)
 {
 	fprintf(stderr, "%s\n", msg);
@@ -522,13 +529,13 @@ void brainfunk_execute(brainfunk_t cpu)
 
 void bitcode_read(brainfunk_t cpu, FILE *fp)
 {
-	uint8_t op=0;
+	char op[16];
 	int32_t arg=0;
 	long long int addr=0;
 
-	while(fscanf(fp, "%lld:\t%hhu\t%d\n", &addr, &op, &arg) > 0)
+	while(fscanf(fp, "%lld:\t%s\t%d\n", &addr, op, &arg) > 0)
 	{
-		cpu->code[addr].op = op;
+		cpu->code[addr].op = opcode(op);
 		cpu->code[addr].arg = arg;
 		cpu->codelen++;
 	}
@@ -566,8 +573,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 
 	if(format == FORMAT_C)
 	{
-		fputs(	"\n\tpanic(\"This shouldn't happen\");\n\n"
-			"\treturn 0;\n"
+		fputs("\treturn 0;\n"
 			"}\n",
 			fp);
 	}

@@ -162,6 +162,18 @@ int main(int argc, char **argv)
 			else if(mode == MODE_BITCODE)
 				bitcode_dump(cpu, FORMAT_PLAIN, output);
 			break;
+		case MODE_VM:
+			if(input_opened == FALSE)
+				panic("?INPUT");
+			else
+				bitcode_read(cpu, input);
+			if(debug)
+			{
+				bitcode_dump(cpu, FORMAT_PLAIN, stderr);
+				delim(stderr);
+			}
+			brainfunk_execute(cpu);	/* start executing code */
+			break;
 		default:
 			break;
 	}

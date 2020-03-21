@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-set -ev
+set -ex
 CC="cc"
 CFLAGS="-Ofast -fPIE -pipe -g3 -I. -Wall -Wextra -Wno-unused-label -std=c99"
 FILE="$(mktemp).c"
