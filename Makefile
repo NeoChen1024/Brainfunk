@@ -14,7 +14,7 @@ test:	brainfunk
 	./test.sh brainfunk
 
 countline:
-	wc -l */*.c */*.h *.c
+	wc -l *.h *.c
 
 clean:
 	rm -f $(OBJS) brainfunk
