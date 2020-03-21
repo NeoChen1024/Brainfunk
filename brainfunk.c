@@ -11,52 +11,76 @@
 #define MEMSIZE		262144
 #define STACKSIZE	4096
 
-brainfunk_t cpu;
+#define DELIM_CHARS	80
+#define DELIM_CHAR	'='
 
-data_t io_in(void)
+brainfunk_t cpu;
+FILE* input;
+char *code=NULL;
+int debug = NODEBUG;
+int code_loaded=FALSE;
+
+IO_IN_FUNCTION
 {
 	int c = getc(stdin);
+	if(debug)
+		fputs("INPUT: ", stderr);
 	if(c != EOF)
 		return (data_t)(c & 0xFF);
 	else
 		return 0;
 }
 
-void io_out(data_t data)
+IO_OUT_FUNCTION
 {
-	putc((char)data, stdout);
+	if(debug)
+		fprintf(stderr, "OUTPUT: %c\n", (char)data);
+	else
+		putc((char)data, stdout);
 }
 
-int main(int argc, char **argv)
+void delim(FILE *fp)
 {
-	FILE* input = stdin;
+	int i=0;
+	putc('\n', fp);
+	for(i = 0; i < DELIM_CHARS; i++)
+		putc(DELIM_CHAR, fp);
+	putc('\n', fp);
+	putc('\n', fp);		/* Extra empty line */
+}
+
+void parsearg(int argc, char **argv)
+{
 	int opt=0;
-	int debug = NODEBUG;
-	int code_loaded=FALSE;
-	char *code=NULL;
 
 	while((opt = getopt(argc, argv, "hdf:c:")) != -1)
 	{
 		switch(opt)
 		{
 			case 'f':
-				if(strcmp("-", optarg) == 0)
-					input = stdin;
-				else
+				if(!code_loaded)
 				{
-					if((input = fopen(optarg, "r")) == NULL)
+					if(strcmp("-", optarg) == 0)
+						input = stdin;
+					else
 					{
-						perror(optarg);
-						exit(8);
+						if((input = fopen(optarg, "r")) == NULL)
+						{
+							perror(optarg);
+							exit(8);
+						}
 					}
+					code = brainfunk_readtext(input, CODESIZE);
+					code_loaded=TRUE;
 				}
-				code = brainfunk_readtext(input, STRLENGTH);
-				code_loaded=TRUE;
 				break;
 			case 'c':
-				code = calloc(strlen(optarg) + 1, sizeof(char));
-				strcpy(code, optarg);
-				code_loaded=TRUE;
+				if(!code_loaded)
+				{
+					code = calloc(strlen(optarg) + 1, sizeof(char));
+					strcpy(code, optarg);
+					code_loaded=TRUE;
+				}
 				break;
 			case 'd':
 				debug = DEBUG;
@@ -66,21 +90,29 @@ int main(int argc, char **argv)
 				break;
 		}
 	}
+}
 
-	if(code_loaded == FALSE)
-		panic("?CODE");
-
+int main(int argc, char **argv)
+{
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
+	parsearg(argc, argv);
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
 
-	if(debug)
-		puts(code);
+	if(code_loaded == FALSE)
+		panic("?CODE");
+
 	bitcode_convert(cpu, code);
 	if(debug)
-		bitcode_dump(cpu, stdout);
-	brainfunk_execute(cpu);
+	{
+		brainfunk_dumptext(code, stderr);
+		delim(stderr);
+		bitcode_dump(cpu, stderr);
+		delim(stderr);
+	}
+
+	brainfunk_execute(cpu);	/* start executing code */
 	brainfunk_destroy(&cpu);
 }

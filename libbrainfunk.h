@@ -1,3 +1,4 @@
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -7,7 +8,7 @@
 
 #pragma once
 
-#define TRUE	1
+#define TRUE	-1
 #define FALSE	0
 
 #define CONT	1
@@ -107,8 +108,33 @@ enum opcodes
 	OP_INSTS /* Total number of instructions */
 };
 
-#include "functions.h"
-#include "handler.h"
-
 extern handler_t handler[OP_INSTS];
 extern char opname[OP_INSTS][16];
+
+void panic(char *msg);
+brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug);
+void brainfunk_destroy(brainfunk_t *brainfunk);
+void brainfunk_execute(brainfunk_t bf);
+void bitcode_dump(brainfunk_t cpu, FILE *fp);
+void bitcode_read(brainfunk_t cpu, FILE *fp);
+char *brainfunk_readtext(FILE *fp, size_t size);
+void brainfunk_dumptext(char *code, FILE *fp);
+void bitcode_convert(brainfunk_t cpu, char *text);
+void quit(int32_t arg);
+
+pcstack_t pcstack_create(size_t size);
+arg_t pcstack_pop(pcstack_t stack);
+void pcstack_push(pcstack_t stack, arg_t data);
+void pcstack_destroy(pcstack_t *stack);
+
+void push(brainfunk_t cpu, data_t data);
+data_t pop(brainfunk_t cpu);
+
+/* These functions must be provided externally */
+extern data_t io_in(int debug);
+extern void io_out(data_t data, int debug);
+
+#define IO_IN_FUNCTION	\
+	data_t io_in(int debug)
+#define IO_OUT_FUNCTION	\
+	void io_out(data_t data, int debug)

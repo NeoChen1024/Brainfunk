@@ -1,22 +1,14 @@
 CC	= cc
-AR	= ar
-RANLIB	= ranlib
-OPT	= -O3 -finline
-CFLAGS	= $(OPT) -pipe -fPIE -I./libbrainfunk -gdwarf-4 -g3 -std=c99 -pedantic -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter
-
-LIBOBJS	= libbrainfunk/libbrainfunk.o libbrainfunk/handler.o
-BFOBJS	= brainfunk.o
+OPT	= -O3 -finline -flto
+CFLAGS	= $(OPT) -pipe -fPIE -I. -g -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -Wno-unused-parameter
+OBJS	= brainfunk.o libbrainfunk.o
 
 .PHONY: all clean countline
 
-all: libbrainfunk.a brainfunk
+all: brainfunk
 
-brainfunk: $(BFOBJS) libbrainfunk.a
-	$(CC) $(CFLAGS) $(LDFLAGS) $(BFOBJS) libbrainfunk.a -o brainfunk
-
-libbrainfunk.a: $(LIBOBJS)
-	$(AR) rvD libbrainfunk.a $(LIBOBJS)
-	$(RANLIB) libbrainfunk.a
+brainfunk: $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
 
 test:	brainfunk
 	./test.sh brainfunk
@@ -25,4 +17,4 @@ countline:
 	wc -l */*.c */*.h *.c
 
 clean:
-	rm -f $(LIBOBJS) libbrainfunk.a
+	rm -f $(OBJS)
