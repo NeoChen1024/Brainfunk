@@ -8,25 +8,29 @@
 
 #pragma once
 
-#define TRUE	-1
-#define FALSE	0
-
 #define CONT	1
 #define HALT	0
 
 #define LEXERR	-1
 #define ADV	1
 
-#define DEBUG	1
-#define NODEBUG	0
-
-#define IO_OUT	0
-#define IO_IN	1
-#define IO_OUTS	2
-#define IO_INS	3
+#define IO_IN	0
+#define IO_OUT	1
+#define IO_INS	2
+#define IO_OUTS	3
 
 #define STRLENGTH	4096
 #define PCSTACK_SIZE	4096
+
+/* External accessible macro definition */
+#define TRUE	-1
+#define FALSE	0
+
+#define DEBUG	1
+#define NODEBUG	0
+
+#define FORMAT_C	0
+#define FORMAT_PLAIN	1
 
 typedef uint8_t data_t;
 typedef data_t * mem_t;
@@ -115,7 +119,7 @@ void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug);
 void brainfunk_destroy(brainfunk_t *brainfunk);
 void brainfunk_execute(brainfunk_t bf);
-void bitcode_dump(brainfunk_t cpu, FILE *fp);
+void bitcode_dump(brainfunk_t cpu, int format, FILE *fp);
 void bitcode_read(brainfunk_t cpu, FILE *fp);
 char *brainfunk_readtext(FILE *fp, size_t size);
 void brainfunk_dumptext(char *code, FILE *fp);

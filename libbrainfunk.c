@@ -13,23 +13,23 @@
 
 char opname[OP_INSTS][16] =
 {
-	"HLT",
-	"ALU",
-	"ALUS",
-	"SET",
-	"POP",
-	"PUSH",
-	"PSHI",
-	"MOV",
-	"STP",
-	"JMP",
-	"JEZ",
-	"JNZ",
-	"JSEZ",
-	"JSNZ",
-	"IO",
-	"FRK",
-	"INV"
+	"hlt",
+	"alu",
+	"alus",
+	"set",
+	"pop",
+	"push",
+	"pshi",
+	"mov",
+	"stp",
+	"jmp",
+	"jez",
+	"jnz",
+	"jsez",
+	"jsnz",
+	"io",
+	"frk",
+	"inv"
 };
 
 void panic(char *msg)
@@ -536,14 +536,40 @@ void bitcode_read(brainfunk_t cpu, FILE *fp)
 	cpu->codelen++;
 }
 
-void bitcode_dump(brainfunk_t cpu, FILE *fp)
+void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 {
 	long long int pc = 0;
+	char *fmt;
+
+	if(format == FORMAT_C)
+	{
+		fmt = "\tL%lld:\t\t\t%s(%lld);\n";
+
+		fputs(	"#include <libstdbfc.h>\n\n"
+			"int main(void)\n"
+			"{\n"
+			"\tinit();\n",
+			fp);
+	}
+	else if(format == FORMAT_PLAIN)
+	{
+		fmt = "%lld:\t\t%s\t%lld\n";
+	}
+	else
+		panic("?INVALID_DUMP_FORMAT");
 
 	while(pc <= cpu->codelen)
 	{
-		fprintf(fp, "%lld:\t%s\t%lld\n", pc, opname[cpu->code[pc].op], cpu->code[pc].arg);
+		fprintf(fp, fmt, pc, opname[cpu->code[pc].op], cpu->code[pc].arg);
 		pc++;
+	}
+
+	if(format == FORMAT_C)
+	{
+		fputs(	"\n\tpanic(\"This shouldn't happen\");\n\n"
+			"\treturn 0;\n"
+			"}\n",
+			fp);
 	}
 }
 
