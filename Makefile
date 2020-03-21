@@ -17,4 +17,4 @@ countline:
 	wc -l */*.c */*.h *.c
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(OBJS) brainfunk
