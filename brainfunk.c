@@ -1,3 +1,35 @@
+/* ========================================================================== *\
+||			      Brainfunk in ANSI C			      ||
+||                                 Neo_Chen                                   ||
+\* ========================================================================== */
+
+/* ========================================================================== *\
+||   This is free and unencumbered software released into the public domain.  ||
+||									      ||
+||   Anyone is free to copy, modify, publish, use, compile, sell, or	      ||
+||   distribute this software, either in source code form or as a compiled    ||
+||   binary, for any purpose, commercial or non-commercial, and by any	      ||
+||   means.								      ||
+||									      ||
+||   In jurisdictions that recognize copyright laws, the author or authors    ||
+||   of this software dedicate any and all copyright interest in the	      ||
+||   software to the public domain. We make this dedication for the benefit   ||
+||   of the public at large and to the detriment of our heirs and	      ||
+||   successors. We intend this dedication to be an overt act of	      ||
+||   relinquishment in perpetuity of all present and future rights to this    ||
+||   software under copyright law.					      ||
+||									      ||
+||   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,	      ||
+||   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF       ||
+||   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.   ||
+||   IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR        ||
+||   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,    ||
+||   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR    ||
+||   OTHER DEALINGS IN THE SOFTWARE.					      ||
+||									      ||
+||   For more information, please refer to <http://unlicense.org/>            ||
+\* ========================================================================== */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -21,6 +53,7 @@ char *code=NULL;
 int debug = NODEBUG;
 int input_opened=FALSE;
 int output_opened=FALSE;
+int compat=NOCOMPAT;	/* don't ignore Brainfuck extensions */
 
 enum mode_enum
 {
@@ -46,7 +79,7 @@ IO_IN_FUNCTION
 IO_OUT_FUNCTION
 {
 	if(debug)
-		fprintf(stderr, "OUTPUT: %c\n", (char)data);
+		fprintf(stdout, "OUTPUT: %c\n", (char)data);
 	else
 		putc((char)data, stdout);
 }
@@ -65,7 +98,7 @@ void parsearg(int argc, char **argv)
 {
 	int opt=0;
 
-	while((opt = getopt(argc, argv, "hdm:f:o:")) != -1)
+	while((opt = getopt(argc, argv, "hdcm:f:o:")) != -1)
 	{
 		switch(opt)
 		{
@@ -116,8 +149,12 @@ void parsearg(int argc, char **argv)
 			case 'd':
 				debug = DEBUG;
 				break;
+			case 'c':
+				compat = COMPAT; /* ignore Brainfunk extensions */
+				break;
 			default:
-				printf("%s: [-d] [-f file]\n", argv[0]);
+				printf("%s: [-d] [-m mode] [-c] -f file [-o file]\n", argv[0]);
+				exit(1);
 				break;
 		}
 	}
@@ -136,17 +173,25 @@ int main(int argc, char **argv)
 	switch(mode)
 	{
 		case MODE_BF:
+		case MODE_VM:
 			if(input_opened == FALSE)
 				panic("?INPUT");
 			else
-				code = brainfunk_readtext(input, CODESIZE);
-			bitcode_convert(cpu, code);
-			if(debug)
 			{
-				brainfunk_dumptext(code, stderr);
-				delim(stderr);
-				bitcode_dump(cpu, FORMAT_PLAIN, stderr);
-				delim(stderr);
+				if(mode == MODE_BF)
+				{
+					code = brainfunk_readtext(input, compat, CODESIZE);
+					bitcode_convert(cpu, code);
+				}
+				else
+				{
+					bitcode_read(cpu, input);
+				}
+				if(debug)
+				{
+					bitcode_dump(cpu, FORMAT_PLAIN, output);
+					delim(output);
+				}
 			}
 			brainfunk_execute(cpu);	/* start executing code */
 			break;
@@ -155,24 +200,12 @@ int main(int argc, char **argv)
 			if(input_opened == FALSE)
 				panic("?INPUT");
 			else
-				code = brainfunk_readtext(input, CODESIZE);
+				code = brainfunk_readtext(input, compat, CODESIZE);
 			bitcode_convert(cpu, code);
 			if(mode == MODE_C)
 				bitcode_dump(cpu, FORMAT_C, output);
 			else if(mode == MODE_BITCODE)
 				bitcode_dump(cpu, FORMAT_PLAIN, output);
-			break;
-		case MODE_VM:
-			if(input_opened == FALSE)
-				panic("?INPUT");
-			else
-				bitcode_read(cpu, input);
-			if(debug)
-			{
-				bitcode_dump(cpu, FORMAT_PLAIN, stderr);
-				delim(stderr);
-			}
-			brainfunk_execute(cpu);	/* start executing code */
 			break;
 		default:
 			break;

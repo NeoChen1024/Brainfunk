@@ -1,9 +1,5 @@
 #include <libbrainfunk.h>
 
-#define ADV	1	/* Advance 1 character at a time */
-#define DIFF	-1
-#define SAME	0
-
 #define DEFINE(name)			\
 	.exec = &exec_ ## name,		\
 	.scan = &scan_ ## name
@@ -11,7 +7,7 @@
 #define EXEC(name)	static int exec_ ## name(brainfunk_t cpu)
 #define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t *pc, pcstack_t pcstack, arg_t *textptr, char *text)
 
-char opname[OP_INSTS][16] =
+char opname[OP_INSTS][OPLEN] =
 {
 	"hlt",
 	"alu",
@@ -108,13 +104,34 @@ SCAN(alu)
 
 EXEC(alus)
 {
+	push(cpu, pop(cpu) + cpu->code[cpu->pc].arg);
 	cpu->pc++;
 	return CONT;
 }
 
 SCAN(alus)
 {
-	return LEXERR;
+	arg_t plus=0;
+	arg_t minus=0;
+	if(lexcmp(text + *textptr, "$+") == SAME || lexcmp(text + *textptr, "$-") == SAME)
+	{
+		++*textptr;
+		while(text[*textptr] == '+' || text[*textptr] == '-')
+		{
+			if(text[*textptr] == '+')
+				plus++;
+			else if(text[*textptr] == '-')
+				minus++;
+			(*textptr)++;
+		}
+
+		code[*pc].op = OP_ALUS;
+		code[*pc].arg = plus - minus;
+		++*pc;
+		return ADV;
+	}
+	else
+		return LEXERR;
 }
 
 EXEC(set)
@@ -308,7 +325,16 @@ EXEC(jsez)
 
 SCAN(jsez)
 {
-	return LEXERR;
+	if(lexcmp(text + *textptr, "$[") == SAME)
+	{
+		code[*pc].op = OP_JSEZ;
+		pcstack_push(pcstack, *pc);
+		(*textptr) += 2;	/* "$[" is 2 chars */
+		++*pc;
+		return ADV;
+	}
+	else
+		return LEXERR;
 }
 
 EXEC(jsnz)
@@ -322,7 +348,20 @@ EXEC(jsnz)
 
 SCAN(jsnz)
 {
-	return LEXERR;
+	arg_t temp_pc=0;
+
+	if(lexcmp(text + *textptr, "$]") == SAME)
+	{
+		temp_pc = pcstack_pop(pcstack);
+		code[*pc].op = OP_JSNZ;
+		code[*pc].arg = temp_pc;
+		code[temp_pc].arg = *pc;
+		(*textptr) += 2;	/* "$]" is 2 chars */
+		++*pc;
+		return ADV;
+	}
+	else
+		return LEXERR;
 }
 
 EXEC(io)
@@ -505,7 +544,7 @@ void brainfunk_destroy(brainfunk_t *brainfunk)
 	*brainfunk = NULL;
 }
 
-static inline int brainfunk_singlestep(brainfunk_t cpu)
+static inline int brainfunk_step(brainfunk_t cpu)
 {
 	return handler[cpu->code[cpu->pc].op].exec(cpu);
 }
@@ -514,7 +553,7 @@ void brainfunk_execute(brainfunk_t cpu)
 {
 	if(cpu->debug)
 	{
-		while(brainfunk_singlestep(cpu) != HALT)
+		while(brainfunk_step(cpu) != HALT)
 		{
 			fprintf(stderr, "%lld:\t%s\t%lld\n", cpu->pc, opname[cpu->code[cpu->pc].op], cpu->code[cpu->pc].arg);
 			fprintf(stderr, "\tMEM[%lld] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
@@ -522,14 +561,14 @@ void brainfunk_execute(brainfunk_t cpu)
 	}
 	else
 	{
-		while(brainfunk_singlestep(cpu) != HALT);
+		while(brainfunk_step(cpu) != HALT);
 	}
 	return;
 }
 
 void bitcode_read(brainfunk_t cpu, FILE *fp)
 {
-	char op[16];
+	char op[OPLEN];
 	int32_t arg=0;
 	long long int addr=0;
 
@@ -579,7 +618,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	}
 }
 
-int iscode(int c)
+int iscode(int c, int compat)
 {
 	switch(c)
 	{
@@ -592,12 +631,23 @@ int iscode(int c)
 		case '.':
 		case ',':
 			return TRUE;
+		case '$':
+		case '\\':
+		case '/':
+		case '~':
+		case '_':
+		case '(':
+		case ')':
+			if(compat)
+				return FALSE;
+			else
+				return TRUE;
 		default:
 			return FALSE; 
 	}
 }
 
-char *brainfunk_readtext(FILE *fp, size_t size)
+char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 {
 	char *code = malloc(size);
 	int c=0;
@@ -605,7 +655,7 @@ char *brainfunk_readtext(FILE *fp, size_t size)
 
 	while((c = getc(fp)) != EOF)
 	{
-		if(!iscode(c))
+		if(!iscode(c, compat))
 			continue;
 		code[i++] = (char)c;
 

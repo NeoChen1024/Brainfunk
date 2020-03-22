@@ -9,19 +9,27 @@
 
 #pragma once
 
-#define CONT	1
+/* Used in execution function */
 #define HALT	0
+#define CONT	1
 
-#define LEXERR	-1
+/* Used in preprocessor */
+#define LEXERR	0
 #define ADV	1
 
+#define DIFF	-1
+#define SAME	0
+
+/* I/O type number */
 #define IO_IN	0
 #define IO_OUT	1
 #define IO_INS	2
 #define IO_OUTS	3
 
-#define STRLENGTH	4096
+/* Limits */
+#define MAXLEN		4096
 #define PCSTACK_SIZE	4096
+#define OPLEN		16
 
 /* External accessible macro definition */
 #define TRUE	-1
@@ -32,6 +40,9 @@
 
 #define FORMAT_C	0
 #define FORMAT_PLAIN	1
+
+#define NOCOMPAT	0
+#define COMPAT		1
 
 typedef uint8_t data_t;
 typedef data_t * mem_t;
@@ -114,7 +125,7 @@ enum opcodes
 };
 
 extern handler_t handler[OP_INSTS];
-extern char opname[OP_INSTS][16];
+extern char opname[OP_INSTS][OPLEN];
 
 void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug);
@@ -122,7 +133,7 @@ void brainfunk_destroy(brainfunk_t *brainfunk);
 void brainfunk_execute(brainfunk_t bf);
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp);
 void bitcode_read(brainfunk_t cpu, FILE *fp);
-char *brainfunk_readtext(FILE *fp, size_t size);
+char *brainfunk_readtext(FILE *fp, int compat, size_t size);
 void brainfunk_dumptext(char *code, FILE *fp);
 void bitcode_convert(brainfunk_t cpu, char *text);
 void quit(int32_t arg);
