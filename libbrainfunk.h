@@ -138,14 +138,6 @@ void brainfunk_dumptext(char *code, FILE *fp);
 void bitcode_convert(brainfunk_t cpu, char *text);
 void quit(int32_t arg);
 
-pcstack_t pcstack_create(size_t size);
-arg_t pcstack_pop(pcstack_t stack);
-void pcstack_push(pcstack_t stack, arg_t data);
-void pcstack_destroy(pcstack_t *stack);
-
-void push(brainfunk_t cpu, data_t data);
-data_t pop(brainfunk_t cpu);
-
 /* These functions must be provided externally */
 extern data_t io_in(int debug);
 extern void io_out(data_t data, int debug);

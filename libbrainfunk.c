@@ -54,6 +54,58 @@ int lexcmp(char *code, char *lex)
 	return SAME;
 }
 
+pcstack_t pcstack_create(size_t size)
+{
+	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
+	stack->stack = calloc(size, sizeof(arg_t));
+	stack->ptr = 0;
+	stack->size = size;
+
+	return stack;
+}
+
+arg_t pcstack_pop(pcstack_t stack)
+{
+	if(stack->ptr == 0)
+		panic("?PCSTACK_UNDERFLOW");
+	return stack->stack[--(stack->ptr)];
+}
+
+void pcstack_push(pcstack_t stack, arg_t data)
+{
+	if((size_t)stack->ptr >= stack->size)
+		panic("?PCSTACK_OVERFLOW");
+	stack->stack[stack->ptr++] = data;
+	return;
+}
+
+void pcstack_destroy(pcstack_t *stack)
+{
+	free((*stack)->stack);
+	free(*stack);
+	*stack = NULL;
+}
+
+/* Ignore Overflow and Underflow */
+void push(brainfunk_t cpu, data_t data)
+{
+	if((size_t)cpu->sp >= cpu->size.stack)
+		return;
+	cpu->stack[cpu->sp++] = data;
+}
+
+static inline data_t pop(brainfunk_t cpu)
+{
+	if(cpu->sp == 0)
+		return 0;
+	return cpu->stack[--(cpu->sp)];
+}
+
+static inline data_t peek(brainfunk_t cpu)
+{
+	return cpu->stack[cpu->sp - 1];
+}
+
 EXEC(hlt)
 {
 	return HALT;
@@ -104,7 +156,7 @@ SCAN(alu)
 
 EXEC(alus)
 {
-	push(cpu, pop(cpu) + cpu->code[cpu->pc].arg);
+	push(cpu, peek(cpu) + cpu->code[cpu->pc].arg);
 	cpu->pc++;
 	return CONT;
 }
@@ -618,7 +670,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	}
 }
 
-int iscode(int c, int compat)
+static inline int iscode(int c, int compat)
 {
 	switch(c)
 	{
@@ -716,51 +768,4 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 void quit(int32_t arg)
 {
 	exit(arg);
-}
-
-pcstack_t pcstack_create(size_t size)
-{
-	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
-	stack->stack = calloc(size, sizeof(arg_t));
-	stack->ptr = 0;
-	stack->size = size;
-
-	return stack;
-}
-
-arg_t pcstack_pop(pcstack_t stack)
-{
-	if(stack->ptr == 0)
-		panic("?PCSTACK_UNDERFLOW");
-	return stack->stack[--(stack->ptr)];
-}
-
-void pcstack_push(pcstack_t stack, arg_t data)
-{
-	if((size_t)stack->ptr >= stack->size)
-		panic("?PCSTACK_OVERFLOW");
-	stack->stack[stack->ptr++] = data;
-	return;
-}
-
-void pcstack_destroy(pcstack_t *stack)
-{
-	free((*stack)->stack);
-	free(*stack);
-	*stack = NULL;
-}
-
-/* Ignore Overflow and Underflow */
-void push(brainfunk_t cpu, data_t data)
-{
-	if((size_t)cpu->sp >= cpu->size.stack)
-		return;
-	cpu->stack[cpu->sp++] = data;
-}
-
-data_t pop(brainfunk_t cpu)
-{
-	if(cpu->sp == 0)
-		return 0;
-	return cpu->stack[--(cpu->sp)];
 }
