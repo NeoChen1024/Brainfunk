@@ -39,9 +39,9 @@
 #include <libbrainfunk.h>
 
 /* This should be enough to run any Brainfuck program */
-#define CODESIZE	1048576
-#define MEMSIZE		262144
-#define STACKSIZE	4096
+#define CODESIZE	(1<<24)
+#define MEMSIZE		(1<<20)
+#define STACKSIZE	(1<<12)
 
 #define DELIM_CHARS	80
 #define DELIM_CHAR	'='

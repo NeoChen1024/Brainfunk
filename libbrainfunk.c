@@ -712,10 +712,7 @@ char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 		code[i++] = (char)c;
 
 		if((i+1) >= size)
-		{
-			printf("size = %zd", size);
 			panic("?CODESIZE");
-		}
 	}
 	code[i] = '\0';
 	return code;
@@ -755,9 +752,7 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 		{
 			ret = handler[try++].scan(cpu->code, &pc, pcstack, &textptr, text);
 			if(ret != LEXERR)
-			{
 				break;
-			}
 		}
 	}
 
