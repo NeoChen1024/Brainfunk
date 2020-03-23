@@ -33,10 +33,10 @@ test_from_url()
 for i in "$@"; do
 	BF="${PWD}/${i}"
 	msg_echo "Testing Basic Loop, see if it coredumps" "-[>+<-]"
-	( ${BF} -c '-[>+<-]' ) && response "PASS" || response "FAIL"
+	( ${BF} -s '-[>+<-]' ) && response "PASS" || response "FAIL"
 
 	msg_echo "Hello World Test"
-	( ${BF} -c '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS" || response "FAIL"
+	( ${BF} -s '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.' ) && response "PASS" || response "FAIL"
 
 	msg_echo "Downloading More Tests from Internet"
 	mkdir -p test

@@ -53,6 +53,7 @@ char *code=NULL;
 int debug = NODEBUG;
 int input_opened=FALSE;
 int output_opened=FALSE;
+int string_input=FALSE;
 int compat=NOCOMPAT;	/* don't ignore Brainfuck extensions */
 
 enum mode_enum
@@ -98,7 +99,7 @@ void parsearg(int argc, char **argv)
 {
 	int opt=0;
 
-	while((opt = getopt(argc, argv, "hdcm:f:o:")) != -1)
+	while((opt = getopt(argc, argv, "hdcm:f:o:s:")) != -1)
 	{
 		switch(opt)
 		{
@@ -146,6 +147,11 @@ void parsearg(int argc, char **argv)
 					output_opened=TRUE;
 				}
 				break;
+			case 's':
+				code = calloc(strlen(optarg) + 1, sizeof(char));
+				strcpy(code, optarg);
+				string_input = TRUE;
+				break;
 			case 'd':
 				debug = DEBUG;
 				break;
@@ -153,7 +159,7 @@ void parsearg(int argc, char **argv)
 				compat = COMPAT; /* ignore Brainfunk extensions */
 				break;
 			default:
-				printf("%s: [-d] [-m mode] [-c] -f file [-o file]\n", argv[0]);
+				printf("%s: [-d] [-m mode] [-c] [-s code] -f file [-o file]\n", argv[0]);
 				exit(1);
 				break;
 		}
@@ -174,13 +180,14 @@ int main(int argc, char **argv)
 	{
 		case MODE_BF:
 		case MODE_VM:
-			if(input_opened == FALSE)
+			if(input_opened == FALSE && string_input == FALSE)
 				panic("?INPUT");
 			else
 			{
 				if(mode == MODE_BF)
 				{
-					code = brainfunk_readtext(input, compat, CODESIZE);
+					if(!string_input)
+						code = brainfunk_readtext(input, compat, CODESIZE);
 					bitcode_convert(cpu, code);
 				}
 				else
