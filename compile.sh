@@ -19,3 +19,5 @@ fi
 msg_echo "$SRC"
 ./brainfunk -m c -f "$SRC" -o "$FILE"
 "$CC" $CFLAGS "$FILE" -o "$OUT"
+
+rm "$FILE"
