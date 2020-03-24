@@ -62,15 +62,21 @@ void panic(char *msg)
 }
 
 #define	alu(x)	\
-	(current += x)
-#define	mov(x)	\
-	(ptr += x)
+	current += x
+#define alus(x)	\
+	_push(_pop() + current)
 #define	set(x)	\
-	(current = x)
+	current = x
+#define push(x)	\
+	_push(current)
+#define pop(x)	\
+	current = _pop();
 #define	pshi(x)	\
-	push((memory_t)x)
+	_push((memory_t)x)
+#define	mov(x)	\
+	ptr += x
 #define	stp(x)	\
-	(ptr = x)
+	ptr = x
 #define	jmp(x)	\
 	goto L ## x
 #define	jez(x)	\
@@ -78,9 +84,9 @@ void panic(char *msg)
 #define	jnz(x)	\
 	if(current != 0) goto L ## x
 #define	jsez(x)	\
-	if(pop() == 0) goto L ## x
+	if(_pop() == 0) goto L ## x
 #define	jsnz(x)	\
-	if(pop() != 0) goto L ## x
+	if(_pop() != 0) goto L ## x
 #define	frk(x)	\
 	pid_t p = fork();	\
 	current = p;		\
@@ -88,18 +94,18 @@ void panic(char *msg)
 #define	inv(x)	\
 	panic("?INVALID");
 
-INLINE void push(memory_t content)
+INLINE void _push(memory_t content)
 {
-	if(++stack_ptr >= STACKSIZE)
-		panic("?>STACK");
-	stack[stack_ptr] = content;
+	if(stack_ptr >= STACKSIZE)
+		return;
+	stack[stack_ptr++] = content;
 }
 
-INLINE memory_t pop()
+INLINE memory_t _pop()
 {
 	if(stack_ptr == 0)
-		panic("?<STACK");
-	return stack[stack_ptr--];
+		return 0;
+	return stack[--stack_ptr];
 }
 
 void init(void)
@@ -132,16 +138,15 @@ INLINE void io(arg_t arg)
 			out(memory[ptr]);
 			break;
 		case 2: /* INS */
-			push(in());
+			_push(in());
 			break;
 		case 3: /* OUTS */
-			out(pop());
+			out(_pop());
 			break;
 	}
 }
 
 void hlt(arg_t arg)
 {
-	free(memory);
 	exit(arg);
 }
