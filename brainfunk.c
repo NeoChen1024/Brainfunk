@@ -58,10 +58,11 @@ int compat=NOCOMPAT;	/* don't ignore Brainfuck extensions */
 
 enum mode_enum
 {
-	MODE_BF,
-	MODE_BITCODE,
-	MODE_C,
-	MODE_VM
+	MODE_BF,	/* Execute Brainfuck / Brainfunk program */
+	MODE_BIT,	/* Output bitcode */
+	MODE_C,		/* Convert Brainfunk to C code for compiling */
+	MODE_BITC,	/* Convert bitcode to C for compiling */
+	MODE_VM		/* Execute bitcode directly */
 };
 
 enum mode_enum mode = MODE_BF;
@@ -106,10 +107,12 @@ void parsearg(int argc, char **argv)
 			case 'm':
 				if(!strcmp("bf", optarg))
 					mode = MODE_BF;
-				else if(!strcmp("c", optarg))
+				else if(!strcmp("bfc", optarg))
 					mode = MODE_C;
 				else if(!strcmp("bitcode", optarg))
-					mode = MODE_BITCODE;
+					mode = MODE_BIT;
+				else if(!strcmp("bcc", optarg))
+					mode = MODE_BITC;
 				else if(!strcmp("vm", optarg))
 					mode = MODE_VM;
 				else
@@ -176,46 +179,29 @@ int main(int argc, char **argv)
 	parsearg(argc, argv);
 	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
 
-	switch(mode)
+	if(input_opened == FALSE && (string_input == FALSE && mode == MODE_BF))
+		panic("?INPUT");
+	else
 	{
-		case MODE_BF:
-		case MODE_VM:
-			if(input_opened == FALSE && string_input == FALSE)
-				panic("?INPUT");
-			else
-			{
-				if(mode == MODE_BF)
-				{
-					if(!string_input)
-						code = brainfunk_readtext(input, compat, CODESIZE);
-					bitcode_convert(cpu, code);
-				}
-				else
-				{
-					bitcode_read(cpu, input);
-				}
-				if(debug)
-				{
-					bitcode_dump(cpu, FORMAT_PLAIN, output);
-					delim(output);
-				}
-			}
-			brainfunk_execute(cpu);	/* start executing code */
-			break;
-		case MODE_BITCODE:
-		case MODE_C:
-			if(input_opened == FALSE)
-				panic("?INPUT");
-			else
+		if(mode == MODE_VM || mode == MODE_BITC)
+			bitcode_read(cpu, input);
+		else
+		{
+			if(!string_input)
 				code = brainfunk_readtext(input, compat, CODESIZE);
 			bitcode_convert(cpu, code);
-			if(mode == MODE_C)
-				bitcode_dump(cpu, FORMAT_C, output);
-			else if(mode == MODE_BITCODE)
+			if(debug)
+			{
 				bitcode_dump(cpu, FORMAT_PLAIN, output);
-			break;
-		default:
-			break;
+				delim(output);
+			}
+		}
+		if(mode == MODE_C || mode == MODE_BITC)
+			bitcode_dump(cpu, FORMAT_C, output);
+		else if(mode == MODE_BIT)
+			bitcode_dump(cpu, FORMAT_PLAIN, output);
+		else
+			brainfunk_execute(cpu);	/* start executing code */
 	}
 	brainfunk_destroy(&cpu);
 }
