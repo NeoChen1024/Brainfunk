@@ -630,8 +630,6 @@ void bitcode_read(brainfunk_t cpu, FILE *fp)
 		cpu->code[addr].arg = arg;
 		cpu->codelen++;
 	}
-
-	cpu->codelen++;
 }
 
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
@@ -656,7 +654,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	else
 		panic("?INVALID_DUMP_FORMAT");
 
-	while(pc <= cpu->codelen)
+	while(pc < cpu->codelen)
 	{
 		fprintf(fp, fmt, pc, opname[cpu->code[pc].op], cpu->code[pc].arg);
 		pc++;
