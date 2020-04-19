@@ -1,6 +1,6 @@
 CC	= cc
-OPT	= -O3 -finline -flto
-CFLAGS	= $(OPT) -pipe -fPIE -I. -g -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -Wno-unused-parameter
+OPT	= -Ofast -finline -flto
+CFLAGS	= $(OPT) -pipe -fPIC -fPIE -I. -g -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -Wno-unused-parameter
 OBJS	= brainfunk.o libbrainfunk.o
 
 .PHONY: all clean countline test
