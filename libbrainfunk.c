@@ -7,7 +7,7 @@
 #define EXEC(name)	static int exec_ ## name(brainfunk_t cpu)
 #define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t *pc, pcstack_t pcstack, arg_t *textptr, char *text)
 
-char opname[OP_INSTS][OPLEN] =
+char opname[_OP_INSTS][_OPLEN] =
 {
 	"hlt",
 	"alu",
@@ -31,7 +31,7 @@ char opname[OP_INSTS][OPLEN] =
 int opcode(char *name)
 {
 	int i=0;
-	while(strcmp(name, opname[i]) != 0 && i < OP_INSTS) ++i;
+	while(strcmp(name, opname[i]) != 0 && i < _OP_INSTS) ++i;
 	return i;
 }
 
@@ -47,11 +47,11 @@ int lexcmp(char *code, char *lex)
 	while(lex[i] != '\0')
 	{
 		if(code[i] != lex[i])
-			return DIFF;
+			return _DIFF;
 		else
 			i++;
 	}
-	return SAME;
+	return _SAME;
 }
 
 pcstack_t pcstack_create(size_t size)
@@ -108,27 +108,27 @@ static inline data_t peek(brainfunk_t cpu)
 
 EXEC(hlt)
 {
-	return HALT;
+	return _HALT;
 }
 
 SCAN(hlt)
 {
 	if(text[*textptr] == '_')
 	{
-		code->op = OP_HLT;
+		code->op = _OP_HLT;
 		++*textptr;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(alu)
 {
 	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg;
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(alu)
@@ -144,13 +144,13 @@ SCAN(alu)
 		(*textptr)++;
 	}
 	if(plus == 0 && minus == 0)
-		return LEXERR;
+		return _LEXERR;
 	else
 	{
-		code[*pc].op = OP_ALU;
+		code[*pc].op = _OP_ALU;
 		code[*pc].arg = plus - minus;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 }
 
@@ -158,14 +158,14 @@ EXEC(alus)
 {
 	push(cpu, peek(cpu) + cpu->code[cpu->pc].arg);
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(alus)
 {
 	arg_t plus=0;
 	arg_t minus=0;
-	if(lexcmp(text + *textptr, "$+") == SAME || lexcmp(text + *textptr, "$-") == SAME)
+	if(lexcmp(text + *textptr, "$+") == _SAME || lexcmp(text + *textptr, "$-") == _SAME)
 	{
 		++*textptr;
 		while(text[*textptr] == '+' || text[*textptr] == '-')
@@ -177,85 +177,85 @@ SCAN(alus)
 			(*textptr)++;
 		}
 
-		code[*pc].op = OP_ALUS;
+		code[*pc].op = _OP_ALUS;
 		code[*pc].arg = plus - minus;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(set)
 {
 	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg;
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(set)
 {
-	if(lexcmp(text + *textptr, "[-]") == SAME)
+	if(lexcmp(text + *textptr, "[-]") == _SAME)
 	{
-		code[*pc].op = OP_SET;
+		code[*pc].op = _OP_SET;
 		code[*pc].arg = 0;
 		*textptr += 3; /* 3 characters, so increment by 3 */
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(pop)
 {
 	cpu->mem[cpu->ptr] = pop(cpu);
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(pop)
 {
 	if(text[*textptr] == '\\')
 	{
-		code[*pc].op = OP_POP;
+		code[*pc].op = _OP_POP;
 		code[*pc].arg = 0;
 		++*textptr;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(push)
 {
 	push(cpu, cpu->mem[cpu->ptr]);
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(push)
 {
 	if(text[*textptr] == '/')
 	{
-		code[*pc].op = OP_PUSH;
+		code[*pc].op = _OP_PUSH;
 		code[*pc].arg = 0;
 		++*textptr;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(pshi)
 {
 	push(cpu, cpu->code[cpu->pc].arg);
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(pshi)
 {
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(mov)
@@ -267,7 +267,7 @@ EXEC(mov)
 	else
 		cpu->ptr += cpu->code[cpu->pc].arg;
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(mov)
@@ -283,13 +283,13 @@ SCAN(mov)
 		(*textptr)++;
 	}
 	if(forward == 0 && backward == 0)
-		return LEXERR;
+		return _LEXERR;
 	else
 	{
-		code[*pc].op = OP_MOV;
+		code[*pc].op = _OP_MOV;
 		code[*pc].arg = forward - backward;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 }
 
@@ -297,23 +297,23 @@ EXEC(stp)
 {
 	cpu->ptr = cpu->code[cpu->pc].arg;
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(stp)
 {
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(jmp)
 {
 	cpu->pc = cpu->code[cpu->pc].arg;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(jmp)
 {
-	return LEXERR;
+	return _LEXERR;
 }
 
 EXEC(jez)
@@ -322,21 +322,21 @@ EXEC(jez)
 		cpu->pc = cpu->code[cpu->pc].arg;
 	else
 		cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(jez)
 {
 	if(text[(*textptr)] == '[')
 	{
-		code[*pc].op = OP_JEZ;
+		code[*pc].op = _OP_JEZ;
 		pcstack_push(pcstack, *pc);
 		++*textptr;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(jnz)
@@ -345,7 +345,7 @@ EXEC(jnz)
 		cpu->pc = cpu->code[cpu->pc].arg;
 	else
 		cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(jnz)
@@ -355,15 +355,15 @@ SCAN(jnz)
 	if(text[(*textptr)] == ']')
 	{
 		temp_pc = pcstack_pop(pcstack);
-		code[*pc].op = OP_JNZ;
+		code[*pc].op = _OP_JNZ;
 		code[*pc].arg = temp_pc;
 		code[temp_pc].arg = *pc;
 		++*textptr;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(jsez)
@@ -372,21 +372,21 @@ EXEC(jsez)
 		cpu->pc = cpu->code[cpu->pc].arg;
 	else
 		cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(jsez)
 {
-	if(lexcmp(text + *textptr, "$[") == SAME)
+	if(lexcmp(text + *textptr, "$[") == _SAME)
 	{
-		code[*pc].op = OP_JSEZ;
+		code[*pc].op = _OP_JSEZ;
 		pcstack_push(pcstack, *pc);
 		(*textptr) += 2;	/* "$[" is 2 chars */
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(jsnz)
@@ -395,68 +395,68 @@ EXEC(jsnz)
 		cpu->pc = cpu->code[cpu->pc].arg;
 	else
 		cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(jsnz)
 {
 	arg_t temp_pc=0;
 
-	if(lexcmp(text + *textptr, "$]") == SAME)
+	if(lexcmp(text + *textptr, "$]") == _SAME)
 	{
 		temp_pc = pcstack_pop(pcstack);
-		code[*pc].op = OP_JSNZ;
+		code[*pc].op = _OP_JSNZ;
 		code[*pc].arg = temp_pc;
 		code[temp_pc].arg = *pc;
 		(*textptr) += 2;	/* "$]" is 2 chars */
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(io)
 {
 	switch(cpu->code[cpu->pc].arg)
 	{
-		case IO_IN:
+		case _IO_IN:
 			cpu->mem[cpu->ptr] = io_in(cpu->debug);
 			break;
-		case IO_OUT:
+		case _IO_OUT:
 			io_out(cpu->mem[cpu->ptr], cpu->debug);
 			break;
-		case IO_INS:
+		case _IO_INS:
 			push(cpu, io_in(cpu->debug));
 			break;
-		case IO_OUTS:
+		case _IO_OUTS:
 			io_out(pop(cpu), cpu->debug);
 			break;
 	}
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(io)
 {
 	if(text[*textptr] == '.')
 	{
-		code[*pc].op = OP_IO;
-		code[*pc].arg = IO_OUT;
+		code[*pc].op = _OP_IO;
+		code[*pc].arg = _IO_OUT;
 		(*textptr)++;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else if (text[*textptr] == ',')
 	{
-		code[*pc].op = OP_IO;
-		code[*pc].arg = IO_IN;
+		code[*pc].op = _OP_IO;
+		code[*pc].arg = _IO_IN;
 		(*textptr)++;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(frk)
@@ -467,99 +467,99 @@ EXEC(frk)
 	else
 		cpu->mem[cpu->ptr] = (data_t)p;
 	cpu->pc++;
-	return CONT;
+	return _CONT;
 }
 
 SCAN(frk)
 {
 	if(text[(*textptr)++] == '~')
 	{
-		code[*pc].op = OP_FRK;
+		code[*pc].op = _OP_FRK;
 		++*pc;
-		return ADV;
+		return _ADV;
 	}
 	else
-		return LEXERR;
+		return _LEXERR;
 }
 
 EXEC(inv)
 {
 	panic("?INV");
-	return HALT;
+	return _HALT;
 }
 
 SCAN(inv)
 {
-	return LEXERR;
+	return _LEXERR;
 }
 
-handler_t handler[OP_INSTS] =
+handler_t handler[_OP_INSTS] =
 {
-	[OP_HLT] =
+	[_OP_HLT] =
 	{
 		DEFINE(hlt)
 	},
-	[OP_ALU] =
+	[_OP_ALU] =
 	{
 		DEFINE(alu)
 	},
-	[OP_ALUS] =
+	[_OP_ALUS] =
 	{
 		DEFINE(alus)
 	},
-	[OP_SET] =
+	[_OP_SET] =
 	{
 		DEFINE(set)
 	},
-	[OP_POP] =
+	[_OP_POP] =
 	{
 		DEFINE(pop)
 	},
-	[OP_PUSH] =
+	[_OP_PUSH] =
 	{
 		DEFINE(push)
 	},
-	[OP_PSHI] =
+	[_OP_PSHI] =
 	{
 		DEFINE(pshi)
 	},
-	[OP_MOV] =
+	[_OP_MOV] =
 	{
 		DEFINE(mov)
 	},
-	[OP_STP] =
+	[_OP_STP] =
 	{
 		DEFINE(stp)
 	},
-	[OP_JMP] =
+	[_OP_JMP] =
 	{
 		DEFINE(jmp)
 	},
-	[OP_JEZ] =
+	[_OP_JEZ] =
 	{
 		DEFINE(jez)
 	},
-	[OP_JNZ] =
+	[_OP_JNZ] =
 	{
 		DEFINE(jnz)
 	},
-	[OP_JSEZ] =
+	[_OP_JSEZ] =
 	{
 		DEFINE(jsez)
 	},
-	[OP_JSNZ] =
+	[_OP_JSNZ] =
 	{
 		DEFINE(jsnz)
 	},
-	[OP_IO] =
+	[_OP_IO] =
 	{
 		DEFINE(io)
 	},
-	[OP_FRK] =
+	[_OP_FRK] =
 	{
 		DEFINE(frk)
 	},
-	[OP_INV] =
+	[_OP_INV] =
 	{
 		DEFINE(inv)
 	}
@@ -582,7 +582,7 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, in
 	brainfunk->debug = debug;
 
 	/* Insert a Invaild Instruction */
-	brainfunk->code[codesize - 1].op = OP_INV;
+	brainfunk->code[codesize - 1].op = _OP_INV;
 
 	return brainfunk;
 }
@@ -605,7 +605,7 @@ void brainfunk_execute(brainfunk_t cpu)
 {
 	if(cpu->debug)
 	{
-		while(brainfunk_step(cpu) != HALT)
+		while(brainfunk_step(cpu) != _HALT)
 		{
 			fprintf(stderr, "%lld:\t%s\t%lld\n", cpu->pc, opname[cpu->code[cpu->pc].op], cpu->code[cpu->pc].arg);
 			fprintf(stderr, "\tMEM[%lld] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
@@ -613,14 +613,14 @@ void brainfunk_execute(brainfunk_t cpu)
 	}
 	else
 	{
-		while(brainfunk_step(cpu) != HALT);
+		while(brainfunk_step(cpu) != _HALT);
 	}
 	return;
 }
 
 void bitcode_read(brainfunk_t cpu, FILE *fp)
 {
-	char op[OPLEN];
+	char op[_OPLEN];
 	int32_t arg=0;
 	long long int addr=0;
 
@@ -741,15 +741,15 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 	arg_t ret=0;
 	int try=0;
 
-	pcstack_t pcstack = pcstack_create(PCSTACK_SIZE);
+	pcstack_t pcstack = pcstack_create(_PCSTACK_SIZE);
 
 	while(text[textptr] != '\0')
 	{
 		try=0;
-		while(try < OP_INSTS)
+		while(try < _OP_INSTS)
 		{
 			ret = handler[try++].scan(cpu->code, &pc, pcstack, &textptr, text);
-			if(ret != LEXERR)
+			if(ret != _LEXERR)
 				break;
 		}
 	}

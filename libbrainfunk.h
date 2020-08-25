@@ -10,26 +10,26 @@
 #pragma once
 
 /* Used in execution function */
-#define HALT	0
-#define CONT	1
+#define _HALT	0
+#define _CONT	1
 
 /* Used in preprocessor */
-#define LEXERR	0
-#define ADV	1
+#define _LEXERR	0
+#define _ADV	1
 
-#define DIFF	-1
-#define SAME	0
+#define _DIFF	-1
+#define _SAME	0
 
 /* I/O type number */
-#define IO_IN	0
-#define IO_OUT	1
-#define IO_INS	2
-#define IO_OUTS	3
+#define _IO_IN	0
+#define _IO_OUT	1
+#define _IO_INS	2
+#define _IO_OUTS	3
 
 /* Limits */
-#define MAXLEN		4096
-#define PCSTACK_SIZE	4096
-#define OPLEN		16
+#define _MAXLEN		4096
+#define _PCSTACK_SIZE	4096
+#define _OPLEN		16
 
 /* External accessible macro definition */
 #define TRUE	-1
@@ -104,28 +104,28 @@ typedef struct _handler handler_t;
 
 enum opcodes
 {
-	OP_HLT,
-	OP_ALU,
-	OP_ALUS,
-	OP_SET,
-	OP_POP,
-	OP_PUSH,
-	OP_PSHI,
-	OP_MOV,
-	OP_STP,
-	OP_JMP,
-	OP_JEZ,
-	OP_JNZ,
-	OP_JSEZ,
-	OP_JSNZ,
-	OP_IO,
-	OP_FRK,
-	OP_INV,
-	OP_INSTS /* Total number of instructions */
+	_OP_HLT,
+	_OP_ALU,
+	_OP_ALUS,
+	_OP_SET,
+	_OP_POP,
+	_OP_PUSH,
+	_OP_PSHI,
+	_OP_MOV,
+	_OP_STP,
+	_OP_JMP,
+	_OP_JEZ,
+	_OP_JNZ,
+	_OP_JSEZ,
+	_OP_JSNZ,
+	_OP_IO,
+	_OP_FRK,
+	_OP_INV,
+	_OP_INSTS /* Total number of instructions */
 };
 
-extern handler_t handler[OP_INSTS];
-extern char opname[OP_INSTS][OPLEN];
+extern handler_t handler[_OP_INSTS];
+extern char opname[_OP_INSTS][_OPLEN];
 
 void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug);
