@@ -1,19 +1,14 @@
 OP	MNEMONIC	Description
 
-0x00	HLT		Halt
-0x01	ALU		ALU operation (Add or Subtract)
-0x02	ALUS		ALU operation from stack
-0x03	SET		Set to a fixed integer
-0x04	POP		Pop
-0x05	PUSH		Push
-0x06	PSHI		Push a fixed integer
-0x07	MOV		Move Data Pointer (Forward and Reverse)
-0x08	STP		Set Pointer to a fixed integer
-0x09	JMP		Jump unconditionally
-0x0A	JEZ		Jump if equal to zero
-0x0B	JNZ		Jump if not zero
-0x0C	JSEZ		Jump if top of stack is zero, then pop it
-0x0D	JSNZ		Jump if top of stack is not zero, then pop it
-0x0E	IO		IO
-0x0F	FRK		Fork
-0x10	INV		Invaild Instruction, to indicate it's the end of code
+0x00	H		Halt
+0x01	A		Add operation (Signed)
+0x02	S		Set to a fixed integer
+0x03	M		Move Data Pointer (Forward and Reverse)
+0x04	P		Set Pointer to a fixed integer
+0x05	J		Jump unconditionally
+0x06	JE		Jump if equal to zero
+0x07	JZ		Jump if not zero
+0x08	IO		IO
+0x09	F		Fork
+0x0A	D		Debug, print internal status
+0x0B	X		Invaild Instruction, to indicate it's the end of code

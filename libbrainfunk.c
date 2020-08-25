@@ -1,37 +1,27 @@
 #include <libbrainfunk.h>
-
-#define DEFINE(name)			\
-	.exec = &exec_ ## name,		\
-	.scan = &scan_ ## name
-
 #define EXEC(name)	static int exec_ ## name(brainfunk_t cpu)
-#define SCAN(name)	arg_t scan_ ## name(bitcode_t code, arg_t *pc, pcstack_t pcstack, arg_t *textptr, char *text)
+#define HANDLER_DEF(name)	exec_ ## name
 
 char opname[_OP_INSTS][_OPLEN] =
 {
-	"hlt",
-	"alu",
-	"alus",
-	"set",
-	"pop",
-	"push",
-	"pshi",
-	"mov",
-	"stp",
-	"jmp",
-	"jez",
-	"jnz",
-	"jsez",
-	"jsnz",
-	"io",
-	"frk",
-	"inv"
+	"H",
+	"A",
+	"S",
+	"M",
+	"P",
+	"J",
+	"JE",
+	"JN",
+	"IO",
+	"F",
+	"D",
+	"I"
 };
 
-int opcode(char *name)
+op_t opcode(char *name)
 {
 	int i=0;
-	while(strcmp(name, opname[i]) != 0 && i < _OP_INSTS) ++i;
+	while(strcmp(name, opname[i]) != 0 || i < _OP_INSTS) ++i;
 	return i;
 }
 
@@ -41,37 +31,24 @@ void panic(char *msg)
 	quit(8);
 }
 
-int lexcmp(char *code, char *lex)
-{
-	arg_t i=0;
-	while(lex[i] != '\0')
-	{
-		if(code[i] != lex[i])
-			return _DIFF;
-		else
-			i++;
-	}
-	return _SAME;
-}
-
 pcstack_t pcstack_create(size_t size)
 {
 	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
-	stack->stack = calloc(size, sizeof(arg_t));
+	stack->stack = calloc(size, sizeof(size_t));
 	stack->ptr = 0;
 	stack->size = size;
 
 	return stack;
 }
 
-arg_t pcstack_pop(pcstack_t stack)
+ptr_t pcstack_pop(pcstack_t stack)
 {
 	if(stack->ptr == 0)
 		panic("?PCSTACK_UNDERFLOW");
 	return stack->stack[--(stack->ptr)];
 }
 
-void pcstack_push(pcstack_t stack, arg_t data)
+void pcstack_push(pcstack_t stack, ptr_t data)
 {
 	if((size_t)stack->ptr >= stack->size)
 		panic("?PCSTACK_OVERFLOW");
@@ -86,339 +63,79 @@ void pcstack_destroy(pcstack_t *stack)
 	*stack = NULL;
 }
 
-/* Ignore Overflow and Underflow */
-void push(brainfunk_t cpu, data_t data)
+EXEC(h)
 {
-	if((size_t)cpu->sp >= cpu->size.stack)
-		return;
-	cpu->stack[cpu->sp++] = data;
-}
+	/* Mute the warning */
+	size_t a=0;
+	a=cpu->pc;
 
-static inline data_t pop(brainfunk_t cpu)
-{
-	if(cpu->sp == 0)
-		return 0;
-	return cpu->stack[--(cpu->sp)];
-}
-
-static inline data_t peek(brainfunk_t cpu)
-{
-	return cpu->stack[cpu->sp - 1];
-}
-
-EXEC(hlt)
-{
 	return _HALT;
 }
 
-SCAN(hlt)
+EXEC(a)
 {
-	if(text[*textptr] == '_')
-	{
-		code->op = _OP_HLT;
-		++*textptr;
-		++*pc;
-		return _ADV;
-	}
+	/* Current Cell += arg */
+	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg.data;
+	cpu->pc++;
+	return _CONT;
+}
+
+EXEC(s)
+{
+	/* Current Cell = arg */
+	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg.data;
+	cpu->pc++;
+	return _CONT;
+}
+
+EXEC(m)
+{
+	/* Wrap-around, Pointer += arg */
+	if(cpu->ptr + cpu->code[cpu->pc].arg.offset < 0)
+		cpu->ptr += cpu->code[cpu->pc].arg.offset + cpu->size.mem;
+	else if(cpu->ptr + cpu->code[cpu->pc].arg.offset >= cpu->size.mem)
+		cpu->ptr += cpu->code[cpu->pc].arg.offset - cpu->size.mem;
 	else
-		return _LEXERR;
-}
-
-EXEC(alu)
-{
-	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg;
+		cpu->ptr += cpu->code[cpu->pc].arg.offset;
 	cpu->pc++;
 	return _CONT;
 }
 
-SCAN(alu)
+EXEC(p)
 {
-	arg_t plus=0;
-	arg_t minus=0;
-	while(text[*textptr] == '+' || text[*textptr] == '-')
-	{
-		if(text[*textptr] == '+')
-			plus++;
-		else if(text[*textptr] == '-')
-			minus++;
-		(*textptr)++;
-	}
-	if(plus == 0 && minus == 0)
-		return _LEXERR;
-	else
-	{
-		code[*pc].op = _OP_ALU;
-		code[*pc].arg = plus - minus;
-		++*pc;
-		return _ADV;
-	}
-}
-
-EXEC(alus)
-{
-	push(cpu, peek(cpu) + cpu->code[cpu->pc].arg);
+	/* Pointer = arg */
+	cpu->ptr = cpu->code[cpu->pc].arg.ptr;
 	cpu->pc++;
 	return _CONT;
 }
 
-SCAN(alus)
+EXEC(j)
 {
-	arg_t plus=0;
-	arg_t minus=0;
-	if(lexcmp(text + *textptr, "$+") == _SAME || lexcmp(text + *textptr, "$-") == _SAME)
-	{
-		++*textptr;
-		while(text[*textptr] == '+' || text[*textptr] == '-')
-		{
-			if(text[*textptr] == '+')
-				plus++;
-			else if(text[*textptr] == '-')
-				minus++;
-			(*textptr)++;
-		}
-
-		code[*pc].op = _OP_ALUS;
-		code[*pc].arg = plus - minus;
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
-}
-
-EXEC(set)
-{
-	cpu->mem[cpu->ptr] = cpu->code[cpu->pc].arg;
-	cpu->pc++;
+	cpu->pc = cpu->code[cpu->pc].arg.ptr;
 	return _CONT;
 }
 
-SCAN(set)
-{
-	if(lexcmp(text + *textptr, "[-]") == _SAME)
-	{
-		code[*pc].op = _OP_SET;
-		code[*pc].arg = 0;
-		*textptr += 3; /* 3 characters, so increment by 3 */
-		++*pc;
-		return _ADV;
-	}
-	return _LEXERR;
-}
-
-EXEC(pop)
-{
-	cpu->mem[cpu->ptr] = pop(cpu);
-	cpu->pc++;
-	return _CONT;
-}
-
-SCAN(pop)
-{
-	if(text[*textptr] == '\\')
-	{
-		code[*pc].op = _OP_POP;
-		code[*pc].arg = 0;
-		++*textptr;
-		++*pc;
-		return _ADV;
-	}
-	return _LEXERR;
-}
-
-EXEC(push)
-{
-	push(cpu, cpu->mem[cpu->ptr]);
-	cpu->pc++;
-	return _CONT;
-}
-
-SCAN(push)
-{
-	if(text[*textptr] == '/')
-	{
-		code[*pc].op = _OP_PUSH;
-		code[*pc].arg = 0;
-		++*textptr;
-		++*pc;
-		return _ADV;
-	}
-	return _LEXERR;
-}
-
-EXEC(pshi)
-{
-	push(cpu, cpu->code[cpu->pc].arg);
-	cpu->pc++;
-	return _CONT;
-}
-
-SCAN(pshi)
-{
-	return _LEXERR;
-}
-
-EXEC(mov)
-{
-	if(cpu->ptr + cpu->code[cpu->pc].arg < 0)
-		cpu->ptr += cpu->code[cpu->pc].arg + cpu->size.mem;
-	else if(cpu->ptr + cpu->code[cpu->pc].arg >= (arg_t)cpu->size.mem)
-		cpu->ptr += cpu->code[cpu->pc].arg - cpu->size.mem;
-	else
-		cpu->ptr += cpu->code[cpu->pc].arg;
-	cpu->pc++;
-	return _CONT;
-}
-
-SCAN(mov)
-{
-	arg_t forward=0;
-	arg_t backward=0;
-	while(text[*textptr] == '>' || text[*textptr] == '<')
-	{
-		if(text[*textptr] == '>')
-			forward++;
-		else if(text[*textptr] == '<')
-			backward++;
-		(*textptr)++;
-	}
-	if(forward == 0 && backward == 0)
-		return _LEXERR;
-	else
-	{
-		code[*pc].op = _OP_MOV;
-		code[*pc].arg = forward - backward;
-		++*pc;
-		return _ADV;
-	}
-}
-
-EXEC(stp)
-{
-	cpu->ptr = cpu->code[cpu->pc].arg;
-	cpu->pc++;
-	return _CONT;
-}
-
-SCAN(stp)
-{
-	return _LEXERR;
-}
-
-EXEC(jmp)
-{
-	cpu->pc = cpu->code[cpu->pc].arg;
-	return _CONT;
-}
-
-SCAN(jmp)
-{
-	return _LEXERR;
-}
-
-EXEC(jez)
+EXEC(je)
 {
 	if(cpu->mem[cpu->ptr] == 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
+		cpu->pc = cpu->code[cpu->pc].arg.ptr;
 	else
 		cpu->pc++;
 	return _CONT;
 }
 
-SCAN(jez)
-{
-	if(text[(*textptr)] == '[')
-	{
-		code[*pc].op = _OP_JEZ;
-		pcstack_push(pcstack, *pc);
-		++*textptr;
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
-}
-
-EXEC(jnz)
+EXEC(jn)
 {
 	if(cpu->mem[cpu->ptr] != 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
+		cpu->pc = cpu->code[cpu->pc].arg.ptr;
 	else
 		cpu->pc++;
 	return _CONT;
-}
-
-SCAN(jnz)
-{
-	arg_t temp_pc=0;
-
-	if(text[(*textptr)] == ']')
-	{
-		temp_pc = pcstack_pop(pcstack);
-		code[*pc].op = _OP_JNZ;
-		code[*pc].arg = temp_pc;
-		code[temp_pc].arg = *pc;
-		++*textptr;
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
-}
-
-EXEC(jsez)
-{
-	if(pop(cpu) == 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
-	else
-		cpu->pc++;
-	return _CONT;
-}
-
-SCAN(jsez)
-{
-	if(lexcmp(text + *textptr, "$[") == _SAME)
-	{
-		code[*pc].op = _OP_JSEZ;
-		pcstack_push(pcstack, *pc);
-		(*textptr) += 2;	/* "$[" is 2 chars */
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
-}
-
-EXEC(jsnz)
-{
-	if(pop(cpu) != 0)
-		cpu->pc = cpu->code[cpu->pc].arg;
-	else
-		cpu->pc++;
-	return _CONT;
-}
-
-SCAN(jsnz)
-{
-	arg_t temp_pc=0;
-
-	if(lexcmp(text + *textptr, "$]") == _SAME)
-	{
-		temp_pc = pcstack_pop(pcstack);
-		code[*pc].op = _OP_JSNZ;
-		code[*pc].arg = temp_pc;
-		code[temp_pc].arg = *pc;
-		(*textptr) += 2;	/* "$]" is 2 chars */
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
 }
 
 EXEC(io)
 {
-	switch(cpu->code[cpu->pc].arg)
+	switch(cpu->code[cpu->pc].arg.data)
 	{
 		case _IO_IN:
 			cpu->mem[cpu->ptr] = io_in(cpu->debug);
@@ -426,146 +143,58 @@ EXEC(io)
 		case _IO_OUT:
 			io_out(cpu->mem[cpu->ptr], cpu->debug);
 			break;
-		case _IO_INS:
-			push(cpu, io_in(cpu->debug));
-			break;
-		case _IO_OUTS:
-			io_out(pop(cpu), cpu->debug);
-			break;
 	}
 	cpu->pc++;
 	return _CONT;
 }
 
-SCAN(io)
-{
-	if(text[*textptr] == '.')
-	{
-		code[*pc].op = _OP_IO;
-		code[*pc].arg = _IO_OUT;
-		(*textptr)++;
-		++*pc;
-		return _ADV;
-	}
-	else if (text[*textptr] == ',')
-	{
-		code[*pc].op = _OP_IO;
-		code[*pc].arg = _IO_IN;
-		(*textptr)++;
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
-}
-
-EXEC(frk)
+EXEC(f)
 {
 	pid_t p = fork();
-	if((p & 0xFF) == 0)
-		cpu->mem[cpu->ptr] = (data_t)p + 1;
+	if(p != 0 && (p & 0xFF) == 0)
+		cpu->mem[cpu->ptr] = 0xFF;
 	else
 		cpu->mem[cpu->ptr] = (data_t)p;
 	cpu->pc++;
 	return _CONT;
 }
 
-SCAN(frk)
+EXEC(d)
 {
-	if(text[(*textptr)++] == '~')
-	{
-		code[*pc].op = _OP_FRK;
-		++*pc;
-		return _ADV;
-	}
-	else
-		return _LEXERR;
+	/* Mute the warning */
+	size_t a=0;
+	a=cpu->pc;
+
+	return _CONT;
 }
 
-EXEC(inv)
+EXEC(i)
 {
+	/* Mute the warning */
+	size_t a=0;
+	a=cpu->pc;
+
 	panic("?INV");
 	return _HALT;
 }
 
-SCAN(inv)
+handler_t exec_handler[_OP_INSTS] =
 {
-	return _LEXERR;
-}
-
-handler_t handler[_OP_INSTS] =
-{
-	[_OP_HLT] =
-	{
-		DEFINE(hlt)
-	},
-	[_OP_ALU] =
-	{
-		DEFINE(alu)
-	},
-	[_OP_ALUS] =
-	{
-		DEFINE(alus)
-	},
-	[_OP_SET] =
-	{
-		DEFINE(set)
-	},
-	[_OP_POP] =
-	{
-		DEFINE(pop)
-	},
-	[_OP_PUSH] =
-	{
-		DEFINE(push)
-	},
-	[_OP_PSHI] =
-	{
-		DEFINE(pshi)
-	},
-	[_OP_MOV] =
-	{
-		DEFINE(mov)
-	},
-	[_OP_STP] =
-	{
-		DEFINE(stp)
-	},
-	[_OP_JMP] =
-	{
-		DEFINE(jmp)
-	},
-	[_OP_JEZ] =
-	{
-		DEFINE(jez)
-	},
-	[_OP_JNZ] =
-	{
-		DEFINE(jnz)
-	},
-	[_OP_JSEZ] =
-	{
-		DEFINE(jsez)
-	},
-	[_OP_JSNZ] =
-	{
-		DEFINE(jsnz)
-	},
-	[_OP_IO] =
-	{
-		DEFINE(io)
-	},
-	[_OP_FRK] =
-	{
-		DEFINE(frk)
-	},
-	[_OP_INV] =
-	{
-		DEFINE(inv)
-	}
+	HANDLER_DEF(h),
+	HANDLER_DEF(a),
+	HANDLER_DEF(s),
+	HANDLER_DEF(m),
+	HANDLER_DEF(p),
+	HANDLER_DEF(j),
+	HANDLER_DEF(je),
+	HANDLER_DEF(jn),
+	HANDLER_DEF(io),
+	HANDLER_DEF(f),
+	HANDLER_DEF(d),
+	HANDLER_DEF(i)
 };
 
-brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, int debug)
+brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
 {
 	/* Allocate itself */
 	brainfunk_t brainfunk = calloc(1, sizeof(struct _bf));
@@ -576,13 +205,10 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, size_t stacksize, in
 	brainfunk->mem = calloc(memsize, sizeof(data_t));
 	brainfunk->size.mem = memsize;
 
-	brainfunk->stack = calloc(stacksize, sizeof(data_t));
-	brainfunk->size.stack = stacksize;
-
 	brainfunk->debug = debug;
 
 	/* Insert a Invaild Instruction */
-	brainfunk->code[codesize - 1].op = _OP_INV;
+	brainfunk->code[codesize - 1].op = _OP_I;
 
 	return brainfunk;
 }
@@ -591,14 +217,13 @@ void brainfunk_destroy(brainfunk_t *brainfunk)
 {
 	free((*brainfunk)->code);
 	free((*brainfunk)->mem);
-	free((*brainfunk)->stack);
 	free(*brainfunk);
 	*brainfunk = NULL;
 }
 
 static inline int brainfunk_step(brainfunk_t cpu)
 {
-	return handler[cpu->code[cpu->pc].op].exec(cpu);
+	return exec_handler[cpu->code[cpu->pc].op](cpu);
 }
 
 void brainfunk_execute(brainfunk_t cpu)
@@ -607,8 +232,10 @@ void brainfunk_execute(brainfunk_t cpu)
 	{
 		while(brainfunk_step(cpu) != _HALT)
 		{
+			/* TODO: different data type printout
 			fprintf(stderr, "%lld:\t%s\t%lld\n", cpu->pc, opname[cpu->code[cpu->pc].op], cpu->code[cpu->pc].arg);
-			fprintf(stderr, "\tMEM[%lld] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
+			*/
+			fprintf(stderr, "\tMEM[%zd] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
 		}
 	}
 	else
@@ -621,20 +248,20 @@ void brainfunk_execute(brainfunk_t cpu)
 void bitcode_read(brainfunk_t cpu, FILE *fp)
 {
 	char op[_OPLEN];
-	int32_t arg=0;
 	long long int addr=0;
+	char arg[_MAXLEN];
 
-	while(fscanf(fp, "%lld:\t%s\t%d\n", &addr, op, &arg) > 0)
+	while(fscanf(fp, "%lld:\t%s\t%s\n", &addr, op, arg) > 0)
 	{
 		cpu->code[addr].op = opcode(op);
-		cpu->code[addr].arg = arg;
+		/* TODO: different data type */
 		cpu->codelen++;
 	}
 }
 
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 {
-	long long int pc = 0;
+	ptr_t pc = 0;
 	char *fmt;
 
 	if(format == FORMAT_C)
@@ -681,13 +308,9 @@ static inline int iscode(int c, int compat)
 		case '.':
 		case ',':
 			return TRUE;
-		case '$':
-		case '\\':
-		case '/':
 		case '~':
-		case '_':
-		case '(':
-		case ')':
+		case '%':
+		case '#':
 			if(compat)
 				return FALSE;
 			else
@@ -719,7 +342,7 @@ char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 void brainfunk_dumptext(char *code, FILE *fp)
 {
 	int counter=0;
-	arg_t ptr=0;
+	ptr_t ptr=0;
 
 	while(code[ptr] != '\0')
 	{
@@ -736,22 +359,13 @@ void brainfunk_dumptext(char *code, FILE *fp)
 
 void bitcode_convert(brainfunk_t cpu, char *text)
 {
-	arg_t textptr=0;
-	arg_t pc=0;
-	arg_t ret=0;
-	int try=0;
+	ptr_t textptr=0;
+	ptr_t pc = 0;
 
 	pcstack_t pcstack = pcstack_create(_PCSTACK_SIZE);
 
 	while(text[textptr] != '\0')
 	{
-		try=0;
-		while(try < _OP_INSTS)
-		{
-			ret = handler[try++].scan(cpu->code, &pc, pcstack, &textptr, text);
-			if(ret != _LEXERR)
-				break;
-		}
 	}
 
 	cpu->codelen = pc;

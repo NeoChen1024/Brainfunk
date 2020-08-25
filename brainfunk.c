@@ -41,7 +41,6 @@
 /* This should be enough to run any Brainfuck program */
 #define CODESIZE	(1<<24)
 #define MEMSIZE		(1<<20)
-#define STACKSIZE	(1<<12)
 
 #define DELIM_CHARS	80
 #define DELIM_CHAR	'='
@@ -177,7 +176,7 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	parsearg(argc, argv);
-	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, STACKSIZE, debug);
+	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, debug);
 
 	if(input_opened == FALSE && (string_input == FALSE && mode == MODE_BF))
 		panic("?INPUT");

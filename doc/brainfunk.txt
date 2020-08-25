@@ -9,17 +9,6 @@ Brainfuck basic instructions:
 	,	Input
 
 Neo_Chen's extension:
-	\	Pop stack
-	/	Push stack
-	(	If start
-	)	If end
-	$+	Add top of stack to current cell and pop
-	$-	Subtract top of stack from current cell and pop
-	$[	while(pop()) {
-	$]	}
-	$(	if(pop()) {
-	$)	}
-	$.	Output from stack
-	$,	Input to stack
 	~	Fork
-	_	Halt
+	%	Halt
+	#	Debug
