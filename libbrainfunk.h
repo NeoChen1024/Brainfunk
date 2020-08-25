@@ -85,9 +85,9 @@ struct code_structure_s
 	void(*handler)(bitcode_t *bitcode, arg_t *ptr);
 };
 
-struct bitcode_ref_s bitcode_ref[OP_INSTS];
-struct code_structure_s known_structure[ST_NUM];
-char valid_code[256];
+extern struct bitcode_ref_s bitcode_ref[OP_INSTS];
+extern struct code_structure_s known_structure[ST_NUM];
+extern char valid_code[256];
 
 /* Variables */
 extern memory_t *memory;
