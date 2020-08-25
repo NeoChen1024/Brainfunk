@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -ex
 CC="${CC:-cc}"
-CFLAGS="-Ofast -fPIE -pipe -I. -Wall -Wextra -Wno-unused-label -static -std=c99"
+CFLAGS="-Ofast -flto -fPIE -pipe -I. -Wall -Wextra -Wno-unused-label -static -std=c99"
 FILE="$(mktemp).c"
 MODE="$1"
 SRC="$2"
