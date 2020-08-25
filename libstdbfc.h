@@ -1,5 +1,5 @@
 /* ========================================================================== *\
-||                       Single Header Brainfunk Library                      ||
+||                       Single Header Brainfunk Executer                     ||
 ||                                 Neo_Chen                                   ||
 \* ========================================================================== */
 
@@ -45,11 +45,9 @@ pid_t p=0;
 #define INLINE		static inline
 
 typedef uint8_t memory_t;
-typedef unsigned int arg_t;
+typedef size_t arg_t;
 memory_t *memory;
 unsigned int ptr=0;
-memory_t *stack;
-unsigned int stack_ptr=0;
 
 #define peek stack[stack_ptr]
 #define current (memory[ptr])
@@ -63,16 +61,8 @@ void panic(char *msg)
 
 #define	alu(x)	\
 	current += x
-#define alus(x)	\
-	_push(_pop() + current)
 #define	set(x)	\
 	current = x
-#define push(x)	\
-	_push(current)
-#define pop(x)	\
-	current = _pop();
-#define	pshi(x)	\
-	_push((memory_t)x)
 #define	mov(x)	\
 	ptr += x
 #define	stp(x)	\
@@ -83,10 +73,6 @@ void panic(char *msg)
 	if(current == 0) goto L ## x
 #define	jnz(x)	\
 	if(current != 0) goto L ## x
-#define	jsez(x)	\
-	if(_pop() == 0) goto L ## x
-#define	jsnz(x)	\
-	if(_pop() != 0) goto L ## x
 #define	frk(x)	\
 	pid_t p = fork();	\
 	current = p;		\

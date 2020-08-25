@@ -1,11 +1,14 @@
 #include <libbrainfunk.h>
+
 #define EXEC(name)	static int exec_ ## name(brainfunk_t cpu)
-#define HANDLER_DEF(name)	exec_ ## name
+#define EXEC_HANDLER_DEF(name)	exec_ ## name
 
 char opname[_OP_INSTS][_OPLEN] =
 {
 	"H",
 	"A",
+	"C",
+	"MUL",
 	"S",
 	"M",
 	"P",
@@ -41,17 +44,15 @@ pcstack_t pcstack_create(size_t size)
 	return stack;
 }
 
-ptr_t pcstack_pop(pcstack_t stack)
+addr_t pcstack_pop(pcstack_t stack)
 {
-	if(stack->ptr == 0)
-		panic("?PCSTACK_UNDERFLOW");
+	assert(stack->ptr == 0);
 	return stack->stack[--(stack->ptr)];
 }
 
-void pcstack_push(pcstack_t stack, ptr_t data)
+void pcstack_push(pcstack_t stack, addr_t data)
 {
-	if((size_t)stack->ptr >= stack->size)
-		panic("?PCSTACK_OVERFLOW");
+	assert(stack->ptr >= stack->size);
 	stack->stack[stack->ptr++] = data;
 	return;
 }
@@ -65,17 +66,27 @@ void pcstack_destroy(pcstack_t *stack)
 
 EXEC(h)
 {
-	/* Mute the warning */
-	size_t a=0;
-	a=cpu->pc;
-
 	return _HALT;
 }
 
 EXEC(a)
 {
 	/* Current Cell += arg */
-	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg.data;
+	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg.offset;
+	cpu->pc++;
+	return _CONT;
+}
+
+EXEC(c)
+{
+	cpu->mem[cpu->ptr + cpu->code[cpu->pc].arg.offset] = cpu->mem[cpu->ptr];
+	cpu->pc++;
+	return _CONT;
+}
+
+EXEC(mul)
+{
+	cpu->mem[cpu->ptr + cpu->code[cpu->pc].arg.dual.offset] += cpu->mem[cpu->ptr] * cpu->code[cpu->pc].arg.dual.m;
 	cpu->pc++;
 	return _CONT;
 }
@@ -91,7 +102,7 @@ EXEC(s)
 EXEC(m)
 {
 	/* Wrap-around, Pointer += arg */
-	if(cpu->ptr + cpu->code[cpu->pc].arg.offset < 0)
+	if((offset_t)cpu->ptr + cpu->code[cpu->pc].arg.offset < 0)
 		cpu->ptr += cpu->code[cpu->pc].arg.offset + cpu->size.mem;
 	else if(cpu->ptr + cpu->code[cpu->pc].arg.offset >= cpu->size.mem)
 		cpu->ptr += cpu->code[cpu->pc].arg.offset - cpu->size.mem;
@@ -104,32 +115,36 @@ EXEC(m)
 EXEC(p)
 {
 	/* Pointer = arg */
-	cpu->ptr = cpu->code[cpu->pc].arg.ptr;
+	cpu->ptr = cpu->code[cpu->pc].arg.addr;
+	assert(cpu->ptr < cpu->size.mem);
 	cpu->pc++;
 	return _CONT;
 }
 
 EXEC(j)
 {
-	cpu->pc = cpu->code[cpu->pc].arg.ptr;
+	cpu->pc = cpu->code[cpu->pc].arg.addr;
+	assert(cpu->pc < cpu->size.code);
 	return _CONT;
 }
 
 EXEC(je)
 {
 	if(cpu->mem[cpu->ptr] == 0)
-		cpu->pc = cpu->code[cpu->pc].arg.ptr;
+		cpu->pc = cpu->code[cpu->pc].arg.addr;
 	else
 		cpu->pc++;
+	assert(cpu->pc < cpu->size.code);
 	return _CONT;
 }
 
 EXEC(jn)
 {
 	if(cpu->mem[cpu->ptr] != 0)
-		cpu->pc = cpu->code[cpu->pc].arg.ptr;
+		cpu->pc = cpu->code[cpu->pc].arg.addr;
 	else
 		cpu->pc++;
+	assert(cpu->pc < cpu->size.code);
 	return _CONT;
 }
 
@@ -161,37 +176,31 @@ EXEC(f)
 
 EXEC(d)
 {
-	/* Mute the warning */
-	size_t a=0;
-	a=cpu->pc;
-
 	return _CONT;
 }
 
 EXEC(i)
 {
-	/* Mute the warning */
-	size_t a=0;
-	a=cpu->pc;
-
 	panic("?INV");
 	return _HALT;
 }
 
-handler_t exec_handler[_OP_INSTS] =
+exec_handler_t exec_handler[_OP_INSTS] =
 {
-	HANDLER_DEF(h),
-	HANDLER_DEF(a),
-	HANDLER_DEF(s),
-	HANDLER_DEF(m),
-	HANDLER_DEF(p),
-	HANDLER_DEF(j),
-	HANDLER_DEF(je),
-	HANDLER_DEF(jn),
-	HANDLER_DEF(io),
-	HANDLER_DEF(f),
-	HANDLER_DEF(d),
-	HANDLER_DEF(i)
+	EXEC_HANDLER_DEF(h),
+	EXEC_HANDLER_DEF(a),
+	EXEC_HANDLER_DEF(c),
+	EXEC_HANDLER_DEF(mul),
+	EXEC_HANDLER_DEF(s),
+	EXEC_HANDLER_DEF(m),
+	EXEC_HANDLER_DEF(p),
+	EXEC_HANDLER_DEF(j),
+	EXEC_HANDLER_DEF(je),
+	EXEC_HANDLER_DEF(jn),
+	EXEC_HANDLER_DEF(io),
+	EXEC_HANDLER_DEF(f),
+	EXEC_HANDLER_DEF(d),
+	EXEC_HANDLER_DEF(i)
 };
 
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
@@ -261,12 +270,12 @@ void bitcode_read(brainfunk_t cpu, FILE *fp)
 
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 {
-	ptr_t pc = 0;
+	addr_t pc = 0;
 	char *fmt;
 
 	if(format == FORMAT_C)
 	{
-		fmt = "\tL%lld:\t\t\t%s(%lld);\n";
+		fmt = "\tL%lld:\t\t\t%s(%s);\n";
 
 		fputs(	"#include <libstdbfc.h>\n\n"
 			"int main(void)\n"
@@ -276,14 +285,16 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	}
 	else if(format == FORMAT_PLAIN)
 	{
-		fmt = "%lld:\t\t%s\t%lld\n";
+		fmt = "%lld:\t\t%s\t%s\n";
 	}
 	else
 		panic("?INVALID_DUMP_FORMAT");
 
 	while(pc < cpu->codelen)
 	{
+		/* TODO: different data type
 		fprintf(fp, fmt, pc, opname[cpu->code[pc].op], cpu->code[pc].arg);
+		*/
 		pc++;
 	}
 
@@ -342,7 +353,7 @@ char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 void brainfunk_dumptext(char *code, FILE *fp)
 {
 	int counter=0;
-	ptr_t ptr=0;
+	addr_t ptr=0;
 
 	while(code[ptr] != '\0')
 	{
@@ -357,18 +368,70 @@ void brainfunk_dumptext(char *code, FILE *fp)
 	putc('\n', fp);
 }
 
+scan_handler_t scan_handler[_OP_INSTS] =
+{
+};
+
+char regexps[][_MAXLEN] =
+{
+	"^\\[-(>+[+-]+)+\\]",	/* MUL */
+	"^\\[-(>+[+-])+\\]",	/* C */
+	"^\\[\\-\\]",		/* S 0 */
+	"^[+-]+",		/* A */
+	"^[<>]+",		/* M */
+	"^\\[",			/* JE */
+	"^\\]",			/* JN */
+	"^\\.",			/* IO OUT */
+	"^\\,",			/* IO IN */
+	"^\\~",			/* F */
+	"^%",			/* H */
+	"^\\#"			/* D */
+};
+
+#define _SCAN_FORMS (sizeof(regexps)/sizeof(regexps[0]))
+
+int regex_cmp(char *text, char *regex_str, size_t *len)
+{
+	int ret = 0;
+	regex_t preg;
+	regmatch_t match;
+
+	char regex_err[_MAXLEN];
+
+	ret = regcomp(&preg, regex_str, REG_EXTENDED);
+	assert(ret == 0);
+
+	ret = regexec(&preg, text, 1, &match, 0);
+	if(ret == REG_NOMATCH)
+		return FALSE;
+	else if(ret == 0)
+		printf("MATCHED! -> %s\n", text);
+	(*len) = match.rm_eo;
+	assert(match.rm_so == 0);
+	regfree(&preg);
+	return TRUE;
+}
+
 void bitcode_convert(brainfunk_t cpu, char *text)
 {
-	ptr_t textptr=0;
-	ptr_t pc = 0;
+	unsigned int try = 0;
+	size_t len = 0;
+	size_t pos = 0;
 
 	pcstack_t pcstack = pcstack_create(_PCSTACK_SIZE);
 
-	while(text[textptr] != '\0')
+	while(text[pos] != '\0')
 	{
+		try = 0;
+		while(regex_cmp(text + pos, regexps[try], &len) != TRUE && try <= _SCAN_FORMS)
+			try++;
+		/*scan_handler[try - 1](text, len, cpu, pcstack); */
+
+		pos += len;
 	}
 
-	cpu->codelen = pc;
+	cpu->codelen = cpu->pc;
+	cpu->pc = 0;
 	pcstack_destroy(&pcstack);
 }
 

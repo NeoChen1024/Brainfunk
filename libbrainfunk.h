@@ -7,19 +7,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <regex.h>
+#include <assert.h>
 
 #pragma once
 
 /* Used in execution function */
 #define _HALT	0
 #define _CONT	1
-
-/* Used in preprocessor */
-#define _LEXERR	0
-#define _ADV	1
-
-#define _DIFF	-1
-#define _SAME	0
 
 /* I/O type number */
 #define _IO_IN	0
@@ -46,20 +40,21 @@
 
 typedef uint8_t data_t;
 typedef data_t * mem_t;
-typedef size_t ptr_t;
 typedef uint8_t op_t;
+typedef size_t addr_t;
+typedef ssize_t offset_t;
 
 struct _dual_arg
 {
-	ptr_t x;
-	ptr_t y;
+	offset_t offset;
+	data_t m;
 };
 
 typedef union
 {
 	data_t data;
-	ptr_t ptr;
-	ssize_t offset;
+	addr_t addr;
+	offset_t offset;
 	struct _dual_arg dual;
 } arg_t;
 
@@ -83,8 +78,8 @@ struct _bf
 	size_t pc;	/* Program Counter */
 	size_t codelen;	/* Total Code Length */
 	size_t ptr;	/* Memory Pointer */
-	bitcode_t code;		/* Code Space */
-	mem_t mem;		/* Data Space */
+	bitcode_t code;	/* Code Space */
+	mem_t mem;	/* Data Space */
 	struct _size size;
 
 	int debug;	/* Debug? */
@@ -95,18 +90,20 @@ typedef struct _bf * brainfunk_t;
 struct _pcstack
 {
 	size_t size;
-	ptr_t ptr;
+	addr_t ptr;
 	size_t *stack;
 };
 
 typedef struct _pcstack * pcstack_t;
 
-typedef	int(*handler_t)(brainfunk_t cpu);
+typedef	int(*exec_handler_t)(brainfunk_t cpu);
 
 enum opcodes
 {
 	_OP_H,
 	_OP_A,
+	_OP_C,
+	_OP_MUL,
 	_OP_S,
 	_OP_M,
 	_OP_P,
@@ -120,8 +117,14 @@ enum opcodes
 	_OP_INSTS /* Total number of instructions */
 };
 
-extern handler_t handler[_OP_INSTS];
+extern exec_handler_t exec_handler[_OP_INSTS];
 extern char opname[_OP_INSTS][_OPLEN];
+
+/* Lexer */
+typedef int (*scan_handler_t)(char *text, size_t pos, size_t match_len, brainfunk_t cpu, pcstack_t pcstack);
+
+extern char regexps[][_MAXLEN];
+extern scan_handler_t scan_handler[_OP_INSTS];
 
 void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug);

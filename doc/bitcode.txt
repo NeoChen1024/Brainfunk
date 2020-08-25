@@ -1,14 +1,16 @@
-OP	MNEMONIC	Description
-
-0x00	H		Halt
-0x01	A		Add operation (Signed)
-0x02	S		Set to a fixed integer
-0x03	M		Move Data Pointer (Forward and Reverse)
-0x04	P		Set Pointer to a fixed integer
-0x05	J		Jump unconditionally
-0x06	JE		Jump if equal to zero
-0x07	JZ		Jump if not zero
-0x08	IO		IO
-0x09	F		Fork
-0x0A	D		Debug, print internal status
-0x0B	X		Invaild Instruction, to indicate it's the end of code
+OP	MNEMONIC	Operand		Description
+-------|---------------|---------------|--------------------------------------------------------------------------------
+0x00	H		None		Halt
+0x01	A		OFFSET		Add operation (Signed)
+0x01	C		OFFSET		Copy
+0x01	MUL		DUAL		Multiply operation
+0x02	S		DATA		Set to a fixed integer
+0x03	M		OFFSET		Move Data Pointer (Forward and Reverse)
+0x04	P		ADDR		Set Pointer to a fixed integer
+0x05	J		ADDR		Jump unconditionally
+0x06	JE		ADDR		Jump if equal to zero
+0x07	JZ		ADDR		Jump if not zero
+0x08	IO		I/O		IO
+0x09	F		None		Fork
+0x0A	D		None		Debug, print internal status
+0x0B	X		None		Invaild Instruction, to indicate it's the end of code
