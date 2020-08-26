@@ -374,8 +374,10 @@ scan_handler_t scan_handler[_OP_INSTS] =
 
 char regexps[][_MAXLEN] =
 {
-	"^\\[-(>+[+-]+)+\\]",	/* MUL */
-	"^\\[-(>+[+-])+\\]",	/* C */
+	"^\\[-(>+[+-]+)+<+\\]",	/* MUL */
+	"^\\[(>+[+-]+)+<+-\\]",	/* MUL */
+	"^\\[-(>+[+-])+<+\\]",	/* C */
+	"^\\[(>+[+-])+<+-\\]",	/* C */
 	"^\\[\\-\\]",		/* S 0 */
 	"^[+-]+",		/* A */
 	"^[<>]+",		/* M */
@@ -396,7 +398,7 @@ int regex_cmp(char *text, char *regex_str, size_t *len)
 	regex_t preg;
 	regmatch_t match;
 
-	char regex_err[_MAXLEN];
+	char buf[_MAXLEN];
 
 	ret = regcomp(&preg, regex_str, REG_EXTENDED);
 	assert(ret == 0);
@@ -405,7 +407,11 @@ int regex_cmp(char *text, char *regex_str, size_t *len)
 	if(ret == REG_NOMATCH)
 		return FALSE;
 	else if(ret == 0)
-		printf("MATCHED! -> %s\n", text);
+	{
+		strncpy(buf, text, (size_t)match.rm_eo);
+		buf[match.rm_eo] = 0;
+		printf("MATCHED! (%d)\t-> %s\n", match.rm_eo, buf);
+	}
 	(*len) = match.rm_eo;
 	assert(match.rm_so == 0);
 	regfree(&preg);
