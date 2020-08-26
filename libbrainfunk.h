@@ -100,7 +100,7 @@ typedef	int(*exec_handler_t)(brainfunk_t cpu);
 
 enum opcodes
 {
-	_OP_H,
+	_OP_X,
 	_OP_A,
 	_OP_C,
 	_OP_MUL,
@@ -113,7 +113,7 @@ enum opcodes
 	_OP_IO,
 	_OP_F,
 	_OP_D,
-	_OP_I,
+	_OP_H,
 	_OP_INSTS /* Total number of instructions */
 };
 

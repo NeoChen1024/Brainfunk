@@ -5,7 +5,7 @@
 
 char opname[_OP_INSTS][_OPLEN] =
 {
-	"H",
+	"X",
 	"A",
 	"C",
 	"MUL",
@@ -18,7 +18,7 @@ char opname[_OP_INSTS][_OPLEN] =
 	"IO",
 	"F",
 	"D",
-	"I"
+	"H"
 };
 
 op_t opcode(char *name)
@@ -179,7 +179,7 @@ EXEC(d)
 	return _CONT;
 }
 
-EXEC(i)
+EXEC(x)
 {
 	panic("?INV");
 	return _HALT;
@@ -187,7 +187,7 @@ EXEC(i)
 
 exec_handler_t exec_handler[_OP_INSTS] =
 {
-	EXEC_HANDLER_DEF(h),
+	EXEC_HANDLER_DEF(x),
 	EXEC_HANDLER_DEF(a),
 	EXEC_HANDLER_DEF(c),
 	EXEC_HANDLER_DEF(mul),
@@ -200,7 +200,7 @@ exec_handler_t exec_handler[_OP_INSTS] =
 	EXEC_HANDLER_DEF(io),
 	EXEC_HANDLER_DEF(f),
 	EXEC_HANDLER_DEF(d),
-	EXEC_HANDLER_DEF(i)
+	EXEC_HANDLER_DEF(h)
 };
 
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
@@ -215,9 +215,6 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
 	brainfunk->size.mem = memsize;
 
 	brainfunk->debug = debug;
-
-	/* Insert a Invaild Instruction */
-	brainfunk->code[codesize - 1].op = _OP_I;
 
 	return brainfunk;
 }

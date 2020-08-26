@@ -1,6 +1,6 @@
 OP	MNEMONIC	Operand		Description
 -------|---------------|---------------|--------------------------------------------------------------------------------
-0x00	H		None		Halt
+0x00	X		None		Invaild Instruction, to indicate it's the end of code
 0x01	A		OFFSET		Add operation (Signed)
 0x01	C		OFFSET		Copy
 0x01	MUL		DUAL		Multiply operation
@@ -13,4 +13,4 @@ OP	MNEMONIC	Operand		Description
 0x08	IO		I/O		IO
 0x09	F		None		Fork
 0x0A	D		None		Debug, print internal status
-0x0B	X		None		Invaild Instruction, to indicate it's the end of code
+0x0B	H		None		Halt
