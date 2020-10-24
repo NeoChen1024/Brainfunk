@@ -1,5 +1,5 @@
 /* ========================================================================== *\
-||			      Brainfunk in ANSI C			      ||
+||			      Brainfunk Main Program			      ||
 ||                                 Neo_Chen                                   ||
 \* ========================================================================== */
 
@@ -53,7 +53,7 @@ int debug = NODEBUG;
 int input_opened=FALSE;
 int output_opened=FALSE;
 int string_input=FALSE;
-int compat=NOCOMPAT;	/* don't ignore Brainfuck extensions */
+int compat=COMPAT;	/* compatible with plain Brainfuck */
 
 enum mode_enum
 {
@@ -161,7 +161,7 @@ void parsearg(int argc, char **argv)
 				compat = COMPAT; /* ignore Brainfunk extensions */
 				break;
 			default:
-				printf("%s: [-d] [-m mode] [-c] [-s code] -f file [-o file]\n", argv[0]);
+				printf("%s: [-d] [-m mode] [-c] [-s code] [-f file] [-o file]\n", argv[0]);
 				exit(1);
 				break;
 		}

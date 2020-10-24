@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -44,18 +45,11 @@ typedef uint8_t op_t;
 typedef size_t addr_t;
 typedef ssize_t offset_t;
 
-struct _dual_arg
-{
-	offset_t offset;
-	data_t m;
-};
-
 typedef union
 {
-	data_t data;
-	addr_t addr;
-	offset_t offset;
-	struct _dual_arg dual;
+	data_t im;		/* Intermediate */
+	addr_t addr;		/* Address */
+	offset_t offset;	/* offset */
 } arg_t;
 
 struct _bitcode
@@ -96,18 +90,15 @@ struct _pcstack
 
 typedef struct _pcstack * pcstack_t;
 
-typedef	int(*exec_handler_t)(brainfunk_t cpu);
+typedef	int (*exec_handler_t)(brainfunk_t cpu);
 
 enum opcodes
 {
 	_OP_X,
 	_OP_A,
 	_OP_C,
-	_OP_MUL,
 	_OP_S,
 	_OP_M,
-	_OP_P,
-	_OP_J,
 	_OP_JE,
 	_OP_JN,
 	_OP_IO,
@@ -117,14 +108,20 @@ enum opcodes
 	_OP_INSTS /* Total number of instructions */
 };
 
+/* To store the operand type of the opcode */
+extern char opcode_type[_OP_INSTS];
+
 extern exec_handler_t exec_handler[_OP_INSTS];
 extern char opname[_OP_INSTS][_OPLEN];
 
-/* Lexer */
-typedef int (*scan_handler_t)(char *text, size_t pos, size_t match_len, brainfunk_t cpu, pcstack_t pcstack);
+/* Lexer & Bitcode emitter */
+typedef struct
+{
+	char regexp[_MAXLEN];
+	int (*scan)(char *text, size_t match_len, brainfunk_t cpu, pcstack_t pcstack);
+} scan_handler_t;
 
-extern char regexps[][_MAXLEN];
-extern scan_handler_t scan_handler[_OP_INSTS];
+extern scan_handler_t scan_handler[];
 
 void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug);
