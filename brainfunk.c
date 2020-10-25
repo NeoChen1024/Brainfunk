@@ -57,7 +57,7 @@ int compat=COMPAT;	/* compatible with plain Brainfuck */
 
 enum mode_enum
 {
-	MODE_BF,	/* Execute Brainfuck / Brainfunk program */
+	MODE_BF,	/* Execute Brainfuck program */
 	MODE_BIT,	/* Output bitcode */
 	MODE_BFC	/* Convert Brainfunk to C code for compiling */
 };
@@ -78,7 +78,7 @@ IO_IN_FUNCTION
 IO_OUT_FUNCTION
 {
 	if(debug)
-		fprintf(stdout, "OUTPUT: %c\n", (char)data);
+		fprintf(stdout, "OUTPUT: (%#hhx) %c\n", data, (char)data);
 	else
 		putc((char)data, stdout);
 }

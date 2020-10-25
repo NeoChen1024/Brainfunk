@@ -47,11 +47,11 @@ pid_t p=0;
 typedef uint8_t memory_t;
 typedef size_t arg_t;
 memory_t *memory;
-unsigned int ptr=0;
+int ptr=0;
 
-#define peek stack[stack_ptr]
+#define peek (stack[stack_ptr])
 #define current (memory[ptr])
-
+#
 void panic(char *msg)
 {
 	puts(msg);
@@ -59,40 +59,42 @@ void panic(char *msg)
 	exit(8);
 }
 
-#define	alu(x)	\
+/* Assumption: a must be positive */
+INLINE int overflow_add(int a, int b, int max)
+{
+	if(b > 0)
+	{
+		if(a + b > max)
+			return a + b - max;
+	}
+	else
+	{
+		if(a + b < 0)
+			return a + b + max;
+	}
+	return a + b;
+}
+
+#define	a(x)	\
 	current += x
-#define	set(x)	\
+#define mul(mul, offset)	\
+	memory[overflow_add(ptr, offset, MEMSIZE)] += current * mul
+#define	s(x)	\
 	current = x
-#define	mov(x)	\
-	ptr += x
-#define	stp(x)	\
-	ptr = x
-#define	jmp(x)	\
-	goto L ## x
-#define	jez(x)	\
+#define f(x)	\
+	while(current != 0) ptr += x
+#define	m(x)	\
+	ptr = overflow_add(ptr, x, MEMSIZE);
+#define	je(x)	\
 	if(current == 0) goto L ## x
-#define	jnz(x)	\
+#define	jn(x)	\
 	if(current != 0) goto L ## x
-#define	frk(x)	\
+#define	y(x)	\
 	pid_t p = fork();	\
 	current = p;		\
-	if(p != 0) current++;
-#define	inv(x)	\
+	if(p != 0) current = 0xFF
+#define	x(x)	\
 	panic("?INVALID");
-
-INLINE void _push(memory_t content)
-{
-	if(stack_ptr >= STACKSIZE)
-		return;
-	stack[stack_ptr++] = content;
-}
-
-INLINE memory_t _pop()
-{
-	if(stack_ptr == 0)
-		return 0;
-	return stack[--stack_ptr];
-}
 
 void init(void)
 {
@@ -100,7 +102,6 @@ void init(void)
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	memory = calloc(1, MEMSIZE);
-	stack = calloc(1, STACKSIZE);
 }
 
 INLINE memory_t in()
@@ -123,16 +124,15 @@ INLINE void io(arg_t arg)
 		case 1: /* OUT */
 			out(memory[ptr]);
 			break;
-		case 2: /* INS */
-			_push(in());
-			break;
-		case 3: /* OUTS */
-			out(_pop());
-			break;
 	}
 }
 
-void hlt(arg_t arg)
+void d(void)
 {
-	exit(arg);
+	fprintf(stderr, ">> PTR = %d, MEM[PTR] = %hhu", ptr, memory[ptr]);
+}
+
+void h(void)
+{
+	exit(0);
 }

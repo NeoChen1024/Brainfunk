@@ -3,7 +3,7 @@ OP	MNEMONIC	Operand		Description
 0x0	X		None		Invaild Instruction, to indicate it's the end of code
 0x1	A		OFFSET		Add operation (Signed)
 0x2	S		INTERMEDIATE	Set to a fixed integer
-0x3	C		OFFSET		Copy
+0x3	MUL		DUAL		Multiply
 0x4	M		OFFSET		Move Data Pointer (Forward and Reverse)
 0x5	JE		ADDR		Jump if equal to zero
 0x6	JZ		ADDR		Jump if not zero

@@ -45,11 +45,18 @@ typedef uint8_t op_t;
 typedef size_t addr_t;
 typedef ssize_t offset_t;
 
+typedef struct
+{
+	int32_t mul;
+	int32_t offset;
+} dual_t;
+
 typedef union
 {
 	data_t im;		/* Intermediate */
 	addr_t addr;		/* Address */
 	offset_t offset;	/* offset */
+	dual_t dual;		/* Dual */
 } arg_t;
 
 struct _bitcode
@@ -96,13 +103,14 @@ enum opcodes
 {
 	_OP_X,
 	_OP_A,
-	_OP_C,
+	_OP_MUL,
 	_OP_S,
+	_OP_F,
 	_OP_M,
 	_OP_JE,
 	_OP_JN,
 	_OP_IO,
-	_OP_F,
+	_OP_Y,
 	_OP_D,
 	_OP_H,
 	_OP_INSTS /* Total number of instructions */
