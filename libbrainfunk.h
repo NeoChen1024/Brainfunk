@@ -128,7 +128,6 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug);
 void brainfunk_destroy(brainfunk_t *brainfunk);
 void brainfunk_execute(brainfunk_t bf);
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp);
-void bitcode_read(brainfunk_t cpu, FILE *fp);
 char *brainfunk_readtext(FILE *fp, int compat, size_t size);
 void brainfunk_dumptext(char *code, FILE *fp);
 void bitcode_convert(brainfunk_t cpu, char *text);

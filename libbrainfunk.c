@@ -122,13 +122,13 @@ static inline void _operand_to_str(op_t op, arg_t arg, char *buf, size_t len)
 	switch(opcode_type[op])
 	{
 		case 'N':
-			snprintf(buf, len, "NONE");
+			buf[0] = '\0';
 			break;
 		case 'O':
 			snprintf(buf, len, "%zd", arg.offset);
 			break;
 		case 'I':
-			snprintf(buf, len, "%hhx", arg.im);
+			snprintf(buf, len, "%hhu", arg.im);
 			break;
 		case 'A':
 			snprintf(buf, len, "%zu", arg.addr);
@@ -238,6 +238,7 @@ EXEC(f)
 EXEC(d)
 {
 	_debug_print(cpu);
+	cpu->pc++;
 	return _CONT;
 }
 
@@ -273,28 +274,13 @@ void brainfunk_execute(brainfunk_t cpu)
 	if(cpu->debug)
 	{
 		while(brainfunk_step(cpu) != _HALT)
-		{
 			_debug_print(cpu);
-		}
 	}
 	else
 	{
 		while(brainfunk_step(cpu) != _HALT);
 	}
 	return;
-}
-
-void bitcode_read(brainfunk_t cpu, FILE *fp)
-{
-	char op[_OPLEN];
-	long long int addr=0;
-	char arg[_MAXLEN];
-
-	while(fscanf(fp, "%lld:\t%s\t%s\n", &addr, op, arg) > 0)
-	{
-		cpu->code[addr].op = opcode(op);
-		cpu->codelen++;
-	}
 }
 
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
@@ -396,6 +382,8 @@ void brainfunk_dumptext(char *code, FILE *fp)
 	}
 	putc('\n', fp);
 }
+
+/* The "Compiler" part */
 
 size_t _count_continus(char *text, size_t len, char *symbolset)
 {

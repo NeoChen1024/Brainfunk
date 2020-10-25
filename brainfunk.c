@@ -58,10 +58,8 @@ int compat=COMPAT;	/* compatible with plain Brainfuck */
 enum mode_enum
 {
 	MODE_BF,	/* Execute Brainfuck / Brainfunk program */
-	MODE_BC,	/* Output bitcode */
-	MODE_BFC,	/* Convert Brainfunk to C code for compiling */
-	MODE_BCC,	/* Convert bitcode to C for compiling */
-	MODE_VM		/* Execute bitcode directly */
+	MODE_BIT,	/* Output bitcode */
+	MODE_BFC	/* Convert Brainfunk to C code for compiling */
 };
 
 enum mode_enum mode = MODE_BF;
@@ -109,11 +107,7 @@ void parsearg(int argc, char **argv)
 				else if(!strcmp("bfc", optarg))
 					mode = MODE_BFC;
 				else if(!strcmp("bit", optarg))
-					mode = MODE_BC;
-				else if(!strcmp("bcc", optarg))
-					mode = MODE_BCC;
-				else if(!strcmp("vm", optarg))
-					mode = MODE_VM;
+					mode = MODE_BIT;
 				else
 					panic("?INVAILD_MODE");
 				break;
@@ -182,22 +176,17 @@ int main(int argc, char **argv)
 		panic("?INPUT");
 	else
 	{
-		if(mode == MODE_VM || mode == MODE_BCC)
-			bitcode_read(cpu, input);
-		else
+		if(!string_input)
+			code = brainfunk_readtext(input, compat, CODESIZE);
+		bitcode_convert(cpu, code);
+		if(debug)
 		{
-			if(!string_input)
-				code = brainfunk_readtext(input, compat, CODESIZE);
-			bitcode_convert(cpu, code);
-			if(debug)
-			{
-				bitcode_dump(cpu, FORMAT_PLAIN, output);
-				delim(output);
-			}
+			bitcode_dump(cpu, FORMAT_PLAIN, output);
+			delim(output);
 		}
-		if(mode == MODE_BFC || mode == MODE_BCC)
+		if(mode == MODE_BFC)
 			bitcode_dump(cpu, FORMAT_C, output);
-		else if(mode == MODE_BC)
+		else if(mode == MODE_BIT)
 			bitcode_dump(cpu, FORMAT_PLAIN, output);
 		else
 			brainfunk_execute(cpu);	/* start executing code */
