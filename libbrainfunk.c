@@ -4,7 +4,7 @@
 #define EXEC_HANDLER_DEF(name)	exec_ ## name
 
 #define SCAN(name) \
-	static int scan_ ## name(char *text, size_t match_len, brainfunk_t cpu, pcstack_t pcstack)
+	static int scan_ ## name(char *text, size_t len, brainfunk_t cpu, pcstack_t pcstack)
 
 #define SCAN_HANDLER_DEF(name, text) \
 	{						\
@@ -397,20 +397,27 @@ void brainfunk_dumptext(char *code, FILE *fp)
 	putc('\n', fp);
 }
 
-SCAN(smul)
+size_t _count_continus(char *text, size_t len, char *symbolset)
 {
 	size_t i=0;
-	ssize_t ctr=0;
-
-	/* First we need to validate if this is a true "multiply" operation */
-	while(i < match_len)
+	size_t ctr=0;
+	while(i < len)
 	{
-		if(text[i] == '>')
+		if(text[i] == symbolset[0])
 			ctr++;
-		else if(text[i] == '<')
+		else if(text[i] == symbolset[1])
 			ctr--;
 		i++;
 	}
+	return ctr;
+}
+
+SCAN(smul)
+{
+	ssize_t ctr=0;
+
+	/* First we need to validate if this is a true "multiply" operation */
+	ctr = _count_continus(text, len, "><");
 	if(ctr != 0)
 		return FALSE;
 
@@ -441,17 +448,9 @@ SCAN(s0)
 
 SCAN(a)
 {
-	size_t i=0;
 	offset_t offset=0;
 
-	while(i < match_len)
-	{
-		if(text[i] == '+')
-			offset++;
-		else if(text[i] == '-')
-			offset--;
-		i++;
-	}
+	offset = _count_continus(text, len, "+-");
 
 	cpu->code[cpu->pc].op = _OP_A;
 	cpu->code[cpu->pc].arg.offset = offset;
@@ -462,17 +461,9 @@ SCAN(a)
 
 SCAN(m)
 {
-	size_t i=0;
 	offset_t offset=0;
 
-	while(i < match_len)
-	{
-		if(text[i] == '>')
-			offset++;
-		else if(text[i] == '<')
-			offset--;
-		i++;
-	}
+	offset = _count_continus(text, len, "><");
 
 	cpu->code[cpu->pc].op = _OP_M;
 	cpu->code[cpu->pc].arg.offset = offset;

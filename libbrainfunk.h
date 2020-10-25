@@ -118,7 +118,7 @@ extern char opname[_OP_INSTS][_OPLEN];
 typedef struct
 {
 	char regexp[_MAXLEN];
-	int (*scan)(char *text, size_t match_len, brainfunk_t cpu, pcstack_t pcstack);
+	int (*scan)(char *text, size_t len, brainfunk_t cpu, pcstack_t pcstack);
 } scan_handler_t;
 
 extern scan_handler_t scan_handler[];
