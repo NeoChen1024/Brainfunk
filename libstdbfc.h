@@ -49,6 +49,8 @@ typedef size_t arg_t;
 memory_t *memory;
 int ptr=0;
 
+/* This implementation sacrificed all sanity check for the sake of speed */
+
 #define peek (stack[stack_ptr])
 #define current (memory[ptr])
 #
