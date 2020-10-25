@@ -59,32 +59,16 @@ void panic(char *msg)
 	exit(8);
 }
 
-/* Assumption: a must be positive */
-INLINE int overflow_add(int a, int b, int max)
-{
-	if(b > 0)
-	{
-		if(a + b > max)
-			return a + b - max;
-	}
-	else
-	{
-		if(a + b < 0)
-			return a + b + max;
-	}
-	return a + b;
-}
-
 #define	a(x)	\
 	current += x
 #define mul(mul, offset)	\
-	memory[overflow_add(ptr, offset, MEMSIZE)] += current * mul
+	if(memory[ptr]) memory[ptr + offset] += current * mul
 #define	s(x)	\
 	current = x
 #define f(x)	\
 	while(current != 0) ptr += x
 #define	m(x)	\
-	ptr = overflow_add(ptr, x, MEMSIZE);
+	ptr += x;
 #define	je(x)	\
 	if(current == 0) goto L ## x
 #define	jn(x)	\
@@ -98,9 +82,6 @@ INLINE int overflow_add(int a, int b, int max)
 
 void init(void)
 {
-	setvbuf(stdin, NULL, _IONBF, 0);
-	setvbuf(stdout, NULL, _IONBF, 0);
-
 	memory = calloc(1, MEMSIZE);
 }
 

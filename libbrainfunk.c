@@ -169,7 +169,8 @@ EXEC(a)
 EXEC(mul)
 {
 	/* *(Current + offset) += Current * mul */
-	cpu->mem[cpu->ptr + cpu->code[cpu->pc].arg.dual.offset] += cpu->mem[cpu->ptr] * cpu->code[cpu->pc].arg.dual.mul;
+	if(cpu->mem[cpu->ptr] != 0)
+		cpu->mem[cpu->ptr + cpu->code[cpu->pc].arg.dual.offset] += cpu->mem[cpu->ptr] * cpu->code[cpu->pc].arg.dual.mul;
 	cpu->pc++;
 	return _CONT;
 }
