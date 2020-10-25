@@ -84,6 +84,10 @@ void panic(char *msg)
 
 void init(void)
 {
+	/* Disable Buffering */
+	setvbuf(stdin, NULL, _IONBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
+
 	memory = calloc(1, MEMSIZE);
 }
 
