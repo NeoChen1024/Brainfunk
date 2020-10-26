@@ -69,10 +69,7 @@ IO_IN_FUNCTION
 	int c = getc(stdin);
 	if(debug)
 		fputs("INPUT: ", stderr);
-	if(c != EOF)
-		return (data_t)(c & 0xFF);
-	else
-		return 0;
+	return c;
 }
 
 IO_OUT_FUNCTION

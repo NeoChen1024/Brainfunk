@@ -228,10 +228,12 @@ EXEC(jn)
 
 EXEC(io)
 {
+	int c = 0;
 	switch(cpu->code[cpu->pc].arg.im)
 	{
 		case _IO_IN:
-			cpu->mem[cpu->ptr] = io_in(cpu->debug);
+			c = io_in(cpu->debug);
+			cpu->mem[cpu->ptr] = c == EOF ? 0 : c;
 			break;
 		case _IO_OUT:
 			io_out(cpu->mem[cpu->ptr], cpu->debug);

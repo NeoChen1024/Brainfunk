@@ -141,7 +141,7 @@ void quit(int32_t arg);
 
 /* These functions must be provided externally */
 #define IO_IN_FUNCTION	\
-	data_t io_in(int debug)
+	int io_in(int debug)
 #define IO_OUT_FUNCTION	\
 	void io_out(data_t data, int debug)
 #define DEBUG_OUT_FUNCTION \

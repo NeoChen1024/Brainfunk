@@ -41,19 +41,16 @@
 pid_t p=0;
 
 #define MEMSIZE		(1<<20)
-#define STACKSIZE	(1<<16)
 #define INLINE		static inline
 
 typedef uint8_t memory_t;
-typedef size_t arg_t;
 memory_t *memory;
 int ptr=0;
 
+#define current (memory[ptr])
+
 /* This implementation sacrificed all sanity check for the sake of speed */
 
-#define peek (stack[stack_ptr])
-#define current (memory[ptr])
-#
 void panic(char *msg)
 {
 	puts(msg);
@@ -93,7 +90,8 @@ void init(void)
 
 INLINE memory_t in()
 {
-	return (memory_t)getchar();
+	int c = getchar();
+	return c == EOF ? 0 : (memory_t)c;
 }
 
 INLINE void out(memory_t arg)
@@ -101,7 +99,7 @@ INLINE void out(memory_t arg)
 	putchar(arg);
 }
 
-INLINE void io(arg_t arg)
+INLINE void io(memory_t arg)
 {
 	switch(arg)
 	{
