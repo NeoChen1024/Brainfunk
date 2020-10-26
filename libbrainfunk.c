@@ -355,6 +355,7 @@ static inline int iscode(int c, int compat)
 		case '~':
 		case '%':
 		case '#':
+		case '!':
 			if(compat)
 				return FALSE;
 			else
@@ -614,8 +615,14 @@ SCAN(h)
 	return TRUE;
 }
 
+SCAN(split)
+{
+	return TRUE;
+}
+
 static scan_handler_t scan_handler[] =
 {
+		SCAN_HANDLER_DEF(split,	"^!"),	/* A */
 		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+\\]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-\\]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
