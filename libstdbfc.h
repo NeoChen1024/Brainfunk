@@ -69,15 +69,15 @@ void panic(char *msg)
 #define	m(x)	\
 	ptr += x;
 #define	je(x)	\
-	if(current == 0) goto L ## x
+	while(current) {
 #define	jn(x)	\
-	if(current != 0) goto L ## x
+	}
 #define	y(x)	\
 	pid_t p = fork();	\
 	current = p;		\
 	if(p != 0) current = 0xFF
 #define	x(x)	\
-	panic("?INVALID");
+	panic("?INVALID")
 
 void init(void)
 {
