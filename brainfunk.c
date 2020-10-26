@@ -53,7 +53,7 @@ int debug = NODEBUG;
 int input_opened=FALSE;
 int output_opened=FALSE;
 int string_input=FALSE;
-int compat=COMPAT;	/* compatible with plain Brainfuck */
+int compat=TRUE;	/* compatible with plain Brainfuck */
 
 enum mode_enum
 {
@@ -109,7 +109,7 @@ void parsearg(int argc, char **argv)
 				else if(!strcmp("bit", optarg))
 					mode = MODE_BIT;
 				else
-					panic("?INVAILD_MODE");
+					panic("?MODE");
 				break;
 			case 'f':
 				if(!input_opened)
@@ -152,7 +152,7 @@ void parsearg(int argc, char **argv)
 				debug = DEBUG;
 				break;
 			case 'c':
-				compat = COMPAT; /* ignore Brainfunk extensions */
+				compat = FALSE; /* use Brainfunk extensions */
 				break;
 			default:
 				printf("%s: [-d] [-m mode] [-c] [-s code] [-f file] [-o file]\n", argv[0]);
@@ -181,13 +181,11 @@ int main(int argc, char **argv)
 		bitcode_convert(cpu, code);
 		if(debug)
 		{
-			bitcode_dump(cpu, FORMAT_PLAIN, output);
+			bitcode_dump(cpu, BITCODE_FORMAT_PLAIN, output);
 			delim(output);
 		}
-		if(mode == MODE_BFC)
-			bitcode_dump(cpu, FORMAT_C, output);
-		else if(mode == MODE_BIT)
-			bitcode_dump(cpu, FORMAT_PLAIN, output);
+		if(mode != MODE_BF)
+			bitcode_dump(cpu, mode == MODE_BFC ? BITCODE_FORMAT_C : BITCODE_FORMAT_PLAIN, output);
 		else
 			brainfunk_execute(cpu);	/* start executing code */
 	}

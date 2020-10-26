@@ -12,6 +12,16 @@
 
 #pragma once
 
+#define INLINE static inline
+
+#ifdef EXPECT_MACRO
+#  define likely(x)	__builtin_expect(!!(x), 1)
+#  define unlikely(x)	__builtin_expect(!!(x), 0)
+#else
+#  define likely(x)	(x)
+#  define unlikely(x)	(x)
+#endif
+
 /* Used in execution function */
 #define _HALT	0
 #define _CONT	1
@@ -32,12 +42,8 @@
 #define DEBUG	1
 #define NODEBUG	0
 
-#define FORMAT_C	0
-#define FORMAT_PLAIN	1
-
-/* Compatibility with plain Brainfuck */
-#define NOCOMPAT	0
-#define COMPAT		1
+#define BITCODE_FORMAT_C	0
+#define BITCODE_FORMAT_PLAIN	1
 
 typedef uint8_t data_t;
 typedef data_t * mem_t;
@@ -116,20 +122,12 @@ enum opcodes
 	_OP_INSTS /* Total number of instructions */
 };
 
-/* To store the operand type of the opcode */
-extern char opcode_type[_OP_INSTS];
-
-extern exec_handler_t exec_handler[_OP_INSTS];
-extern char opname[_OP_INSTS][_OPLEN];
-
 /* Lexer & Bitcode emitter */
 typedef struct
 {
 	char regexp[_MAXLEN];
 	int (*scan)(char *text, size_t len, brainfunk_t cpu, pcstack_t pcstack);
 } scan_handler_t;
-
-extern scan_handler_t scan_handler[];
 
 void panic(char *msg);
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug);

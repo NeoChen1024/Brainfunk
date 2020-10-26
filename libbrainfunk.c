@@ -12,7 +12,7 @@
 		.scan = scan_ ## name			\
 	}
 
-char opname[_OP_INSTS][_OPLEN] =
+static char opname[_OP_INSTS][_OPLEN] =
 {
 	"x",
 	"a",
@@ -37,7 +37,7 @@ char opname[_OP_INSTS][_OPLEN] =
  * I => Intermediate
  */
 
-char opcode_type[_OP_INSTS] =
+static char opcode_type[_OP_INSTS] =
 {
 	'N',	/* X */
 	'O',	/* A */
@@ -53,20 +53,13 @@ char opcode_type[_OP_INSTS] =
 	'N'	/* H */
 };
 
-op_t opcode(char *name)
-{
-	int i=0;
-	while(strcmp(name, opname[i]) != 0 || i < _OP_INSTS) ++i;
-	return i;
-}
-
 void panic(char *msg)
 {
 	fprintf(stderr, "%s\n", msg);
 	quit(8);
 }
 
-pcstack_t pcstack_create(size_t size)
+static pcstack_t pcstack_create(size_t size)
 {
 	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
 	stack->stack = calloc(size, sizeof(size_t));
@@ -76,20 +69,20 @@ pcstack_t pcstack_create(size_t size)
 	return stack;
 }
 
-addr_t pcstack_pop(pcstack_t stack)
+INLINE addr_t pcstack_pop(pcstack_t stack)
 {
 	assert(stack->ptr > 0);
 	return stack->stack[--(stack->ptr)];
 }
 
-void pcstack_push(pcstack_t stack, addr_t data)
+INLINE void pcstack_push(pcstack_t stack, addr_t data)
 {
 	assert(stack->ptr <= stack->size);
 	stack->stack[stack->ptr++] = data;
 	return;
 }
 
-void pcstack_destroy(pcstack_t *stack)
+static void pcstack_destroy(pcstack_t *stack)
 {
 	free((*stack)->stack);
 	free(*stack);
@@ -144,7 +137,7 @@ static inline void _operand_to_str(op_t op, arg_t *arg, char *buf, size_t len)
 	}
 }
 
-static inline void _debug_print(brainfunk_t cpu)
+INLINE void debug_print(brainfunk_t cpu)
 {
 	char buf[_MAXLEN];
 	_operand_to_str(cpu->code[cpu->pc].op, &cpu->code[cpu->pc].arg, buf, _MAXLEN);
@@ -203,7 +196,7 @@ EXEC(f)
 EXEC(m)
 {
 	/* Wrap-around, Pointer += arg */
-	if((offset_t)cpu->ptr + cpu->code[cpu->pc].arg.offset < 0)
+	if(unlikely((offset_t)cpu->ptr + cpu->code[cpu->pc].arg.offset < 0))
 		cpu->ptr += cpu->code[cpu->pc].arg.offset + cpu->size.mem;
 	else if(cpu->ptr + cpu->code[cpu->pc].arg.offset >= cpu->size.mem)
 		cpu->ptr += cpu->code[cpu->pc].arg.offset - cpu->size.mem;
@@ -261,7 +254,7 @@ EXEC(y)
 
 EXEC(d)
 {
-	_debug_print(cpu);
+	debug_print(cpu);
 	cpu->pc++;
 	return _CONT;
 }
@@ -272,7 +265,7 @@ EXEC(x)
 	return _HALT;
 }
 
-exec_handler_t exec_handler[_OP_INSTS] =
+static exec_handler_t exec_handler[_OP_INSTS] =
 {
 	EXEC_HANDLER_DEF(x),
 	EXEC_HANDLER_DEF(a),
@@ -298,12 +291,12 @@ void brainfunk_execute(brainfunk_t cpu)
 	assert(cpu->pc < cpu->codelen);
 	if(cpu->debug)
 	{
-		while(brainfunk_step(cpu) != _HALT)
-			_debug_print(cpu);
+		while(likely(brainfunk_step(cpu) != _HALT))
+			debug_print(cpu);
 	}
 	else
 	{
-		while(brainfunk_step(cpu) != _HALT);
+		while(likely(brainfunk_step(cpu) != _HALT));
 	}
 	return;
 }
@@ -314,7 +307,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	char *fmt;
 	char operand[_MAXLEN];
 
-	if(format == FORMAT_C)
+	if(format == BITCODE_FORMAT_C)
 	{
 		fmt = "\tL%lld:\t\t\t%s(%s);\n";
 
@@ -324,7 +317,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 			"\tinit();\n",
 			fp);
 	}
-	else if(format == FORMAT_PLAIN)
+	else if(format == BITCODE_FORMAT_PLAIN)
 	{
 		fmt = "%lld:\t%s\t%s\n";
 	}
@@ -338,7 +331,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 		pc++;
 	}
 
-	if(format == FORMAT_C)
+	if(format == BITCODE_FORMAT_C)
 	{
 		fputs("\treturn 0;\n"
 			"}\n",
@@ -410,30 +403,21 @@ void brainfunk_dumptext(char *code, FILE *fp)
 
 /* The "Compiler" part */
 
-int regex_cmp(char *text, regex_t *preg, size_t *len)
+INLINE int regex_cmp(char *text, regex_t *preg, size_t *len)
 {
 	int ret = 0;
 	regmatch_t match;
 
-	char buf[_MAXLEN];
-
 	ret = regexec(preg, text, 1, &match, 0);
 	if(ret == REG_NOMATCH)
 		return FALSE;
-	else if(ret == 0)
-	{
-		strncpy(buf, text, match.rm_eo);
-		buf[match.rm_eo] = 0;
-	}
 	(*len) = match.rm_eo;
 
-	if(match.rm_so != 0)
-		puts(text + match.rm_so);
-	assert(match.rm_so == 0);
+	assert(likely(match.rm_so == 0));
 	return TRUE;
 }
 
-size_t _count_continus(char *text, size_t len, char *symbolset)
+INLINE size_t count_continus(char *text, size_t len, char *symbolset)
 {
 	size_t i=0;
 	size_t ctr=0;
@@ -448,7 +432,7 @@ size_t _count_continus(char *text, size_t len, char *symbolset)
 	return ctr;
 }
 
-int _contain(char *symbolset, char c)
+INLINE int contain(char *symbolset, char c)
 {
 	size_t i=0;
 	while(symbolset[i++] != '\0')
@@ -457,10 +441,10 @@ int _contain(char *symbolset, char c)
 	return FALSE;
 }
 
-void _count_mul_offset(char *text, size_t len, int32_t *mul, int32_t *offset, int32_t lastoffset)
+INLINE void count_mul_offset(char *text, size_t len, int32_t *mul, int32_t *offset, int32_t lastoffset)
 {
-	*mul = _count_continus(text, len, "+-");
-	*offset = _count_continus(text, len, "><") + lastoffset;
+	*mul = count_continus(text, len, "+-");
+	*offset = count_continus(text, len, "><") + lastoffset;
 	return;
 }
 
@@ -477,7 +461,7 @@ SCAN(smul)
 	int ret=0;
 
 	/* First we need to validate if it goes back to where it was */
-	i = _count_continus(text, len, "><");
+	i = count_continus(text, len, "><");
 	if(i != 0)
 		return FALSE;
 
@@ -507,7 +491,7 @@ SCAN(smul)
 	assert(ret == 0);
 	while(regex_cmp(text + i, &preg, &match_len) == TRUE)
 	{
-		_count_mul_offset(text + i, match_len, &mul[pairs], &offset[pairs], pairs == 0 ? 0 : offset[pairs - 1]);
+		count_mul_offset(text + i, match_len, &mul[pairs], &offset[pairs], pairs == 0 ? 0 : offset[pairs - 1]);
 		pairs++;
 		i += match_len;
 	}
@@ -546,7 +530,7 @@ SCAN(s0)
 
 SCAN(f)
 {
-	offset_t offset = _count_continus(text, len, "><");
+	offset_t offset = count_continus(text, len, "><");
 
 	cpu->code[cpu->pc].op = _OP_F;
 	cpu->code[cpu->pc].arg.offset = offset;
@@ -558,7 +542,7 @@ SCAN(a)
 {
 	offset_t offset=0;
 
-	offset = _count_continus(text, len, "+-");
+	offset = count_continus(text, len, "+-");
 
 	cpu->code[cpu->pc].op = _OP_A;
 	cpu->code[cpu->pc].arg.offset = offset;
@@ -570,7 +554,7 @@ SCAN(a)
 SCAN(m)
 {
 	offset_t offset=0;
-	offset = _count_continus(text, len, "><");
+	offset = count_continus(text, len, "><");
 
 	cpu->code[cpu->pc].op = _OP_M;
 	cpu->code[cpu->pc].arg.offset = offset;
@@ -630,7 +614,7 @@ SCAN(h)
 	return TRUE;
 }
 
-scan_handler_t scan_handler[] =
+static scan_handler_t scan_handler[] =
 {
 		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+\\]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-\\]"),	/* S 0 & MUL */
@@ -649,7 +633,7 @@ scan_handler_t scan_handler[] =
 
 #define _SCAN_HANDLERS	(sizeof(scan_handler)/sizeof(scan_handler_t))
 
-regex_t _preg[_SCAN_HANDLERS];
+static regex_t _preg[_SCAN_HANDLERS];
 
 /*
  * Convert plain text Brainfuck code into bitcode,
@@ -672,7 +656,7 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 		assert(ret == 0);
 	}
 
-	while(text[pos] != '\0')
+	while(unlikely(text[pos] != '\0'))
 	{
 		try = 0;
 		while(try < _SCAN_HANDLERS)
