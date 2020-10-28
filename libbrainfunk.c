@@ -659,6 +659,9 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 
 	pcstack_t pcstack = pcstack_create(_PCSTACK_SIZE);
 
+	if(count_continus(text, strlen(text), "[]") != 0)
+		panic("?SYNTAX");
+
 	for(i = 0; i < _SCAN_HANDLERS; i++)
 	{
 		ret = regcomp(&_preg[i], scan_handler[i].regexp, REG_EXTENDED);
