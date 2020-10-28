@@ -624,7 +624,7 @@ SCAN(split)
 
 static scan_handler_t scan_handler[] =
 {
-		SCAN_HANDLER_DEF(split,	"^!"),	/* A */
+		SCAN_HANDLER_DEF(split,	"^!"),	/* Doesn't emit instruction */
 		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+\\]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-\\]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
