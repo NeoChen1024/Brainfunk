@@ -163,7 +163,7 @@ EXEC(mul)
 {
 	/* *(Current + offset) += Current * mul */
 	if(cpu->mem[cpu->ptr] != 0)
-		cpu->mem[cpu->ptr + cpu->code[cpu->pc].arg.dual.offset] += cpu->mem[cpu->ptr] * cpu->code[cpu->pc].arg.dual.mul;
+		cpu->mem[(cpu->ptr + cpu->code[cpu->pc].arg.dual.offset) % cpu->size.mem] += cpu->mem[cpu->ptr] * cpu->code[cpu->pc].arg.dual.mul;
 	cpu->pc++;
 	return _CONT;
 }
@@ -181,12 +181,9 @@ EXEC(f)
 	/* Move until find 0 */
 	while(cpu->mem[cpu->ptr] != 0)
 	{
-		if((offset_t)cpu->ptr + cpu->code[cpu->pc].arg.offset < 0)
-			cpu->ptr += cpu->code[cpu->pc].arg.offset + cpu->size.mem;
-		else if(cpu->ptr + cpu->code[cpu->pc].arg.offset >= cpu->size.mem)
-			cpu->ptr += cpu->code[cpu->pc].arg.offset - cpu->size.mem;
-		else
-			cpu->ptr += cpu->code[cpu->pc].arg.offset;
+		cpu->ptr += cpu->code[cpu->pc].arg.offset;
+		if(cpu->ptr > cpu->size.mem)
+			cpu->ptr %= cpu->size.mem;
 	}
 
 	cpu->pc++;
@@ -196,12 +193,9 @@ EXEC(f)
 EXEC(m)
 {
 	/* Wrap-around, Pointer += arg */
-	if(unlikely((offset_t)cpu->ptr + cpu->code[cpu->pc].arg.offset < 0))
-		cpu->ptr += cpu->code[cpu->pc].arg.offset + cpu->size.mem;
-	else if(cpu->ptr + cpu->code[cpu->pc].arg.offset >= cpu->size.mem)
-		cpu->ptr += cpu->code[cpu->pc].arg.offset - cpu->size.mem;
-	else
-		cpu->ptr += cpu->code[cpu->pc].arg.offset;
+	cpu->ptr += cpu->code[cpu->pc].arg.offset;
+	if(cpu->ptr > cpu->size.mem)
+		cpu->ptr %= cpu->size.mem;
 	cpu->pc++;
 	return _CONT;
 }
