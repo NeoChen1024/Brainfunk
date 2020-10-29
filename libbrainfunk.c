@@ -113,7 +113,7 @@ void brainfunk_destroy(brainfunk_t *brainfunk)
 	*brainfunk = NULL;
 }
 
-static inline void _operand_to_str(op_t op, arg_t *arg, char *buf, size_t len)
+static inline void operand_to_str(op_t op, arg_t *arg, char *buf)
 {
 	switch(opcode_type[op])
 	{
@@ -121,16 +121,16 @@ static inline void _operand_to_str(op_t op, arg_t *arg, char *buf, size_t len)
 			buf[0] = '\0';
 			break;
 		case 'O':
-			snprintf(buf, len, "%zd", arg->offset);
+			sprintf(buf, "%zd", arg->offset);
 			break;
 		case 'M':
-			snprintf(buf, len, "%d, %d", arg->dual.mul, arg->dual.offset);
+			sprintf(buf, "%d, %d", arg->dual.mul, arg->dual.offset);
 			break;
 		case 'I':
-			snprintf(buf, len, "%hhu", arg->im);
+			sprintf(buf, "%hhu", arg->im);
 			break;
 		case 'A':
-			snprintf(buf, len, "%zu", arg->addr);
+			sprintf(buf, "%zu", arg->addr);
 			break;
 		default:
 			assert(0 != 0);
@@ -140,7 +140,7 @@ static inline void _operand_to_str(op_t op, arg_t *arg, char *buf, size_t len)
 INLINE void debug_print(brainfunk_t cpu)
 {
 	char buf[_MAXLEN];
-	_operand_to_str(cpu->code[cpu->pc].op, &cpu->code[cpu->pc].arg, buf, _MAXLEN);
+	operand_to_str(cpu->code[cpu->pc].op, &cpu->code[cpu->pc].arg, buf);
 	fprintf(stderr, ">> %ld:\t%s\t%s\n", cpu->pc, opname[cpu->code[cpu->pc].op], buf);
 	fprintf(stderr, ">> \tMEM[%lu] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
 	return;
@@ -328,7 +328,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 
 	while(pc < cpu->codelen)
 	{
-		_operand_to_str(cpu->code[pc].op, &cpu->code[pc].arg, operand, _MAXLEN);
+		operand_to_str(cpu->code[pc].op, &cpu->code[pc].arg, operand);
 		fprintf(fp, fmt, pc, opname[cpu->code[pc].op], operand);
 		pc++;
 	}
@@ -433,15 +433,6 @@ INLINE size_t count_continus(char *text, size_t len, char *symbolset)
 		i++;
 	}
 	return ctr;
-}
-
-INLINE int contain(char *symbolset, char c)
-{
-	size_t i=0;
-	while(symbolset[i++] != '\0')
-		if(symbolset[i] == c)
-			return TRUE;
-	return FALSE;
 }
 
 INLINE void count_mul_offset(char *text, size_t len, int32_t *mul, int32_t *offset, int32_t lastoffset)
