@@ -306,7 +306,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	{
 		fmt = "\t /* %lld: */\t\t\t%s(%s);\n";
 
-		fputs(	"#include <libstdbfc.h>\n\n"
+		fputs(	"#include \"libstdbfc.h\"\n\n"
 			"int main(void)\n"
 			"{\n"
 			"\tinit();\n",
