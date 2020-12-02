@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -ex
 CC="${CC:-cc}"
-CFLAGS="-Ofast -flto -fPIE -pipe -I. -Wall -Wextra -Wno-unused-label -static -std=c99"
-FILE="$(mktemp).c"
+CFLAGS="-Ofast -g3 -flto -fPIE -pipe -I. -Wall -Wextra -Wno-unused-label -static -std=c99"
+FILE="$(mktemp)"
 SRC="$1"
 OUT="$2"
 
@@ -18,6 +18,6 @@ fi
 
 msg_echo "$SRC"
 ./brainfunk -m bfc -f "$SRC" -o "$FILE"
-"$CC" $CFLAGS "$FILE" -o "$OUT"
+"$CC" -x c $CFLAGS "$FILE" -o "$OUT"
 
 rm "$FILE"
