@@ -45,7 +45,7 @@ pid_t p=0;
 
 typedef uint8_t memory_t;
 memory_t *memory;
-int ptr=0;
+unsigned int ptr=0;
 
 #define current (memory[ptr])
 
@@ -61,7 +61,7 @@ void panic(char *msg)
 #define	a(x)	\
 	current += x
 #define mul(mul, offset)	\
-	if(memory[ptr]) memory[ptr + offset] += current * mul
+	memory[(ptr + offset) % MEMSIZE] += current * mul
 #define	s(x)	\
 	current = x
 #define f(x)	\
