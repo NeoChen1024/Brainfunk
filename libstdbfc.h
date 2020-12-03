@@ -44,38 +44,35 @@ pid_t p=0;
 #define INLINE		static inline
 
 typedef uint8_t memory_t;
-memory_t *memory;
-unsigned int ptr=0;
-
-#define current (memory[ptr])
+memory_t *mem;
 
 /* This implementation sacrificed all sanity check for the sake of speed */
 
 void panic(char *msg)
 {
 	puts(msg);
-	free(memory);
+	free(mem);
 	exit(8);
 }
 
 #define	a(x)	\
-	current += x
+	*mem += x
 #define mul(mul, offset)	\
-	memory[(ptr + offset) % MEMSIZE] += current * mul
+	mem[offset] += *mem * mul
 #define	s(x)	\
-	current = x
+	*mem = x
 #define f(x)	\
-	while(current != 0) ptr += x
+	while(*mem != 0) mem += x
 #define	m(x)	\
-	ptr += x;
+	mem += x
 #define	je(x)	\
-	while(current) {
+	while(*mem) {
 #define	jn(x)	\
 	}
 #define	y(x)	\
 	pid_t p = fork();	\
-	current = p;		\
-	if(p != 0) current = 0xFF
+	*mem = p;		\
+	if(p != 0) *mem = 0xFF
 #define	x(x)	\
 	panic("?INVALID")
 
@@ -85,7 +82,7 @@ void init(void)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	memory = calloc(sizeof(memory_t), MEMSIZE);
+	mem = calloc(sizeof(memory_t), MEMSIZE) + MEMSIZE / 2;
 }
 
 INLINE memory_t in()
@@ -104,17 +101,17 @@ INLINE void io(memory_t arg)
 	switch(arg)
 	{
 		case 0: /* IN */
-			memory[ptr] = in();
+			*mem = in();
 			break;
 		case 1: /* OUT */
-			out(memory[ptr]);
+			out(*mem);
 			break;
 	}
 }
 
 void d(void)
 {
-	fprintf(stderr, ">> PTR = %d, MEM[PTR] = %hhu", ptr, memory[ptr]);
+	fprintf(stderr, ">> MEM[PTR] = %hhu", *mem);
 }
 
 void h(void)
