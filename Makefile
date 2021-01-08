@@ -5,7 +5,7 @@ OBJS	= brainfunk.o libbrainfunk.o
 
 .PHONY: all clean countline test
 
-all: brainfunk
+all: brainfunk bf
 
 brainfunk: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
@@ -17,4 +17,4 @@ countline:
 	wc -l *.h *.c
 
 clean:
-	rm -f $(OBJS) brainfunk
+	rm -f $(OBJS) brainfunk bf
