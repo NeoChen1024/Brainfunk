@@ -49,29 +49,15 @@ int is_code(char c)
 	}
 }
 
-// Read Code
-void read_code(FILE* fp)
+void validate_code(char *str)
 {
 	size_t i = 0;
 	ssize_t level = 0;
-	int c;
-	while((c = getc(fp)) != EOF)
-	{
-		if(i >= CODESIZE)
-		{
-			fputs("Code too big!\n", stderr);
-			exit(1);
-		}
-		if(is_code(c))
-			code[i++] = (char)c;
-	}
-
-	i = 0;	/* reuse this variable */
 
 	/* Validate that the '[' and ']'s is matched */
-	while(code[i] != '\0')
+	while(str[i] != '\0')
 	{
-		switch(code[i++])
+		switch(str[i++])
 		{
 			case '[':
 				level++;
@@ -89,17 +75,38 @@ void read_code(FILE* fp)
 	}
 }
 
+
+// Read Code
+void read_code(FILE* fp)
+{
+	size_t i = 0;
+	int c;
+	while((c = getc(fp)) != EOF)
+	{
+		if(i >= CODESIZE)
+		{
+			fputs("Code too big!\n", stderr);
+			exit(1);
+		}
+		if(is_code(c))
+			code[i++] = (char)c;
+	}
+	code[i] = '\0';
+
+	validate_code(code);
+}
+
 _INLINE	void exit_loop(void)
 {
-	long long int nest_level=0;
+	long long int level=0;
 	while(code[pc] != '\0')
 	{
 		if(code[pc] == '[')
-			++nest_level;
+			++level;
 		else if(code[pc] == ']')
-			--nest_level;
+			--level;
 
-		if(nest_level == 0)
+		if(level == 0)
 			return;
 
 		pc++;
@@ -189,6 +196,7 @@ int main(int argc, char **argv)
 						read_code(stdin);
 					break;
 				case 's':
+					validate_code(optarg);
 					free(code);
 					code = malloc(strlen(optarg) + 1);
 					strcpy(code, optarg);
