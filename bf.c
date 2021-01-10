@@ -13,7 +13,7 @@
 #ifndef SIZEDEF
 #define STACKSIZE (1ULL<<12)
 #define MEMSIZE (1ULL<<20)
-#define CODESIZE (1ULL<<18)
+#define CODESIZE (1ULL<<16)
 #endif
 
 #define TRUE 1
@@ -30,6 +30,8 @@ arg_t ptr=0;
 arg_t *stack;
 char *code;
 arg_t pc=0;
+
+size_t code_size = CODESIZE;
 
 int is_code(char c)
 {
@@ -83,13 +85,17 @@ void read_code(FILE* fp)
 	int c;
 	while((c = getc(fp)) != EOF)
 	{
-		if(i >= CODESIZE)
-		{
-			fputs("Code too big!\n", stderr);
-			exit(1);
-		}
 		if(is_code(c))
 			code[i++] = (char)c;
+
+		if(i >= code_size)
+		{
+			if((code = realloc(code, code_size = code_size + 1024)) == NULL)
+			{
+				fputs("Out of memory!\n", stderr);
+				exit(1);
+			}
+		}
 	}
 	code[i] = '\0';
 
@@ -167,6 +173,12 @@ int main(int argc, char **argv)
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
 	stack	= calloc(STACKSIZE, sizeof(arg_t));
 	code	= calloc(CODESIZE, sizeof(char));
+
+	if(memory == NULL || stack == NULL || code == NULL)
+	{
+		fputs("Unable to allocate memory!\n", stderr);
+		exit(1);
+	}
 
 	/* Parse Argument */
 	FILE *corefile;
