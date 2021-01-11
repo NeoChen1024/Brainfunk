@@ -1,7 +1,7 @@
-/* ==================================== *
- * Brainfunk -- A Brainf**k Interpreter *
- * Neo_Chen			        *
- * ==================================== */
+/* ================================================= *\
+|* bf.c -- A simple yet secure Brainfuck Interpreter *|
+|* Neo_Chen					     *|
+\* ================================================= */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,11 +150,10 @@ _INLINE	void interprete(unsigned char c)
 				stack--; /* Drop */
 			break;
 		case ',':
-			memory[ptr] = (uint8_t)getchar();
+			memory[ptr] = (uint8_t)getc(stdin);
 			break;
 		case '.':
-			putchar(memory[ptr]);
-			fflush(NULL);
+			putc(memory[ptr], stdout);
 			break;
 		default:
 			break;
@@ -173,6 +172,10 @@ int main(int argc, char **argv)
 	memory	= calloc(MEMSIZE, sizeof(memory_t));
 	stack	= calloc(STACKSIZE, sizeof(arg_t));
 	code	= calloc(CODESIZE, sizeof(char));
+
+	/* Disable Buffering */
+	setvbuf(stdin, NULL, _IONBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
 
 	if(memory == NULL || stack == NULL || code == NULL)
 	{
