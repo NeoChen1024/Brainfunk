@@ -25,15 +25,15 @@ typedef unsigned int arg_t;
 
 /* init */
 
-memory_t *memory;
-arg_t ptr=0;
-arg_t *stack;
-char *code;
-arg_t pc=0;
+static memory_t *memory;
+static arg_t ptr=0;
+static arg_t *stack;
+static char *code;
+static arg_t pc=0;
 
-size_t code_size = CODESIZE;
+static size_t code_size = CODESIZE;
 
-int is_code(char c)
+static int is_code(char c)
 {
 	switch(c)
 	{
@@ -51,7 +51,7 @@ int is_code(char c)
 	}
 }
 
-void validate_code(char *str)
+static void validate_code(char *str)
 {
 	size_t i = 0;
 	ssize_t level = 0;
@@ -73,13 +73,13 @@ void validate_code(char *str)
 	if(level != 0)
 	{
 		fputs("Unmatched Loop!\n", stderr);
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 }
 
 
 // Read Code
-void read_code(FILE* fp)
+static void read_code(FILE* fp)
 {
 	size_t i = 0;
 	int c;
@@ -93,7 +93,7 @@ void read_code(FILE* fp)
 			if((code = realloc(code, code_size = code_size + 1024)) == NULL)
 			{
 				fputs("Out of memory!\n", stderr);
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 		}
 	}
@@ -119,7 +119,7 @@ _INLINE	void exit_loop(void)
 	}
 }
 
-_INLINE	void interprete(unsigned char c)
+_INLINE	void interprete(char c)
 {
 	switch(c)
 	{
@@ -161,9 +161,9 @@ _INLINE	void interprete(unsigned char c)
 	pc++;
 }
 
-void help(int argc, char **argv)
+static void help(int argc, char **argv)
 {
-	printf("Usage: %s [-h] [-f file] [-s code] [-d]\n", argv[0]);
+	printf("Usage: %s [-h] [-f file] [-s code]\n", argv[0]);
 }
 
 int main(int argc, char **argv)
@@ -173,6 +173,8 @@ int main(int argc, char **argv)
 	stack	= calloc(STACKSIZE, sizeof(arg_t));
 	code	= calloc(CODESIZE, sizeof(char));
 
+	code[0] = '\0';
+
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
@@ -180,7 +182,7 @@ int main(int argc, char **argv)
 	if(memory == NULL || stack == NULL || code == NULL)
 	{
 		fputs("Unable to allocate memory!\n", stderr);
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	/* Parse Argument */
@@ -193,22 +195,22 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		while((opt = getopt(argc, argv, "hdf:s:")) != -1)
+		while((opt = getopt(argc, argv, "hf:s:")) != -1)
 		{
 			switch(opt)
 			{
 				case 'f':
-					if(strcmp(optarg, "-"))
+					if(strcmp(optarg, "-") == 0)
+						read_code(stdin);
+					else
 					{
 						if((corefile = fopen(optarg, "r")) == NULL)
 						{
 							perror(optarg);
-							exit(8);
+							exit(EXIT_FAILURE);
 						}
 						read_code(corefile);
 					}
-					else
-						read_code(stdin);
 					break;
 				case 's':
 					validate_code(optarg);
@@ -220,9 +222,7 @@ int main(int argc, char **argv)
 					help(argc, argv);
 					break;
 				default:
-					exit(1);
-					break;
-
+					exit(EXIT_FAILURE);
 			}
 		}
 	}
