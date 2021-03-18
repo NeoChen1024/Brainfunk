@@ -8,6 +8,6 @@ OP	MNEMONIC	Operand		Description
 0x5	JE		ADDR		Jump if equal to zero
 0x6	JZ		ADDR		Jump if not zero
 0x7	IO		INTERMEDIATE	IO
-0x8	F		None		Fork
+0x8	Y		None		Fork
 0x9	D		None		Debug, print internal status
 0xA	H		None		Halt
