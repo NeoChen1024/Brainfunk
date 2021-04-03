@@ -7,7 +7,13 @@
 ||    Simpified version for Arduino    ||
 \* =================================== */
 
-#include <avr/pgmspace.h>
+#ifdef __AVR__
+#  include <avr/pgmspace.h>
+#  define CURRENT_CODE (pgm_read_byte(code + pc))
+#else
+#  define PROGMEM
+#  define CURRENT_CODE (*(code + pc))
+#endif
 
 #define TRUE 1
 #define FALSE 0
@@ -173,10 +179,7 @@ arg_t ptr=0;
 arg_t stack_ptr=0;
 
 unsigned long int starttime=0;
-
 void (*reset)(void) = 0x0000;
-
-#define CURRENT_CODE (pgm_read_byte(code + pc))
 
 void exit(int a)
 {
