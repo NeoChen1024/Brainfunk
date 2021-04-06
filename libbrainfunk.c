@@ -193,7 +193,7 @@ EXEC(m)
 {
 	/* Wrap-around, Pointer += arg */
 	cpu->ptr += cpu->code[cpu->pc].arg.offset;
-	if(cpu->ptr > cpu->size.mem)
+	if(unlikely(cpu->ptr > cpu->size.mem))
 		cpu->ptr %= cpu->size.mem;
 	cpu->pc++;
 	return _CONT;
