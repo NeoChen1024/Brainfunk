@@ -82,7 +82,7 @@ void init(void)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	mem = calloc(sizeof(memory_t), MEMSIZE) + MEMSIZE / 2;
+	mem = (memory_t *)calloc(sizeof(memory_t), MEMSIZE) + MEMSIZE / 2;
 }
 
 INLINE memory_t in()
