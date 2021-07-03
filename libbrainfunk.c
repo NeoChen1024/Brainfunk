@@ -413,10 +413,10 @@ INLINE int regex_cmp(char *text, regex_t *preg, size_t *len)
 	return TRUE;
 }
 
-INLINE size_t count_continus(char *text, size_t len, char *symbolset)
+INLINE ssize_t count_continus(char *text, size_t len, char *symbolset)
 {
 	size_t i=0;
-	size_t ctr=0;
+	ssize_t ctr=0;
 	while(i < len)
 	{
 		if(text[i] == symbolset[0])
@@ -428,7 +428,7 @@ INLINE size_t count_continus(char *text, size_t len, char *symbolset)
 	return ctr;
 }
 
-INLINE void count_mul_offset(char *text, size_t len, int32_t *mul, int32_t *offset, int32_t lastoffset)
+INLINE void count_mul_offset(char *text, size_t len, ssize_t *mul, ssize_t *offset, size_t lastoffset)
 {
 	*mul = count_continus(text, len, "+-");
 	*offset = count_continus(text, len, "><") + lastoffset;
@@ -440,8 +440,8 @@ SCAN(smul)
 	ssize_t i=0;
 	int pairs=0;
 	int mode=0;
-	int32_t mul[_MAXLEN];
-	int32_t offset[_MAXLEN];
+	ssize_t mul[_MAXLEN];
+	ssize_t offset[_MAXLEN];
 	size_t match_len=0;
 
 	regex_t preg;
