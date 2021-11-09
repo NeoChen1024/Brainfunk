@@ -142,12 +142,15 @@ void quit(int32_t arg);
 
 /* These functions must be provided externally */
 #define IO_IN_FUNCTION	\
-	int io_in(int debug)
+	int _io_in(int debug)
 #define IO_OUT_FUNCTION	\
-	void io_out(data_t data, int debug)
+	void _io_out(data_t data, int debug)
 #define DEBUG_OUT_FUNCTION \
-	void debug_out(char *str, int debug)
+	void _debug_out(char *str, int debug)
+#define PANIC_FUNCTION	\
+	void _panic(char *msg)
 
 extern IO_IN_FUNCTION;
 extern IO_OUT_FUNCTION;
 extern DEBUG_OUT_FUNCTION;
+extern PANIC_FUNCTION;

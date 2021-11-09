@@ -80,6 +80,18 @@ IO_OUT_FUNCTION
 		putc((char)data, stdout);
 }
 
+PANIC_FUNCTION
+{
+	fprintf(stderr, "%s\n", msg);
+	exit(8);
+}
+
+void panic(char *msg)
+{
+	fprintf(stderr, "%s\n", msg);
+	exit(1);
+}
+
 void delim(FILE *fp)
 {
 	int i=0;

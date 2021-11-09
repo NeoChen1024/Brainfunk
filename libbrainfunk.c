@@ -53,12 +53,6 @@ static char opcode_type[_OP_INSTS] =
 	'N'	/* H */
 };
 
-void panic(char *msg)
-{
-	fprintf(stderr, "%s\n", msg);
-	quit(8);
-}
-
 static void alloccheck(void *ptr)
 {
 	if(ptr == NULL)
@@ -238,11 +232,11 @@ EXEC(io)
 	switch(cpu->code[cpu->pc].arg.im)
 	{
 		case _IO_IN:
-			c = io_in(cpu->debug);
+			c = _io_in(cpu->debug);
 			cpu->mem[cpu->ptr] = c == EOF ? 0 : c;
 			break;
 		case _IO_OUT:
-			io_out(cpu->mem[cpu->ptr], cpu->debug);
+			_io_out(cpu->mem[cpu->ptr], cpu->debug);
 			break;
 	}
 	cpu->pc++;
@@ -269,7 +263,7 @@ EXEC(d)
 
 EXEC(x)
 {
-	panic("?INV");
+	_panic("?INV");
 	return _HALT;
 }
 
