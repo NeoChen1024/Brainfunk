@@ -4,3 +4,4 @@ test
 brainfunk
 bf
 compile_commands.json
+.vscode
