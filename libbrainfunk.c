@@ -59,10 +59,20 @@ void panic(char *msg)
 	quit(8);
 }
 
+static void alloccheck(void *ptr)
+{
+	if(ptr == NULL)
+	{
+		panic("Unable to allocate memory");
+	}
+}
+
 static pcstack_t pcstack_create(size_t size)
 {
 	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
+	alloccheck(stack);
 	stack->stack = calloc(size, sizeof(size_t));
+	alloccheck(stack->stack);
 	stack->ptr = 0;
 	stack->size = size;
 
@@ -93,11 +103,14 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
 {
 	/* Allocate itself */
 	brainfunk_t brainfunk = calloc(1, sizeof(struct _bf));
+	alloccheck(brainfunk);
 
 	brainfunk->code = calloc(codesize, sizeof(code_t));
+	alloccheck(brainfunk->code);
 	brainfunk->size.code = codesize;
 
 	brainfunk->mem = calloc(memsize, sizeof(data_t));
+	alloccheck(brainfunk->mem);
 	brainfunk->size.mem = memsize;
 
 	brainfunk->debug = debug;
@@ -262,18 +275,18 @@ EXEC(x)
 
 static exec_handler_t exec_handler[_OP_INSTS] =
 {
-	EXEC_HANDLER_DEF(x),
-	EXEC_HANDLER_DEF(a),
-	EXEC_HANDLER_DEF(mul),
-	EXEC_HANDLER_DEF(s),
-	EXEC_HANDLER_DEF(f),
-	EXEC_HANDLER_DEF(m),
-	EXEC_HANDLER_DEF(je),
-	EXEC_HANDLER_DEF(jn),
-	EXEC_HANDLER_DEF(io),
-	EXEC_HANDLER_DEF(y),
-	EXEC_HANDLER_DEF(d),
-	EXEC_HANDLER_DEF(h)
+	exec_x,
+	exec_a,
+	exec_mul,
+	exec_s,
+	exec_f,
+	exec_m,
+	exec_je,
+	exec_jn,
+	exec_io,
+	exec_y,
+	exec_d,
+	exec_h
 };
 
 static inline int brainfunk_step(brainfunk_t cpu)
@@ -363,6 +376,7 @@ static inline int iscode(int c, int compat)
 char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 {
 	char *code = malloc(size);
+	alloccheck(code);
 	int c=0;
 	size_t i=0;
 
@@ -480,6 +494,7 @@ SCAN(smul)
 	{
 		count_mul_offset(text + i, match_len, &mul[pairs], &offset[pairs], pairs == 0 ? 0 : offset[pairs - 1]);
 		pairs++;
+		assert(pairs < _MAXLEN);
 		i += match_len;
 	}
 
