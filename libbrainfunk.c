@@ -373,12 +373,13 @@ static inline int iscode(int c, int compat)
 	}
 }
 
-char *brainfunk_readtext(FILE *fp, int compat, size_t size)
+char *brainfunk_readtext(FILE *fp, int compat, size_t *size)
 {
-	char *code = malloc(size);
+	size_t allocsize = _INITIAL_TEXT_SIZE;
+	char *code = malloc(allocsize);
 	alloccheck(code);
-	int c=0;
-	size_t i=0;
+	int c = 0;
+	size_t i = 0;
 
 	while((c = getc(fp)) != EOF)
 	{
@@ -386,9 +387,17 @@ char *brainfunk_readtext(FILE *fp, int compat, size_t size)
 			continue;
 		code[i++] = (char)c;
 
-		if((i+1) >= size)
-			panic("?CODESIZE");
+		if(i >= allocsize)
+		{
+			allocsize *= 2;
+			code = realloc(code, allocsize);
+			alloccheck(code);
+		}
 	}
+
+	if(size != NULL)
+		*size = allocsize;
+
 	code[i] = '\0';
 	return code;
 }
