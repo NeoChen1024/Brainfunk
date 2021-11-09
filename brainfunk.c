@@ -176,6 +176,7 @@ int main(int argc, char **argv)
 		if(!string_input)
 			code = brainfunk_readtext(input, compat, CODESIZE);
 		bitcode_convert(cpu, code);
+		free(code);	/* The plain text code isn't being used afterwards */
 		if(debug)
 		{
 			bitcode_dump(cpu, BITCODE_FORMAT_PLAIN, output);
