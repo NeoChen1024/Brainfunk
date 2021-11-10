@@ -1,7 +1,7 @@
-/* ================================================= *\
-|* bf.c -- A simple yet secure Brainfuck Interpreter *|
-|* Neo_Chen					     *|
-\* ================================================= */
+/* ====================================== *\
+|* bf.c -- A simple Brainfuck Interpreter *|
+|* Neo_Chen				  *|
+\* ====================================== */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +19,8 @@
 #define TRUE 1
 #define FALSE 0
 #define _INLINE	static inline
+
+#define ERR_MSG_ALLOC	("Unable to allocate memory!\n")
 
 typedef uint8_t memory_t;
 typedef unsigned int arg_t;
@@ -51,6 +53,15 @@ static int is_code(char c)
 	}
 }
 
+void panic(char *msg, int condition)
+{
+	if(condition)
+	{
+		fputs(msg, stderr);
+		exit(EXIT_FAILURE);
+	}
+}
+
 static void validate_code(char *str)
 {
 	size_t i = 0;
@@ -70,11 +81,7 @@ static void validate_code(char *str)
 		}
 	}
 	
-	if(level != 0)
-	{
-		fputs("Unmatched Loop!\n", stderr);
-		exit(EXIT_FAILURE);
-	}
+	panic("Unmatched Loop!\n", level != 0);
 }
 
 
@@ -90,11 +97,7 @@ static void read_code(FILE* fp)
 
 		if(i >= code_size)
 		{
-			if((code = realloc(code, code_size = code_size + 1024)) == NULL)
-			{
-				fputs("Out of memory!\n", stderr);
-				exit(EXIT_FAILURE);
-			}
+			panic(ERR_MSG_ALLOC, (code = realloc(code, code_size += 1024)) == NULL);
 		}
 	}
 	code[i] = '\0';
@@ -179,11 +182,7 @@ int main(int argc, char **argv)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	if(memory == NULL || stack == NULL || code == NULL)
-	{
-		fputs("Unable to allocate memory!\n", stderr);
-		exit(EXIT_FAILURE);
-	}
+	panic(ERR_MSG_ALLOC, memory == NULL || stack == NULL || code == NULL);
 
 	/* Parse Argument */
 	FILE *corefile;
@@ -216,6 +215,7 @@ int main(int argc, char **argv)
 					validate_code(optarg);
 					free(code);
 					code = malloc(strlen(optarg) + 1);
+					panic(ERR_MSG_ALLOC, code == NULL);
 					strcpy(code, optarg);
 					break;
 				case 'h':
@@ -229,5 +229,6 @@ int main(int argc, char **argv)
 
 	while(code[pc] != '\0')
 		interprete(code[pc]);
+	free(code);
 	return 0;
 }
