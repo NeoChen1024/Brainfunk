@@ -290,7 +290,6 @@ static inline int brainfunk_step(brainfunk_t cpu)
 
 void brainfunk_execute(brainfunk_t cpu)
 {
-	assert(cpu->pc < cpu->codelen);
 	if(cpu->debug)
 	{
 		while(likely(brainfunk_step(cpu) != _HALT))
