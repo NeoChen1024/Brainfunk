@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include <signal.h>
 #include <string.h>
+#include <getopt.h>
 #include <libbrainfunk.h>
 
 /* This should be enough to run any Brainfuck program */
