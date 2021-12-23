@@ -1,3 +1,5 @@
+/* Neo_Chen's Brainfuck Interpreter */
+
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
