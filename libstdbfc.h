@@ -1,5 +1,5 @@
 /* ========================================================================== *\
-||                       Single Header Brainfunk Executer                     ||
+||                       Single Header Brainfunk Library                      ||
 ||                                 Neo_Chen                                   ||
 \* ========================================================================== */
 
@@ -82,7 +82,9 @@ void init(void)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	mem = (memory_t *)calloc(sizeof(memory_t), MEMSIZE) + MEMSIZE / 2;
+	mem = (memory_t *)calloc(sizeof(memory_t), MEMSIZE);
+	if(!mem) panic("?MEMORY");
+ 	mem += MEMSIZE / 2; /* Move to the middle of the memory, in order to make some programs work */
 }
 
 INLINE memory_t in()
