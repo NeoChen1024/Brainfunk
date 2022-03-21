@@ -1,0 +1,14 @@
+Brainfuck basic instructions:
+	+	Increment
+	-	Decrement
+	>	Forward
+	<	Rewind
+	[	Loop start
+	]	Loop end
+	.	Output
+	,	Input
+
+Neo_Chen's extension:
+	~	Fork
+	%	Halt
+	#	Debug

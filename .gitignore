@@ -1,0 +1,4 @@
+brainfunk
+*.o
+.vscode
+test

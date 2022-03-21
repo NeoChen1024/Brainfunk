@@ -1,0 +1,14 @@
+MNEMONIC	Operand		Description
+---------------|---------------|--------------------------------------------------------------------------------
+X		None		Invaild Instruction, to indicate it's the end of code
+A		OFFSET		Add operation (Signed)
+S		INTERMEDIATE	Set to a fixed integer
+MUL		DUAL		Multiply
+F		OFFSET		Find 0
+M		OFFSET		Move Data Pointer (Forward and Reverse)
+JE		ADDR		Jump if equal to zero
+JZ		ADDR		Jump if not zero
+IO		INTERMEDIATE	IO
+Y		None		Fork
+D		None		Debug, print internal status
+H		None		Halt
