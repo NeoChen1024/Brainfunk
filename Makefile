@@ -1,5 +1,5 @@
 CXX=	c++
-CXXFLAGS =	-O3 -g3 -std=c++17 -pedantic -Wall -Wextra -pipe
+CXXFLAGS =	-O3 -g3 -std=c++20 -pedantic -Wall -Wextra -pipe -Wno-unused-parameter
 EXE =	brainfunk
 .PHONY: all
 

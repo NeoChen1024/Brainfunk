@@ -25,9 +25,11 @@ namespace Brainfunk
 {
 using std::string;
 using std::vector;
+using std::regex;
 
 typedef unsigned int pc_t;
 typedef uint8_t memory_t;
+typedef int32_t offset_t;
 
 enum opcodes
 {
@@ -49,19 +51,22 @@ enum opcodes
 union operand_s
 {
 	uint8_t byte;
-	int offset;
+	offset_t offset;
 	pc_t addr;
 
 	struct dual_s
 	{
-		int offset;
-		int multiplier; // %256
-	} mul;
+		offset_t mul; // %256
+		offset_t offset;
+	} dual;
 };
 
-class bytecode
+class Bytecode
 {
 public:
+	Bytecode();
+	Bytecode(uint8_t opcode, operand_s operand);
+	Bytecode(uint8_t opcode);
 	uint8_t opcode;
 	operand_s operand;
 	string to_text(pc_t pc) const;
@@ -71,6 +76,13 @@ private:
 	static char opcode_type[_OP_INSTS];
 };
 
+struct code_patterns
+{
+	bool (*handler)(vector<Bytecode> &bytecode, vector<pc_t> &stack, const string &text);
+	regex pattern;
+	string regexp;
+};
+
 class Brainfunk
 {
 public:
@@ -78,17 +90,17 @@ public:
 	~Brainfunk();
 	void translate(string &code);
 	void run();
+	void clear();
 	void dump_code() const;
 
 private:
-	string *code;
 	bool debug;
 
 	pc_t pc;
 	pc_t ptr;
 	vector<memory_t> memory;
 	vector<pc_t> stack;
-	vector<class bytecode> bytecode;
+	vector<class Bytecode> bytecode;
 };
 
 } // namespace Brainfunk
