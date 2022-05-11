@@ -77,7 +77,7 @@ public:
 	Bytecode(uint8_t opcode);
 	uint8_t opcode;
 	operand_s operand;
-	string to_text(pc_t pc, enum formats formats = FMT_BF) const;
+	string to_text(enum formats formats = FMT_BF) const;
 	int execute(vector<memory_t> &memory, pc_t &pc, pc_t &ptr);
 private:
 	static string opname[_OP_INSTS];

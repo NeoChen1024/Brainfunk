@@ -287,14 +287,42 @@ void Brainfunk::dump_code(ostream &os, enum formats format)
 {
 	if(format == FMT_C)
 	{
-		os << "#include <libstdbfc.h>" << endl
-		<< "int main()" << endl
-		<< "{" << endl
-		<< "init();" << endl;
+		os << "#include <stdio.h>\n"
+		"#include <stdlib.h>\n"
+		"#include <stdint.h>\n"
+		"uint8_t *mem;\n"
+		"#define MEMSIZE		(1<<21)\n"
+		"#define INLINE		static inline\n"
+		"#define	a(x)	*mem += x\n"
+		"#define mul(offset, mul)	mem[offset] += *mem * mul\n"
+		"#define	s(x)	*mem = x\n"
+		"#define f(x)	while(*mem != 0) mem += x\n"
+		"#define	m(x)	mem += x\n"
+		"#define	je(x)	while(*mem) {\n"
+		"#define	jn(x)	}\n"
+		"#define h()	exit(0);\n"
+		"INLINE void io(uint8_t arg)\n"
+		"{\n"
+		"	int c = 0;\n"
+		"	switch(arg)\n"
+		"	{\n"
+		"		case 0: /* IN */ c = getchar(); *mem = c == EOF ? 0 : c; break;\n"
+		"		case 1: /* OUT */ putchar(*mem); break;\n"
+		"	}\n"
+		"}\n"
+		"int main(void)\n"
+		"{\n"
+		"	setvbuf(stdin, NULL, _IONBF, 0);\n"
+		"	setvbuf(stdout, NULL, _IONBF, 0);\n"
+		"	mem = (uint8_t *)calloc(sizeof(uint8_t), MEMSIZE) + MEMSIZE/2;\n"
+		"	if(!mem) { puts(\"Out of memory\"); exit(1); }\n" << endl;
 	}
 	for(pc_t pc = 0; pc < bytecode.size(); pc++)
 	{
-		os << this->bytecode[pc].to_text(pc, format) << endl;
+		if(format != FMT_C)
+			os << pc << ":\t" << this->bytecode[pc].to_text(format) << endl;
+		else
+			os << this->bytecode[pc].to_text(format) << endl;
 	}
 	if(format == FMT_C)
 	{
@@ -312,7 +340,7 @@ void Brainfunk::run()
 	{
 		if(this->debug)
 		{
-			cerr << "I = " << this->bytecode[this->pc].to_text(this->pc)
+			cerr << "I = " << this->pc << ":\t" << this->bytecode[this->pc].to_text()
 			<< "\tM @(" << this->ptr << ") =" << (int)this->memory[this->ptr]
 			<< endl;
 		}
@@ -373,7 +401,7 @@ Bytecode::Bytecode(uint8_t opcode)
 	this->opcode = opcode;
 }
 
-inline string Bytecode::to_text(unsigned int pc, enum formats format) const
+inline string Bytecode::to_text(enum formats format) const
 {
 	std::stringstream operand;
 	std::stringstream output;
@@ -407,13 +435,13 @@ inline string Bytecode::to_text(unsigned int pc, enum formats format) const
 	switch(format)
 	{
 		case FMT_BF:
-		output << pc << ":" << "\t" << '(' << opcode_type[this->opcode] << ')' << opcode_name << "\t" << operand.str();
+		output << '(' << opcode_type[this->opcode] << ')' << opcode_name << "\t" << operand.str();
 			break;
 		case FMT_M:
-			output << pc << ":\t" << opcode_name << "/\t" << operand.str();
+			output << opcode_name << "/\t" << operand.str();
 			break;
 		case FMT_C:
-			output << "/* " << pc << " */\t" << opcode_name << "(" << operand.str() << ");";
+			output << opcode_name << "(" << operand.str() << ");";
 			break;
 	}
 	return output.str();
