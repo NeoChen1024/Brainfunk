@@ -29,8 +29,6 @@ Brainfunk::Brainfunk(bool debug, size_t memsize, size_t stacksize)
 	{
 		std::cerr << e.what() << '\n';
 	}
-
-	std::fill(this->memory.begin(), this->memory.end(), 0);
 }
 
 void Brainfunk::clear()
@@ -98,13 +96,12 @@ SCAN(smul)
 	int mode=0;
 	vector<offset_t> mul;
 	vector<offset_t> offset;
-	size_t match_len=0;
-	int pairs = 0;
+	ssize_t pairs = 0;
 	string substr = text;
 
 	class Bytecode t;
 
-	regex preg("^[><]+[+-]+", regex::extended | regex::optimize);
+	regex preg("^[><]+[+-]+", regex::optimize);
 	smatch m;
 
 	/* First we need to validate if it goes back to where it was */
@@ -124,21 +121,19 @@ SCAN(smul)
 
 	if(substr[1] == '-')
 	{
-		substr = substr.substr(2);
+		substr.erase(0, 2);
 		mode = 1;
 	}
 	else
 	{
-		substr = substr.substr(1);
+		substr.erase(0, 1);
 		mode = 2;
 	}
 
-	i = 0; /* Reuse it as index */
 	while(regex_search(substr, m, preg))
 	{
 		count_mul_offset(m.begin()->str(), mul, offset, offset.size() == 0 ? 0 : offset.back());
-		match_len = m.begin()->length();
-		substr = substr.substr(match_len);
+		substr.erase(0, m.begin()->length());
 	}
 
 	/* Omit the last false pair in mode 2 */
@@ -234,27 +229,6 @@ SCAN(io)
 	return true;
 }
 
-SCAN(y)
-{
-	class Bytecode t(_OP_Y);
-	bytecode.push_back(t);
-	return true;
-}
-
-SCAN(h)
-{
-	class Bytecode t(_OP_H);
-	bytecode.push_back(t);
-	return true;
-}
-
-SCAN(d)
-{
-	class Bytecode t(_OP_D);
-	bytecode.push_back(t);
-	return true;
-}
-
 SCAN(split)
 {
 	return true;
@@ -276,9 +250,6 @@ struct code_patterns patterns[] =
 		SCAN_HANDLER_DEF(jn,	"^\\]"),	/* JN */
 		SCAN_HANDLER_DEF(io,	"^\\."),	/* IO OUT */
 		SCAN_HANDLER_DEF(io,	"^,"),	/* IO IN */
-		SCAN_HANDLER_DEF(y,	"^~"),	/* Y */
-		SCAN_HANDLER_DEF(h,	"^%"),	/* H */
-		SCAN_HANDLER_DEF(d,	"^#")	/* D */
 };
 
 void Brainfunk::translate(string &text)
@@ -296,29 +267,15 @@ void Brainfunk::translate(string &text)
 
 	while(code.length() > 0)
 	{
-		//cerr << "Loop: " << code << endl;
 		for(auto &it : patterns)
 		{
-			//cerr << "Pattern: " << it.regexp << endl;
 			if(regex_search(code, m, it.pattern))
 			{
-				// Debug
-				//cerr << "Match: " << m.begin()->str() << endl;
 				if(it.handler(bytecode, stack, m[0].str()))
 				{
-					code = code.substr(m[0].length());
-					//cerr << "New Code: " << code << endl;
-					//cerr << "New Bytecode: " << bytecode.back().to_text(0) << endl;
+					code.erase(0, m[0].length());
 					break;
 				}
-				else
-				{
-					//cerr << "handler failed: " << m.begin()->str() << endl;
-				}
-			}
-			else
-			{
-				//cerr << "No match" << endl;
 			}
 		}
 	}
@@ -326,13 +283,22 @@ void Brainfunk::translate(string &text)
 	this->bytecode.push_back(Bytecode(_OP_H));
 }
 
-void Brainfunk::dump_code() const
+void Brainfunk::dump_code(ostream &os, enum formats format)
 {
-	pc_t pc = 0;
-	for(auto it = this->bytecode.begin(); it != this->bytecode.end(); it++)
+	if(format == FMT_C)
 	{
-		cout << it->to_text(it - this->bytecode.begin()) << endl;
-		pc++;
+		os << "#include <libstdbfc.h>" << endl
+		<< "int main()" << endl
+		<< "{" << endl
+		<< "init();" << endl;
+	}
+	for(pc_t pc = 0; pc < bytecode.size(); pc++)
+	{
+		os << this->bytecode[pc].to_text(pc, format) << endl;
+	}
+	if(format == FMT_C)
+	{
+		os << "}" << endl;
 	}
 }
 
@@ -340,6 +306,8 @@ void Brainfunk::run()
 {
 	int ret = _CONT;
 	this->pc = 0;
+	std::fill(this->memory.begin(), this->memory.end(), 0);
+
 	while(ret == _CONT && !this->bytecode.empty())
 	{
 		if(this->debug)
@@ -363,8 +331,6 @@ string Bytecode::opname[_OP_INSTS] =
 	"je",
 	"jn",
 	"io",
-	"y",
-	"d",
 	"h"
 };
 
@@ -388,8 +354,6 @@ char Bytecode::opcode_type[_OP_INSTS] =
 	'A',	/* JE */
 	'A',	/* JN */
 	'I',	/* IO */
-	'N',	/* Y */
-	'N',	/* D */
 	'N'	/* H */
 };
 
@@ -409,43 +373,54 @@ Bytecode::Bytecode(uint8_t opcode)
 	this->opcode = opcode;
 }
 
-inline string Bytecode::to_text(unsigned int pc) const
+inline string Bytecode::to_text(unsigned int pc, enum formats format) const
 {
-	std::stringbuf buf;
-	std::ostream os(&buf);
+	std::stringstream operand;
+	std::stringstream output;
+	std::string opcode_name = opname[this->opcode];
 
-	os << pc << ":" << "\t" << '(' << opcode_type[this->opcode] << ')' << opname[this->opcode] << "\t";
 	switch(opcode_type[this->opcode])
 	{
 		case 'N':
 			// No operand
+			operand << "";
 			break;
 		case 'O':
 			// Offset
-			os << this->operand.offset;
+			operand << this->operand.offset;
 			break;
 		case 'M':
 			// Dual Operand
-			os << this->operand.dual.offset << ", " << this->operand.dual.mul;
+			operand << this->operand.dual.offset << ", " << this->operand.dual.mul;
 			break;
 		case 'A':
 			// Address
-			os << this->operand.addr;
+			operand << this->operand.addr;
 			break;
 		case 'I':
 			// Intermediate byte
-			os << (int)this->operand.byte;
+			operand << (int)this->operand.byte;
 			break;
 		default:
 			break;
 	}
-	return buf.str();
+	switch(format)
+	{
+		case FMT_BF:
+		output << pc << ":" << "\t" << '(' << opcode_type[this->opcode] << ')' << opcode_name << "\t" << operand.str();
+			break;
+		case FMT_M:
+			output << pc << ":\t" << opcode_name << "/\t" << operand.str();
+			break;
+		case FMT_C:
+			output << "/* " << pc << " */\t" << opcode_name << "(" << operand.str() << ");";
+			break;
+	}
+	return output.str();
 }
 
-inline pc_t wraparound_address(pc_t address, pc_t size)
-{
-	return (address < size) ? address : address % size;
-}
+#define wrap(address, size) \
+	(((address) < (size)) ? (address) : (address) % (size))
 
 inline int Bytecode::execute(vector<memory_t> &memory, pc_t &pc, pc_t &ptr)
 {
@@ -459,39 +434,39 @@ inline int Bytecode::execute(vector<memory_t> &memory, pc_t &pc, pc_t &ptr)
 			break;
 		case _OP_A:
 			// Offset
-			memory[wraparound_address(ptr, size)] += operand.offset;
+			memory[wrap(ptr, size)] += operand.offset;
 			pc++;
 			break;
 		case _OP_MUL:
 			// Dual Operand
-			memory[wraparound_address(ptr + operand.dual.offset, size)] += memory[wraparound_address(ptr, size)] * operand.dual.mul;
+			memory[wrap(ptr + operand.dual.offset, size)] += memory[wrap(ptr, size)] * operand.dual.mul;
 			pc++;
 			break;
 		case _OP_S:
 			// Intermediate byte
-			memory[wraparound_address(ptr, size)] = operand.byte;
+			memory[wrap(ptr, size)] = operand.byte;
 			pc++;
 			break;
 		case _OP_F:
 			// Offset
-			for(; memory[wraparound_address(ptr, size)] != 0; ptr = wraparound_address(ptr + operand.offset, size));
+			for(; memory[wrap(ptr, size)] != 0; ptr = wrap(ptr + operand.offset, size));
 			pc++;
 			break;
 		case _OP_M:
 			// Offset
-			ptr += operand.offset;
+			ptr = wrap(ptr + operand.offset, size);
 			pc++;
 			break;
 		case _OP_JE:
 			// Jump if equal to 0
-			if(memory[wraparound_address(ptr, size)] == 0)
+			if(memory[wrap(ptr, size)] == 0)
 				pc = operand.addr;
 			else
 				pc++;
 			break;
 		case _OP_JN:
 			// Jump if not equal to 0
-			if(memory[wraparound_address(ptr, size)] != 0)
+			if(memory[wrap(ptr, size)] != 0)
 				pc = operand.addr;
 			else
 				pc++;
@@ -502,24 +477,16 @@ inline int Bytecode::execute(vector<memory_t> &memory, pc_t &pc, pc_t &ptr)
 			{
 				case 0:
 					// Input
-					cin >> memory[wraparound_address(ptr, size)];
+					cin >> memory[wrap(ptr, size)];
 					break;
 				case 1:
 					// Output
-					cout << (char)memory[wraparound_address(ptr, size)] << flush;
+					cout << (char)memory[wrap(ptr, size)] << flush;
 					break;
 				default:
 					cerr << "Unknown IO instruction: " << operand.byte << endl;
 					break;
 			}
-			pc++;
-			break;
-		case _OP_Y:
-			// No operand, fork
-			pc++;
-			break;
-		case _OP_D:
-			// No opernd, debug
 			pc++;
 			break;
 		case _OP_H:

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <vector>
 #include <cstdio>
@@ -26,6 +27,8 @@ namespace Brainfunk
 using std::string;
 using std::vector;
 using std::regex;
+using std::ostream;
+using std::istream;
 
 typedef unsigned int pc_t;
 typedef uint8_t memory_t;
@@ -42,8 +45,6 @@ enum opcodes
 	_OP_JE,
 	_OP_JN,
 	_OP_IO,
-	_OP_Y,
-	_OP_D,
 	_OP_H,
 	_OP_INSTS /* Total number of instructions */
 };
@@ -61,6 +62,13 @@ union operand_s
 	} dual;
 };
 
+enum formats
+{
+	FMT_BF,
+	FMT_M,
+	FMT_C
+};
+
 class Bytecode
 {
 public:
@@ -69,7 +77,7 @@ public:
 	Bytecode(uint8_t opcode);
 	uint8_t opcode;
 	operand_s operand;
-	string to_text(pc_t pc) const;
+	string to_text(pc_t pc, enum formats formats = FMT_BF) const;
 	int execute(vector<memory_t> &memory, pc_t &pc, pc_t &ptr);
 private:
 	static string opname[_OP_INSTS];
@@ -91,7 +99,7 @@ public:
 	void translate(string &code);
 	void run();
 	void clear();
-	void dump_code() const;
+	void dump_code(ostream &os, enum formats formats = FMT_BF);
 
 private:
 	bool debug;

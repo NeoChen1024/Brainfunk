@@ -1,5 +1,5 @@
 CXX=	c++
-CXXFLAGS =	-O3 -g3 -std=c++20 -pedantic -Wall -Wextra -pipe -Wno-unused-parameter
+CXXFLAGS =	-Ofast -march=native -flto -Wl,-O1 -Wl,--as-needed -g3 -std=c++20 -pedantic -Wall -Wextra -pipe -Wno-unused-parameter
 EXE =	brainfunk
 .PHONY: all
 

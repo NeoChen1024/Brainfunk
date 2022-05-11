@@ -44,17 +44,19 @@ void readcode(string &code, string filename)
 
 void helpmsg(int argc, char **argv)
 {
-	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f <code>]" << endl;
+	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f code] [-o out]" << endl;
 }
 
 int main(int argc, char **argv)
 {
 	string code;
+	string mode = "bf";
+	ostream *output = &cout;
 
 	bool valid = false;
 	bool debug = false;
 	int opt;
-	while((opt = getopt(argc, argv, "hdm:s:f:")) != -1)
+	while((opt = getopt(argc, argv, "hdm:s:f:o:")) != -1)
 	{
 		switch(opt)
 		{
@@ -72,6 +74,12 @@ int main(int argc, char **argv)
 			case 'd':
 				debug = true;
 				break;
+			case 'm':
+				mode = optarg;
+				break;
+			case 'o': // Output file
+				output = new fstream(optarg, fstream::out);
+				break;
 			default:
 				break;
 		}
@@ -86,9 +94,28 @@ int main(int argc, char **argv)
 	class Brainfunk bf(debug, MEMSIZE, STACKSIZE);
 
 	bf.translate(code);
-	if(debug)
+
+	if(mode == "bf")
 	{
-		bf.dump_code();
+		if(debug)
+			bf.dump_code(cout);
+		bf.run();
 	}
-	bf.run();
+	else if(mode == "bitcode")
+	{
+		bf.dump_code(*output, FMT_BF);
+	}
+	else if(mode == "bfc")
+	{
+		bf.dump_code(*output, FMT_C);
+	}
+	else if(mode == "m")
+	{
+		bf.dump_code(*output, FMT_M);
+	}
+	else
+	{
+		cerr << "Unknown mode: " << mode << endl;
+		return 1;
+	}
 }
