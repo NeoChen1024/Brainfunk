@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -ex
 CC="${CC:-cc}"
-CFLAGS="-Ofast -flto -march=native -pipe -Wl,-O1 -Wl,--as-needed -DEXPECT_MACRO -pipe -fPIC -fPIE -I. -g -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -static -std=c99"
+CFLAGS="-Ofast -flto -march=native -pipe -Wl,-O1 -Wl,--as-needed -DEXPECT_MACRO -pipe -fPIC -fPIE -g -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -static -std=c99"
 FILE="$(mktemp)"
 SRC="$1"
 OUT="$2"
