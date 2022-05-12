@@ -437,7 +437,7 @@ inline string Bytecode::to_text(enum formats format) const
 		output << '(' << opcode_type[this->opcode] << ')' << opcode_name << "\t" << operand.str();
 			break;
 		case FMT_M:
-			output << opcode_name << "/\t" << operand.str();
+			output << opcode_name << "\t" << operand.str();
 			break;
 		case FMT_C:
 			output << opcode_name << "(" << operand.str() << ");";
