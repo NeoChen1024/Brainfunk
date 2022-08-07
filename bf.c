@@ -214,9 +214,7 @@ int main(int argc, char **argv)
 				case 's':
 					validate_code(optarg);
 					free(code);
-					code = malloc(strlen(optarg) + 1);
-					panic(ERR_MSG_ALLOC, code == NULL);
-					strcpy(code, optarg);
+					code = strdup(code);
 					break;
 				case 'h':
 					help(argc, argv);

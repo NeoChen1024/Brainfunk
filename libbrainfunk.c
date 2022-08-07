@@ -128,7 +128,7 @@ void brainfunk_destroy(brainfunk_t *brainfunk)
 	*brainfunk = NULL;
 }
 
-static inline void operand_to_str(op_t op, arg_t *arg, char *buf)
+static inline void operand_to_str(op_t op, arg_t *arg, char *buf, size_t bufsize)
 {
 	switch(opcode_type[op])
 	{
@@ -136,16 +136,16 @@ static inline void operand_to_str(op_t op, arg_t *arg, char *buf)
 			buf[0] = '\0';
 			break;
 		case 'O':
-			sprintf(buf, "%zd", arg->offset);
+			snprintf(buf, bufsize, "%zd", arg->offset);
 			break;
 		case 'M':
-			sprintf(buf, "%d, %d", arg->dual.mul, arg->dual.offset);
+			snprintf(buf, bufsize, "%d, %d", arg->dual.mul, arg->dual.offset);
 			break;
 		case 'I':
-			sprintf(buf, "%hhu", arg->im);
+			snprintf(buf, bufsize, "%hhu", arg->im);
 			break;
 		case 'A':
-			sprintf(buf, "%zu", arg->addr);
+			snprintf(buf, bufsize, "%zu", arg->addr);
 			break;
 		default:
 			assert(0 != 0);
@@ -155,7 +155,7 @@ static inline void operand_to_str(op_t op, arg_t *arg, char *buf)
 INLINE void debug_print(brainfunk_t cpu)
 {
 	char buf[_MAXLEN];
-	operand_to_str(cpu->code[cpu->pc].op, &cpu->code[cpu->pc].arg, buf);
+	operand_to_str(cpu->code[cpu->pc].op, &cpu->code[cpu->pc].arg, buf, _MAXLEN);
 	fprintf(stderr, ">> %ld:\t%s\t%s\n", cpu->pc, opname[cpu->code[cpu->pc].op], buf);
 	fprintf(stderr, ">> \tMEM[%lu] = %#hhx\n", cpu->ptr, cpu->mem[cpu->ptr]);
 	return;
@@ -390,7 +390,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 
 	while(pc < cpu->codelen)
 	{
-		operand_to_str(cpu->code[pc].op, &cpu->code[pc].arg, operand);
+		operand_to_str(cpu->code[pc].op, &cpu->code[pc].arg, operand, _MAXLEN);
 		fprintf(fp, fmt, pc, opname[cpu->code[pc].op], operand);
 		pc++;
 	}

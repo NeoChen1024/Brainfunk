@@ -37,7 +37,7 @@
 #include <signal.h>
 #include <string.h>
 #include <getopt.h>
-#include <libbrainfunk.h>
+#include "libbrainfunk.h"
 
 /* This should be enough to run any Brainfuck program */
 #define CODESIZE	(1<<24)
@@ -154,8 +154,9 @@ void parsearg(int argc, char **argv)
 				}
 				break;
 			case 's':
-				code = calloc(strlen(optarg) + 1, sizeof(char));
-				strcpy(code, optarg);
+				if(code != NULL)
+					free(code);
+				code = strdup(optarg);
 				string_input = TRUE;
 				break;
 			case 'd':
@@ -180,7 +181,7 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	parsearg(argc, argv);
-	brainfunk_t cpu = brainfunk_init(CODESIZE, MEMSIZE, debug);
+	cpu = brainfunk_init(CODESIZE, MEMSIZE, debug);
 
 	if(input_opened == FALSE && !(mode == MODE_BF && string_input == TRUE))
 		panic("?INPUT");

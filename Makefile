@@ -1,7 +1,7 @@
 CC	= cc
 OPT	= -Ofast -flto -march=native -pipe -DEXPECT_MACRO
 #DBG	= -fsanitize=undefined,integer,nullability -fno-omit-frame-pointer
-CFLAGS	= $(OPT) $(DBG) -pipe -fPIC -fPIE -I. -g3 -std=c99 -pedantic -D_POSIX_C_SOURCE=2 -Wall -Wextra -Wno-unused-parameter
+CFLAGS	= $(OPT) $(DBG) -pipe -fPIC -fPIE -I. -g3 -std=c99 -pedantic -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wno-unused-parameter
 LDFLAGS	= -Wl,-O1 -Wl,--as-needed
 OBJS	= brainfunk.o libbrainfunk.o
 
