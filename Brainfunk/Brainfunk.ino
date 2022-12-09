@@ -13,6 +13,7 @@
 #else
 #  define PROGMEM
 #  define CURRENT_CODE (*(code + pc))
+#  define LED_BUILTIN 2
 #endif
 
 #define TRUE 1
