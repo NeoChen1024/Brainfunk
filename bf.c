@@ -215,6 +215,7 @@ int main(int argc, char **argv)
 					validate_code(optarg);
 					free(code);
 					code = strdup(code);
+					panic(ERR_MSG_ALLOC, code == NULL);
 					break;
 				case 'h':
 					help(argc, argv);
