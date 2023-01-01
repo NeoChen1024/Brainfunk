@@ -56,7 +56,7 @@ typedef ssize_t offset_t;
 
 typedef struct
 {
-	int32_t mul;
+	data_t mul;
 	int32_t offset;
 } dual_t;
 
