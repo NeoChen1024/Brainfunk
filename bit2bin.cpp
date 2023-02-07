@@ -11,6 +11,8 @@ addr_t address = 0;
 char op[TEXTLEN];
 char arg[TEXTLEN];
 
+#define _ABS(x)	((x) < 0 ? -(x) : (x))
+
 std::map<string, data_t> opcodes = {
 	{"X", 0x00},
 	{"A", 0x01},
@@ -24,7 +26,7 @@ std::map<string, data_t> opcodes = {
 	{"H", 0x09}
 };
 
-void emit(string op, string arg, FILE *fd)
+void emit(addr_t address, string op, string arg, FILE *fd)
 {
 	uint32_t inst = 0; // only use lower 24bits
 
@@ -51,6 +53,8 @@ void emit(string op, string arg, FILE *fd)
 		sscanf(arg.c_str(), "%hhu, %d", &dual.mul, &dual.offset);
 
 		inst |= dual.mul;
+		if(_ABS(dual.offset) > 0xFFF)
+			fprintf(stderr, "Warning: offset %d at %zu is too large\n", dual.offset, address);
 		inst |= (dual.offset & 0xFFF) << 8;
 	}
 
@@ -60,6 +64,8 @@ void emit(string op, string arg, FILE *fd)
 		offset_t offset = 0;
 		sscanf(arg.c_str(), "%zd", &offset);
 
+		if(_ABS(offset) > 0xFFFFF)
+			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
 		inst |= offset & 0xFFFFF;
 	}
 
@@ -69,6 +75,8 @@ void emit(string op, string arg, FILE *fd)
 		addr_t addr = 0;
 		sscanf(arg.c_str(), "%zu", &addr);
 
+		if(address > 0xFFFFF)
+			fprintf(stderr, "Warning: addr %zu at %zu is too large\n", addr, address);
 		inst |= addr & 0xFFFFF;
 	}
 
@@ -77,11 +85,12 @@ void emit(string op, string arg, FILE *fd)
 
 int main(int argc, char **argv)
 {
+	size_t inst_ctr = 0;
 	while(fscanf(stdin, "%zu:\t%64s\t%64[^\n]\n", &address, op, arg) == 3)
 	{
-		printf("addr == %zu, op == '%s', arg == '%s'\n", address, op, arg);
-		// Ignore address
-		
-		emit(string(op), string(arg), stdout);
+		emit(address, string(op), string(arg), stdout);
+		inst_ctr++;
 	}
+
+	fprintf(stderr, "Assembled %zu instruction(s)\n", inst_ctr);
 }

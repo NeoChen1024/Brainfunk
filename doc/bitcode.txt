@@ -7,7 +7,7 @@ MUL	(3)	DUAL		Multiply
 F	(4)	OFFSET		Find 0
 M	(5)	OFFSET		Move Data Pointer (Forward and Reverse)
 JE	(6)	ADDR		Jump if equal to zero
-JZ	(7)	ADDR		Jump if not zero
+JN	(7)	ADDR		Jump if not zero
 IO	(8)	INTERMEDIATE	IO
 H	(9)	None		Halt
 
@@ -30,7 +30,7 @@ OFFSET:
 
 DUAL:
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|+/-|		ADDRESS OFFSET			|	  D   A   T   A		|
+|     O   P	|+/-|		 ADDRESS OFFSET			|	  D   A   T   A		|
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
 INTERMEDIATE:
