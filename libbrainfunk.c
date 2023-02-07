@@ -22,18 +22,17 @@
 
 static char opname[_OP_INSTS][_OPLEN] =
 {
-	"x",
-	"a",
-	"mul",
-	"s",
-	"f",
-	"m",
-	"je",
-	"jn",
-	"io",
-	"y",
-	"d",
-	"h"
+	"X",
+	"A",
+	"S",
+	"MUL",
+	"F",
+	"M",
+	"JE",
+	"JN",
+	"IO",
+	"H",
+	"D"
 };
 
 /* operand type of the opcode,
@@ -49,16 +48,15 @@ static char opcode_type[_OP_INSTS] =
 {
 	'N',	/* X */
 	'I',	/* A */
-	'M',	/* MUL */
 	'I',	/* S */
+	'M',	/* MUL */
 	'O',	/* F */
 	'O',	/* M */
 	'A',	/* JE */
 	'A',	/* JN */
 	'I',	/* IO */
-	'N',	/* Y */
-	'N',	/* D */
-	'N'	/* H */
+	'N',	/* H */
+	'N'	/* D */
 };
 
 static void alloccheck(void *ptr)
@@ -149,6 +147,7 @@ static inline void operand_to_str(op_t op, arg_t *arg, char *buf, size_t bufsize
 			break;
 		default:
 			assert(0 != 0);
+			break;
 	}
 }
 
@@ -251,15 +250,10 @@ EXEC(io)
 	return _CONT;
 }
 
-EXEC(y)
+EXEC(x)
 {
-	pid_t p = fork();
-	if(p != 0 && (p & 0xFF) == 0)
-		cpu->mem[cpu->ptr] = 0xFF;
-	else
-		cpu->mem[cpu->ptr] = (data_t)p;
-	cpu->pc++;
-	return _CONT;
+	_panic("?INV");
+	return _HALT;
 }
 
 EXEC(d)
@@ -269,26 +263,19 @@ EXEC(d)
 	return _CONT;
 }
 
-EXEC(x)
-{
-	_panic("?INV");
-	return _HALT;
-}
-
 static exec_handler_t exec_handler[_OP_INSTS] =
 {
 	exec_x,
 	exec_a,
-	exec_mul,
 	exec_s,
+	exec_mul,
 	exec_f,
 	exec_m,
 	exec_je,
 	exec_jn,
 	exec_io,
-	exec_y,
-	exec_d,
-	exec_h
+	exec_h,
+	exec_d
 };
 
 static inline int brainfunk_step(brainfunk_t cpu)
@@ -416,7 +403,6 @@ static inline int iscode(int c, int compat)
 		case '.':
 		case ',':
 			return TRUE;
-		case '~':
 		case '%':
 		case '#':
 		case '!':
@@ -663,12 +649,6 @@ SCAN(io)
 	return TRUE;
 }
 
-SCAN(y)
-{
-	cpu->code[cpu->pc++].op = _OP_F;
-	return TRUE;
-}
-
 SCAN(d)
 {
 	cpu->code[cpu->pc++].op = _OP_D;
@@ -699,7 +679,6 @@ static scan_handler_t scan_handler[] =
 		SCAN_HANDLER_DEF(jn,	"^\\]"),	/* JN */
 		SCAN_HANDLER_DEF(io,	"^\\."),	/* IO OUT */
 		SCAN_HANDLER_DEF(io,	"^\\,"),	/* IO IN */
-		SCAN_HANDLER_DEF(y,	"^\\~"),	/* Y */
 		SCAN_HANDLER_DEF(h,	"^%"),	/* H */
 		SCAN_HANDLER_DEF(d,	"^\\#")	/* D */
 };
