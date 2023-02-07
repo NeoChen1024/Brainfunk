@@ -383,7 +383,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 	}
 	else if(format == BITCODE_FORMAT_PLAIN)
 	{
-		fmt = "%lld:\t%s\t%s\n";
+		fmt = "%zu:\t%s\t%s\n";
 	}
 	else
 		panic("?INVALID_DUMP_FORMAT");
