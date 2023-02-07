@@ -1,7 +1,9 @@
 *.o
 *.a
+*.bit
 test
 brainfunk
 bf
+bit2bin
 compile_commands.json
 .vscode
