@@ -48,7 +48,7 @@ static char opname[_OP_INSTS][_OPLEN] =
 static char opcode_type[_OP_INSTS] =
 {
 	'N',	/* X */
-	'O',	/* A */
+	'I',	/* A */
 	'M',	/* MUL */
 	'I',	/* S */
 	'O',	/* F */
@@ -169,7 +169,7 @@ EXEC(h)
 EXEC(a)
 {
 	/* Current Cell += arg */
-	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg.offset;
+	cpu->mem[cpu->ptr] += cpu->code[cpu->pc].arg.im;
 	cpu->pc++;
 	return _CONT;
 }
@@ -612,7 +612,7 @@ SCAN(a)
 	offset = count_continus(text, len, "+-");
 
 	cpu->code[cpu->pc].op = _OP_A;
-	cpu->code[cpu->pc].arg.offset = offset;
+	cpu->code[cpu->pc].arg.im = (data_t)(offset % 256);
 
 	cpu->pc++;
 	return TRUE;
