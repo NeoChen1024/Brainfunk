@@ -1,15 +1,15 @@
 MNEMONIC	Operand		Description
 ---------------|---------------|--------------------------------------------------------------------------------
-X		None		Invaild Instruction, to indicate it's the end of code
-A		INTERMEDIATE	Add operation
-S		INTERMEDIATE	Set to a fixed integer
-MUL		DUAL		Multiply
-F		OFFSET		Find 0
-M		OFFSET		Move Data Pointer (Forward and Reverse)
-JE		ADDR		Jump if equal to zero
-JZ		ADDR		Jump if not zero
-IO		INTERMEDIATE	IO
-H		None		Halt
+X	(0)	None		Invaild Instruction, to indicate it's the end of code
+A	(1)	INTERMEDIATE	Add operation
+S	(2)	INTERMEDIATE	Set to a fixed integer
+MUL	(3)	DUAL		Multiply
+F	(4)	OFFSET		Find 0
+M	(5)	OFFSET		Move Data Pointer (Forward and Reverse)
+JE	(6)	ADDR		Jump if equal to zero
+JZ	(7)	ADDR		Jump if not zero
+IO	(8)	INTERMEDIATE	IO
+H	(9)	None		Halt
 
 24bit Instruction Format:
 
