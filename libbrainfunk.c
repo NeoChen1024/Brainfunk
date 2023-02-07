@@ -137,7 +137,7 @@ static inline void operand_to_str(op_t op, arg_t *arg, char *buf, size_t bufsize
 			snprintf(buf, bufsize, "%zd", arg->offset);
 			break;
 		case 'M':
-			snprintf(buf, bufsize, "%d, %d", arg->dual.mul, arg->dual.offset);
+			snprintf(buf, bufsize, "%hhu, %d", arg->dual.mul, arg->dual.offset);
 			break;
 		case 'I':
 			snprintf(buf, bufsize, "%hhu", arg->im);
