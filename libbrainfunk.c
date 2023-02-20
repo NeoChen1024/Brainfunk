@@ -305,7 +305,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 
 	if(format == BITCODE_FORMAT_C)
 	{
-		fmt = "\t /* %lld: */\t\t\t%s(%s);\n";
+		fmt = "\t /* %zu: */\t\t\t%s(%s);\n";
 
 		fputs(	"#include <stdio.h>\n"
 			"#include <stdint.h>\n"
