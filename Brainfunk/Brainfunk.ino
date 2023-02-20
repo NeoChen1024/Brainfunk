@@ -182,7 +182,7 @@ arg_t stack_ptr=0;
 unsigned long int starttime=0;
 void (*reset)(void) = 0x0000;
 
-void exit(int a)
+void quit(int a)
 {
 	digitalWrite(LED_BUILTIN, LOW);
 	Serial.flush();
@@ -207,7 +207,7 @@ void panic(char *msg)
 {
 	Serial.write("\r\n");
 	Serial.println(msg);
-	exit(1);
+	quit(1);
 }
 
 /* Read Code */
@@ -283,7 +283,7 @@ _INLINE void interprete(char c)
 			Serial.print("\r\n?DONE=");
 			Serial.println(millis() - starttime);
 		default:
-			exit(1);
+			quit(1);
 			break;
 	}
 	pc++;
@@ -294,7 +294,7 @@ void setup() {
 	unsigned i = 0;
 	Serial.begin(115200);
 	pinMode(LED_BUILTIN, OUTPUT);
-
+  delay(2000);
 	Serial.print(F("\a\r\n\\\r\n"));
 	Serial.print(F("CODESIZE:\t"));
 	Serial.println(sizeof(code), DEC);
