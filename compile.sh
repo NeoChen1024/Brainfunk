@@ -8,7 +8,7 @@ OUT="$2"
 
 msg_echo()
 {
-	printf "\e[44m>>\e[0m \e[33m%s\e[0m" "${1}"
+	printf "\e[44m>>\e[0m \e[33m%s\e[0m\n" "${1}"
 }
 
 if [ $# -lt 2 ]; then
