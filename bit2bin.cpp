@@ -3,9 +3,13 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <bitset>
+#include <bit>
+
 #define TEXTLEN	(64)
 
 using std::string;
+using std::bitset;
 
 addr_t address = 0;
 char op[TEXTLEN];
@@ -28,7 +32,7 @@ std::map<string, data_t> opcodes = {
 
 void emit(addr_t address, string op, string arg, FILE *fd)
 {
-	uint32_t inst = 0; // only use lower 24bits
+	bitset<24> inst = 0;
 
 	inst |= opcodes[op] << 20;
 	
@@ -81,7 +85,7 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		inst |= offset & 0xFFFFF;
 	}
 
-	fprintf(fd, "%06x\n", inst);
+	fprintf(fd, "%06lx\n", inst.to_ulong());
 }
 
 int main(int argc, char **argv)
