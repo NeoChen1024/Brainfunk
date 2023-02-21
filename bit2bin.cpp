@@ -21,7 +21,7 @@ std::map<string, data_t> opcodes = {
 	{"F", 0x04},
 	{"M", 0x05},
 	{"JE", 0x06},
-	{"JZ", 0x07},
+	{"JN", 0x07},
 	{"IO", 0x08},
 	{"H", 0x09}
 };
@@ -64,20 +64,21 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		offset_t offset = 0;
 		sscanf(arg.c_str(), "%zd", &offset);
 
-		if(_ABS(offset) > 0xFFFFF)
+		if(_ABS(offset) > ((1<<20) - 1))
 			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
 		inst |= offset & 0xFFFFF;
 	}
 
-	// Addr
+	// JE & JN needs conversion to relative addresses
 	if(op == "JE" || op == "JN")
 	{
 		addr_t addr = 0;
 		sscanf(arg.c_str(), "%zu", &addr);
+		ssize_t offset = addr - address;
 
-		if(address > 0xFFFFF)
-			fprintf(stderr, "Warning: addr %zu at %zu is too large\n", addr, address);
-		inst |= addr & 0xFFFFF;
+		if(_ABS(offset) > ((1<<20) - 1))
+			fprintf(stderr, "Warning: addr %zu at %zu is too distant\n", addr, address);
+		inst |= offset & 0xFFFFF;
 	}
 
 	fprintf(fd, "%06x\n", inst);
@@ -86,7 +87,7 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 int main(int argc, char **argv)
 {
 	size_t inst_ctr = 0;
-	while(fscanf(stdin, "%zu:\t%64s\t%64[^\n]\n", &address, op, arg) == 3)
+	while(fscanf(stdin, "%zu:\t%64s\t%64[^\n]\n", &address, op, arg) != EOF)
 	{
 		emit(address, string(op), string(arg), stdout);
 		inst_ctr++;

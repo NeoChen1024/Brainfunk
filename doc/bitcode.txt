@@ -1,39 +1,12 @@
 MNEMONIC	Operand		Description
 ---------------|---------------|--------------------------------------------------------------------------------
-X	(0)	None		Invaild Instruction, to indicate it's the end of code
-A	(1)	INTERMEDIATE	Add operation
-S	(2)	INTERMEDIATE	Set to a fixed integer
-MUL	(3)	DUAL		Multiply
-F	(4)	OFFSET		Find 0
-M	(5)	OFFSET		Move Data Pointer (Forward and Reverse)
-JE	(6)	ADDR		Jump if equal to zero
-JN	(7)	ADDR		Jump if not zero
-IO	(8)	INTERMEDIATE	IO
-H	(9)	None		Halt
-
-24bit Instruction Format:
-
-NONE:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|										|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-ADDR:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|			A   D   D   R   E   S   S				|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-OFFSET:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|+/-|			  O   F   F   S   E   T					|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-DUAL:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|+/-|		 ADDRESS OFFSET			|	  D   A   T   A		|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-INTERMEDIATE:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|						|	  D   A   T   A		|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+X		None		Invaild Instruction, to indicate it's the end of code
+A		INTERMEDIATE	Add operation
+S		INTERMEDIATE	Set to a fixed integer
+MUL		DUAL		Multiply
+F		OFFSET		Find 0
+M		OFFSET		Move Data Pointer (Forward and Reverse)
+JE		ADDR		Jump if equal to zero
+JN		ADDR		Jump if not zero
+IO		INTERMEDIATE	IO
+H		None		Halt
