@@ -58,7 +58,7 @@
     <a name="appearance" val="logisim_evolution"/>
     <a name="circuit" val="Brainfunk_CPU"/>
     <a name="circuitnamedboxfixedsize" val="true"/>
-    <a name="simulationFrequency" val="8000.0"/>
+    <a name="simulationFrequency" val="16000.0"/>
     <comp lib="0" loc="(100,130)" name="Tunnel">
       <a name="facing" val="east"/>
       <a name="label" val="CLK_STOP"/>
