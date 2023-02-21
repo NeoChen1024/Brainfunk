@@ -30,6 +30,11 @@ $ ./brainfunk -f <source file>
 # Translate Brainfuck program to optimized C source:
 $ ./brainfuck -m bfc -f <source file> [-o <output file>]
 ```
+
+# CPU core
+The ultimate Brainfuck CPU
+![CPU core](https://github.com/NeoChen1024/Brainfunk/raw/master/CPU/CPU.png)
+
 # Credits
 
 * [brainfuck optimization strategies](http://calmerthanyouare.org/2015/01/07/optimizing-brainfuck.html) by Mats Linander
