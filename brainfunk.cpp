@@ -37,7 +37,7 @@
 #include <signal.h>
 #include <string.h>
 #include <getopt.h>
-#include "libbrainfunk.h"
+#include "libbrainfunk.hpp"
 
 /* This should be enough to run any Brainfuck program */
 #define CODESIZE	(1<<24)

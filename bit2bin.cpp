@@ -1,4 +1,4 @@
-#include "libbrainfunk.h"
+#include "libbrainfunk.hpp"
 #include <string>
 #include <iostream>
 #include <vector>

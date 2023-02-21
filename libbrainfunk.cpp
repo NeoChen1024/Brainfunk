@@ -6,7 +6,7 @@
 || ██████╔╝██║  ██║██║  ██║██║██║ ╚████║██║     ╚██████╔╝██║ ╚████║██║  ██╗ ||
 || ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚═╝      ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝ ||
 \* ======================================================================== */
-#include <libbrainfunk.h>
+#include <libbrainfunk.hpp>
 
 #define EXEC(name)	static int exec_ ## name(brainfunk_t cpu)
 #define EXEC_HANDLER_DEF(name)	exec_ ## name
@@ -67,9 +67,9 @@ static void alloccheck(void *ptr)
 
 static pcstack_t pcstack_create(size_t size)
 {
-	pcstack_t stack = calloc(1, sizeof(struct _pcstack));
+	pcstack_t stack = (pcstack_t)calloc(1, sizeof(struct _pcstack));
 	alloccheck(stack);
-	stack->stack = calloc(size, sizeof(size_t));
+	stack->stack = (size_t *)calloc(size, sizeof(size_t));
 	alloccheck(stack->stack);
 	stack->ptr = 0;
 	stack->size = size;
@@ -100,14 +100,14 @@ static void pcstack_destroy(pcstack_t *stack)
 brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
 {
 	/* Allocate itself */
-	brainfunk_t brainfunk = calloc(1, sizeof(struct _bf));
+	brainfunk_t brainfunk = (struct _bf *)calloc(1, sizeof(struct _bf));
 	alloccheck(brainfunk);
 
-	brainfunk->code = calloc(codesize, sizeof(code_t));
+	brainfunk->code = (code_t *)calloc(codesize, sizeof(code_t));
 	alloccheck(brainfunk->code);
 	brainfunk->size.code = codesize;
 
-	brainfunk->mem = calloc(memsize, sizeof(data_t));
+	brainfunk->mem = (data_t *)calloc(memsize, sizeof(data_t));
 	alloccheck(brainfunk->mem);
 	brainfunk->size.mem = memsize;
 
@@ -410,7 +410,7 @@ static inline int iscode(int c, int compat)
 char *brainfunk_readtext(FILE *fp, int compat, size_t *size)
 {
 	size_t allocsize = _INITIAL_TEXT_SIZE;
-	char *code = malloc(allocsize);
+	char *code = (char *)malloc(allocsize);
 	alloccheck(code);
 	int c = 0;
 	size_t i = 0;
@@ -424,7 +424,7 @@ char *brainfunk_readtext(FILE *fp, int compat, size_t *size)
 		if(i >= allocsize)
 		{
 			allocsize *= 2;
-			code = realloc(code, allocsize);
+			code = (char *)realloc(code, allocsize);
 			alloccheck(code);
 		}
 	}
@@ -686,7 +686,7 @@ void bitcode_convert(brainfunk_t cpu, char *text, int optimize)
 {
 	unsigned int i = 0;
 	int ret = 0;
-	unsigned int try = 0;
+	unsigned int current = 0;
 	size_t len = 0;
 	size_t pos = 0;
 
@@ -705,13 +705,13 @@ void bitcode_convert(brainfunk_t cpu, char *text, int optimize)
 
 	while(unlikely(text[pos] != '\0'))
 	{
-		try = 0;
-		while(try < _SCAN_HANDLERS)
+		current = 0;
+		while(current < _SCAN_HANDLERS)
 		{
-			if(regex_cmp(text + pos, &_preg[try], &len) == TRUE)
-				if(scan_handler[try].scan(text + pos, len, cpu, pcstack) == TRUE)
+			if(regex_cmp(text + pos, &_preg[current], &len) == TRUE)
+				if(scan_handler[current].scan(text + pos, len, cpu, pcstack) == TRUE)
 					break;
-			try++;
+			current++;
 		}
 		pos += len;
 	}
