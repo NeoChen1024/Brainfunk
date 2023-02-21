@@ -3,21 +3,22 @@
 |* Neo_Chen				  *|
 \* ====================================== */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <signal.h>
-#include <string.h>
+#include <getopt.h>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <cstring>
 
-#ifndef SIZEDEF
+using std::vector;
+using std::string;
+
 #define STACKSIZE (1ULL<<12)
 #define MEMSIZE (1ULL<<20)
 #define CODESIZE (1ULL<<16)
-#endif
 
-#define TRUE 1
-#define FALSE 0
 #define _INLINE	static inline
 
 #define ERR_MSG_ALLOC	("Unable to allocate memory!\n")
@@ -27,15 +28,12 @@ typedef unsigned int arg_t;
 
 /* init */
 
-static memory_t *memory;
+static vector<memory_t> memory;
 static arg_t ptr=0;
-static arg_t *stack;
-static char *code;
-static arg_t pc=0;
+static vector<string::iterator> stack;
+static string code;
 
-static size_t code_size = CODESIZE;
-
-static int is_code(char c)
+static bool is_code(char c)
 {
 	switch(c)
 	{
@@ -47,38 +45,32 @@ static int is_code(char c)
 		case ']':
 		case '.':
 		case ',':
-			return TRUE;
+			return true;
 		default:
-			return FALSE;
+			return false;
 	}
 }
 
-void panic(char *msg, int condition)
+void panic(string msg, int condition)
 {
 	if(condition)
 	{
-		fputs(msg, stderr);
+		fputs(msg.c_str(), stderr);
 		exit(EXIT_FAILURE);
 	}
 }
 
-static void validate_code(char *str)
+static void validate_code(string &code)
 {
-	size_t i = 0;
 	ssize_t level = 0;
 
 	/* Validate that the '[' and ']'s is matched */
-	while(str[i] != '\0')
+	for(auto &c : code)
 	{
-		switch(str[i++])
-		{
-			case '[':
-				level++;
-				break;
-			case ']':
-				level--;
-				break;
-		}
+		if(c == '[')
+			++level;
+		else if(c == ']')
+			--level;
 	}
 	
 	panic("Unmatched Loop!\n", level != 0);
@@ -88,43 +80,26 @@ static void validate_code(char *str)
 // Read Code
 static void read_code(FILE* fp)
 {
-	size_t i = 0;
 	int c;
+	code = "";
 	while((c = getc(fp)) != EOF)
 	{
 		if(is_code(c))
-			code[i++] = (char)c;
-
-		if(i >= code_size)
-		{
-			panic(ERR_MSG_ALLOC, (code = realloc(code, code_size += 1024)) == NULL);
-		}
+			code.push_back((char)c);
 	}
-	code[i] = '\0';
+	code.push_back('\0');
 
 	validate_code(code);
 }
 
-_INLINE	void exit_loop(void)
+void interprete(string &code)
 {
-	long long int level=0;
-	while(code[pc] != '\0')
+	string::iterator c = code.begin();
+	std::fill(memory.begin(), memory.end(), 0);
+
+	while(c != code.end())
 	{
-		if(code[pc] == '[')
-			++level;
-		else if(code[pc] == ']')
-			--level;
-
-		if(level == 0)
-			return;
-
-		pc++;
-	}
-}
-
-_INLINE	void interprete(char c)
-{
-	switch(c)
+	switch(*c)
 	{
 		case '+':
 			memory[ptr]++;
@@ -142,26 +117,37 @@ _INLINE	void interprete(char c)
 			break;
 		case '[':
 			if(memory[ptr] == 0)
-				exit_loop(); /* Skip everything until reached matching "]" */
+			{
+				ssize_t level = 1;
+				while(level != 0)
+				{
+					c++;
+					if(*c == '[')
+						level++;
+					else if(*c == ']')
+						level--;
+				}
+			}
 			else
-				*++stack = pc; /* Push PC */
+				stack.emplace_back(c); /* Push PC */
 			break;
 		case ']':
 			if(memory[ptr] != 0) /* if not equals to 0 */
-				pc = *(stack); /* Peek */
+				c = stack.back(); /* Peek */
 			else
-				stack--; /* Drop */
+				stack.pop_back(); /* Drop */
 			break;
 		case ',':
 			memory[ptr] = (uint8_t)getc(stdin);
 			break;
 		case '.':
-			putc(memory[ptr], stdout);
+			putc(memory.at(ptr), stdout);
 			break;
 		default:
 			break;
 	}
-	pc++;
+	c++; // next instruction
+	}
 }
 
 static void help(int argc, char **argv)
@@ -172,17 +158,13 @@ static void help(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	/* Init */
-	memory	= calloc(MEMSIZE, sizeof(memory_t));
-	stack	= calloc(STACKSIZE, sizeof(arg_t));
-	code	= calloc(CODESIZE, sizeof(char));
-
-	code[0] = '\0';
+	memory.resize(MEMSIZE);
+	stack.resize(STACKSIZE);
+	code.resize(CODESIZE);
 
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
 	setvbuf(stdout, NULL, _IONBF, 0);
-
-	panic(ERR_MSG_ALLOC, memory == NULL || stack == NULL || code == NULL);
 
 	/* Parse Argument */
 	FILE *corefile;
@@ -199,7 +181,7 @@ int main(int argc, char **argv)
 			switch(opt)
 			{
 				case 'f':
-					if(strcmp(optarg, "-") == 0)
+					if(string(optarg) == "-")
 						read_code(stdin);
 					else
 					{
@@ -212,10 +194,8 @@ int main(int argc, char **argv)
 					}
 					break;
 				case 's':
-					validate_code(optarg);
-					free(code);
-					code = strdup(code);
-					panic(ERR_MSG_ALLOC, code == NULL);
+					code = string(optarg);
+					validate_code(code);
 					break;
 				case 'h':
 					help(argc, argv);
@@ -226,8 +206,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	while(code[pc] != '\0')
-		interprete(code[pc]);
-	free(code);
+	interprete(code);
 	return 0;
 }
