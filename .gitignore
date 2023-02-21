@@ -7,3 +7,4 @@ bf
 bit2bin
 compile_commands.json
 .vscode
+*.bin.txt
