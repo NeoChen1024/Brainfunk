@@ -93,6 +93,7 @@ struct _bf
 	struct _size size;
 
 	int debug;	/* Debug? */
+	int optimize; 	/* Optimize? */
 };
 
 typedef struct _bf * brainfunk_t;
@@ -119,7 +120,6 @@ enum opcodes
 	_OP_JE,
 	_OP_JN,
 	_OP_IO,
-	_OP_D,
 	_OP_H,
 	_OP_INSTS /* Total number of instructions */
 };
@@ -138,7 +138,7 @@ void brainfunk_execute(brainfunk_t bf);
 void bitcode_dump(brainfunk_t cpu, int format, FILE *fp);
 char *brainfunk_readtext(FILE *fp, int compat, size_t *size);
 void brainfunk_dumptext(char *code, FILE *fp);
-void bitcode_convert(brainfunk_t cpu, char *text);
+void bitcode_convert(brainfunk_t cpu, char *text, int optimize);
 void quit(int32_t arg);
 
 /* These functions must be provided externally */

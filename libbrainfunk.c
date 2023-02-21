@@ -31,8 +31,7 @@ static char opname[_OP_INSTS][_OPLEN] =
 	"JE",
 	"JN",
 	"IO",
-	"H",
-	"D"
+	"H"
 };
 
 /* operand type of the opcode,
@@ -55,15 +54,14 @@ static char opcode_type[_OP_INSTS] =
 	'A',	/* JE */
 	'A',	/* JN */
 	'I',	/* IO */
-	'N',	/* H */
-	'N'	/* D */
+	'N'	/* H */
 };
 
 static void alloccheck(void *ptr)
 {
 	if(ptr == NULL)
 	{
-		panic("Unable to allocate memory");
+		_panic("Unable to allocate memory");
 	}
 }
 
@@ -114,6 +112,8 @@ brainfunk_t brainfunk_init(size_t codesize, size_t memsize, int debug)
 	brainfunk->size.mem = memsize;
 
 	brainfunk->debug = debug;
+
+	brainfunk->optimize = TRUE;
 
 	return brainfunk;
 }
@@ -256,13 +256,6 @@ EXEC(x)
 	return _HALT;
 }
 
-EXEC(d)
-{
-	debug_print(cpu);
-	cpu->pc++;
-	return _CONT;
-}
-
 static exec_handler_t exec_handler[_OP_INSTS] =
 {
 	exec_x,
@@ -274,8 +267,7 @@ static exec_handler_t exec_handler[_OP_INSTS] =
 	exec_je,
 	exec_jn,
 	exec_io,
-	exec_h,
-	exec_d
+	exec_h
 };
 
 static inline int brainfunk_step(brainfunk_t cpu)
@@ -373,7 +365,7 @@ void bitcode_dump(brainfunk_t cpu, int format, FILE *fp)
 		fmt = "%zu:\t%s\t%s\n";
 	}
 	else
-		panic("?INVALID_DUMP_FORMAT");
+		_panic("?INVALID_DUMP_FORMAT");
 
 	while(pc < cpu->codelen)
 	{
@@ -502,7 +494,8 @@ INLINE void count_mul_offset(char *text, size_t len, ssize_t *mul, ssize_t *offs
 
 SCAN(smul)
 {
-	ssize_t i=0;
+	ssize_t posmatch =0;
+	ssize_t i = 0;
 	int pairs=0;
 	int mode=0;
 	ssize_t mul[_MAXLEN];
@@ -513,11 +506,12 @@ SCAN(smul)
 	int ret=0;
 
 	/* First we need to validate if it goes back to where it was */
-	i = count_continus(text, len, "><");
-	if(i != 0)
+	posmatch = count_continus(text, len, "><");
+	if(posmatch != 0)
 		return FALSE;
-
-	i = 0; /* Reuse it as index */
+	
+	if(cpu->optimize == FALSE)
+		return FALSE;
 
 	/* Basically, the text will look either like:
 	 *
@@ -583,6 +577,9 @@ SCAN(s0)
 
 SCAN(f)
 {
+	if(cpu->optimize == FALSE)
+		return FALSE;
+
 	offset_t offset = count_continus(text, len, "><");
 
 	cpu->code[cpu->pc].op = _OP_F;
@@ -649,12 +646,6 @@ SCAN(io)
 	return TRUE;
 }
 
-SCAN(d)
-{
-	cpu->code[cpu->pc++].op = _OP_D;
-	return TRUE;
-}
-
 SCAN(h)
 {
 	cpu->code[cpu->pc++].op = _OP_H;
@@ -680,7 +671,6 @@ static scan_handler_t scan_handler[] =
 		SCAN_HANDLER_DEF(io,	"^\\."),	/* IO OUT */
 		SCAN_HANDLER_DEF(io,	"^\\,"),	/* IO IN */
 		SCAN_HANDLER_DEF(h,	"^%"),	/* H */
-		SCAN_HANDLER_DEF(d,	"^\\#")	/* D */
 };
 
 #define _SCAN_HANDLERS	(sizeof(scan_handler)/sizeof(scan_handler_t))
@@ -689,10 +679,10 @@ static regex_t _preg[_SCAN_HANDLERS];
 
 /*
  * Convert plain text Brainfuck code into bitcode,
- * scan_handler uses cpu->pc to remember the current position
+ * scan_handler uses cpu->pc to remember current position
  */
 
-void bitcode_convert(brainfunk_t cpu, char *text)
+void bitcode_convert(brainfunk_t cpu, char *text, int optimize)
 {
 	unsigned int i = 0;
 	int ret = 0;
@@ -700,10 +690,12 @@ void bitcode_convert(brainfunk_t cpu, char *text)
 	size_t len = 0;
 	size_t pos = 0;
 
+	cpu->optimize = optimize;
+
 	pcstack_t pcstack = pcstack_create(_PCSTACK_SIZE);
 
 	if(count_continus(text, strlen(text), "[]") != 0)
-		panic("?SYNTAX");
+		_panic("?SYNTAX");
 
 	for(i = 0; i < _SCAN_HANDLERS; i++)
 	{

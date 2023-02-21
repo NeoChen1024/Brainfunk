@@ -51,10 +51,11 @@ FILE *input;
 FILE *output;
 char *code=NULL;
 int debug = NODEBUG;
-int input_opened=FALSE;
-int output_opened=FALSE;
-int string_input=FALSE;
-int compat=TRUE;	/* compatible with plain Brainfuck */
+int input_opened = FALSE;
+int output_opened = FALSE;
+int string_input = FALSE;
+int optimize = TRUE;
+int compat = TRUE;	/* compatible with plain Brainfuck */
 
 enum mode_enum
 {
@@ -107,7 +108,7 @@ void parsearg(int argc, char **argv)
 {
 	int opt=0;
 
-	while((opt = getopt(argc, argv, "hdcm:f:o:s:")) != -1)
+	while((opt = getopt(argc, argv, "hdcm:f:o:s:O:")) != -1)
 	{
 		switch(opt)
 		{
@@ -159,6 +160,14 @@ void parsearg(int argc, char **argv)
 				code = strdup(optarg);
 				string_input = TRUE;
 				break;
+			case 'O':
+				if(optarg[0] == '1')
+					optimize = TRUE;
+				else if(optarg[0] == '0')
+					optimize = FALSE;
+				else
+					panic("Invalid optimization flag");
+				break;
 			case 'd':
 				debug = DEBUG;
 				break;
@@ -189,7 +198,7 @@ int main(int argc, char **argv)
 	{
 		if(!string_input)
 			code = brainfunk_readtext(input, compat, NULL);
-		bitcode_convert(cpu, code);
+		bitcode_convert(cpu, code, optimize);
 		free(code);	/* The plain text code isn't being used afterwards */
 		if(debug)
 		{
