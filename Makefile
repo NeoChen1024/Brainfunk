@@ -1,21 +1,18 @@
 CC	= cc
 CXX	= c++
-OPT	= -Ofast -flto -pipe -pipe -fPIC -fPIE -I. -g3 -pedantic -Wall -Wextra -Wno-unused-parameter
+FLAGS	= -Ofast -flto -pipe -pipe -fPIC -fPIE -I. -g3 -pedantic -Wall -Wextra -Wno-unused-parameter -DEXPECT_MACRO  -D_POSIX_C_SOURCE=200809L
 #DBG	= -fsanitize=undefined,integer,nullability -fno-omit-frame-pointer
-CFLAGS	= $(OPT) $(DBG) -std=c99 -DEXPECT_MACRO -D_POSIX_C_SOURCE=200809L
-CXXFLAGS = $(OPT) -std=c++17
+CFLAGS	= $(FLAGS) $(DBG) -std=c99
+CXXFLAGS = $(FLAGS) $(DBG) -std=c++20
 LDFLAGS	= -Wl,-O1 -Wl,--as-needed
 OBJS	= brainfunk.o libbrainfunk.o
 
-.PHONY: all clean countline test
+.PHONY: all clean countline
 
 all: brainfunk bf bit2bin
 
 brainfunk: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
-
-test:	brainfunk
-	./test.sh brainfunk
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
 
 countline:
 	wc -l *.h *.c
