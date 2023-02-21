@@ -1,4 +1,4 @@
-# Brainfunk: The less ugly rewrite version
+# Brainfunk: The less ugly rewritten version
 
 ## Neo_Chen's Brainfuck Toolkit
 
