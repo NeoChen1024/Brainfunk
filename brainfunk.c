@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 	parsearg(argc, argv);
 	cpu = brainfunk_init(CODESIZE, MEMSIZE, debug);
 
-	if(input_opened == FALSE && !(mode == MODE_BF && string_input == TRUE))
+	if(input_opened == FALSE && string_input == FALSE)
 		panic("?INPUT");
 	else
 	{
