@@ -448,7 +448,7 @@
       <a name="addrWidth" val="4"/>
       <a name="appearance" val="logisim_evolution"/>
       <a name="contents">addr/data: 4 8
-0 1 81 0 0 2 8 4
+20 1 81 20 20 2 8 4
 10 20
 </a>
     </comp>
