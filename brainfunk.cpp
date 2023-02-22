@@ -1,214 +1,110 @@
-/* ========================================================================== *\
-||			      Brainfunk Main Program			      ||
-||                                 Neo_Chen                                   ||
-\* ========================================================================== */
-
-/* ========================================================================== *\
-||   This is free and unencumbered software released into the public domain.  ||
-||									      ||
-||   Anyone is free to copy, modify, publish, use, compile, sell, or	      ||
-||   distribute this software, either in source code form or as a compiled    ||
-||   binary, for any purpose, commercial or non-commercial, and by any	      ||
-||   means.								      ||
-||									      ||
-||   In jurisdictions that recognize copyright laws, the author or authors    ||
-||   of this software dedicate any and all copyright interest in the	      ||
-||   software to the public domain. We make this dedication for the benefit   ||
-||   of the public at large and to the detriment of our heirs and	      ||
-||   successors. We intend this dedication to be an overt act of	      ||
-||   relinquishment in perpetuity of all present and future rights to this    ||
-||   software under copyright law.					      ||
-||									      ||
-||   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,	      ||
-||   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF       ||
-||   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.   ||
-||   IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR        ||
-||   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,    ||
-||   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR    ||
-||   OTHER DEALINGS IN THE SOFTWARE.					      ||
-||									      ||
-||   For more information, please refer to <http://unlicense.org/>            ||
-\* ========================================================================== */
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <signal.h>
-#include <string.h>
-#include <getopt.h>
 #include "libbrainfunk.hpp"
+#include <getopt.h>
 
-/* This should be enough to run any Brainfuck program */
-#define CODESIZE	(1<<24)
-#define MEMSIZE		(1<<20)
+using std::fstream;
+using std::cin;
+using std::cout;
+using std::string;
+using std::endl;
+using std::cerr;
 
-#define DELIM_CHARS	80
-#define DELIM_CHAR	'='
-
-brainfunk_t cpu;
-FILE *input;
-FILE *output;
-char *code=NULL;
-int debug = NODEBUG;
-int input_opened = FALSE;
-int output_opened = FALSE;
-int string_input = FALSE;
-int optimize = TRUE;
-int compat = TRUE;	/* compatible with plain Brainfuck */
-
-enum mode_enum
+/* Read code and filter out unnecessary characters */
+void readcode(string &code, string filename)
 {
-	MODE_BF,	/* Execute Brainfuck program */
-	MODE_BIT,	/* Output bitcode */
-	MODE_BFC	/* Convert Brainfunk to C code for compiling */
-};
-
-enum mode_enum mode = MODE_BF;
-
-IO_IN_FUNCTION
-{
-	int c = getc(stdin);
-	if(debug)
-		fputs("INPUT: ", stderr);
-	return c;
-}
-
-IO_OUT_FUNCTION
-{
-	if(debug)
-		fprintf(stdout, "OUTPUT: (%#hhx) %c\n", data, (char)data);
-	else
-		putc((char)data, stdout);
-}
-
-PANIC_FUNCTION
-{
-	fprintf(stderr, "%s\n", msg);
-	exit(8);
-}
-
-void panic(char *msg)
-{
-	fprintf(stderr, "%s\n", msg);
-	exit(1);
-}
-
-void delim(FILE *fp)
-{
-	int i=0;
-	putc('\n', fp);
-	for(i = 0; i < DELIM_CHARS; i++)
-		putc(DELIM_CHAR, fp);
-	putc('\n', fp);
-	putc('\n', fp);		/* Extra empty line */
-}
-
-void parsearg(int argc, char **argv)
-{
-	int opt=0;
-
-	while((opt = getopt(argc, argv, "hdcm:f:o:s:O:")) != -1)
+	fstream input;
+	input.open(filename);
+	if (!input.is_open())
 	{
-		switch(opt)
+		perror(filename.c_str());
+		exit(1);
+	}
+
+	char c;
+	while(input.get(c))
+	{
+		switch(c)
 		{
-			case 'm':
-				if(!strcmp("bf", optarg))
-					mode = MODE_BF;
-				else if(!strcmp("bfc", optarg))
-					mode = MODE_BFC;
-				else if(!strcmp("bit", optarg))
-					mode = MODE_BIT;
-				else
-					panic("?MODE");
-				break;
-			case 'f':
-				if(!input_opened)
-				{
-					if(strcmp("-", optarg) == 0)
-						input = stdin;
-					else
-					{
-						if((input = fopen(optarg, "r")) == NULL)
-						{
-							perror(optarg);
-							exit(8);
-						}
-					}
-					input_opened=TRUE;
-				}
-				break;
-			case 'o':
-				if(!output_opened)
-				{
-					if(strcmp("-", optarg) == 0)
-						output = stdout;
-					else
-					{
-						if((output = fopen(optarg, "w+")) == NULL)
-						{
-							perror(optarg);
-							exit(8);
-						}
-					}
-					output_opened=TRUE;
-				}
-				break;
-			case 's':
-				if(code != NULL)
-					free(code);
-				code = strdup(optarg);
-				string_input = TRUE;
-				break;
-			case 'O':
-				if(optarg[0] == '1')
-					optimize = TRUE;
-				else if(optarg[0] == '0')
-					optimize = FALSE;
-				else
-					panic("Invalid optimization flag");
-				break;
-			case 'd':
-				debug = DEBUG;
-				break;
-			case 'c':
-				compat = FALSE; /* use Brainfunk extensions */
+			case '+':
+			case '-':
+			case '>':
+			case '<':
+			case '[':
+			case ']':
+			case '.':
+			case ',':
+				code += c;
 				break;
 			default:
-				printf("%s: [-d] [-m mode] [-c] [-s code] [-f file] [-o file]\n", argv[0]);
-				exit(1);
 				break;
 		}
 	}
+	input.close();
+}
+
+void helpmsg(int argc, char **argv)
+{
+	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f code] [-o out]" << endl;
 }
 
 int main(int argc, char **argv)
 {
-	output = stdout;	/* default to stdout */
-	/* Disable Buffering */
-	setvbuf(stdin, NULL, _IONBF, 0);
-	setvbuf(stdout, NULL, _IONBF, 0);
+	string code;
+	string mode = "bf";
+	ostream *output = &cout;
 
-	parsearg(argc, argv);
-	cpu = brainfunk_init(CODESIZE, MEMSIZE, debug);
+	bool valid = false;
+	int opt;
+	while((opt = getopt(argc, argv, "hm:s:f:o:")) != -1)
+	{
+		switch(opt)
+		{
+			case 'f':
+				readcode(code, optarg);
+				valid = true;
+				break;
+			case 's':
+				code = optarg;
+				valid = true;
+				break;
+			case 'h':
+				helpmsg(argc, argv);
+				break;
+			case 'm':
+				mode = optarg;
+				break;
+			case 'o': // Output file
+				output = new fstream(optarg, fstream::out);
+				break;
+			default:
+				break;
+		}
+	}
 
-	if(input_opened == FALSE && string_input == FALSE)
-		panic("?INPUT");
+	if(!valid)
+	{
+		helpmsg(argc, argv);
+		return 1;
+	}
+
+	class Brainfunk bf(MEMSIZE);
+
+	bf.translate(code);
+
+	if(mode == "bf")
+	{
+		bf.run();
+	}
+	else if(mode == "bit")
+	{
+		bf.dump(*output, FMT_BIT);
+	}
+	else if(mode == "bfc")
+	{
+		bf.dump(*output, FMT_C);
+	}
 	else
 	{
-		if(!string_input)
-			code = brainfunk_readtext(input, compat, NULL);
-		bitcode_convert(cpu, code, optimize);
-		free(code);	/* The plain text code isn't being used afterwards */
-		if(debug)
-		{
-			bitcode_dump(cpu, BITCODE_FORMAT_PLAIN, output);
-			delim(output);
-		}
-		if(mode != MODE_BF)
-			bitcode_dump(cpu, mode == MODE_BFC ? BITCODE_FORMAT_C : BITCODE_FORMAT_PLAIN, output);
-		else
-			brainfunk_execute(cpu);	/* start executing code */
+		cerr << "Unknown mode: " << mode << endl;
+		return 1;
 	}
-	brainfunk_destroy(&cpu);
 }

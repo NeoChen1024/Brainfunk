@@ -1,6 +1,6 @@
 CC	= cc
 CXX	= c++
-FLAGS	= -Ofast -flto -pipe -pipe -fPIC -fPIE -I. -g3 -pedantic -Wall -Wextra -Wno-unused-parameter -DEXPECT_MACRO  -D_POSIX_C_SOURCE=200809L
+FLAGS	= -Ofast -flto=auto -fwhole-program -pipe -pipe -fPIC -fPIE -I. -g3 -pedantic -Wall -Wextra -Wno-unused-parameter -DEXPECT_MACRO  -D_POSIX_C_SOURCE=200809L
 #DBG	= -fsanitize=undefined,integer,nullability -fno-omit-frame-pointer
 CFLAGS	= $(FLAGS) $(DBG) -std=c99
 CXXFLAGS = $(FLAGS) $(DBG) -std=c++20

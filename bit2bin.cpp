@@ -1,6 +1,7 @@
 #include "libbrainfunk.hpp"
 #include <string>
 #include <iostream>
+#include <cstdio>
 #include <vector>
 #include <map>
 #include <bitset>
@@ -10,6 +11,7 @@
 
 using std::string;
 using std::bitset;
+using std::fprintf;
 
 addr_t address = 0;
 char op[TEXTLEN];
@@ -17,7 +19,7 @@ char arg[TEXTLEN];
 
 #define _ABS(x)	((x) < 0 ? -(x) : (x))
 
-std::map<string, data_t> opcodes = {
+std::map<string, memory_t> opcodes = {
 	{"X", 0x00},
 	{"A", 0x01},
 	{"S", 0x02},
@@ -40,30 +42,28 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 	if(op == "X" || op == "H")
 	{
 	}
-
 	// Imm
-	if(op == "A" || op == "S" || op == "IO")
+	else if(op == "A" || op == "S" || op == "IO")
 	{
-		data_t imm = 0;
+		memory_t imm = 0;
 		sscanf(arg.c_str(), "%hhu", &imm);
 
 		inst |= imm;
 	}
-
 	// Dual
-	if(op == "MUL")
+	else if(op == "MUL")
 	{
-		dual_t dual;
-		sscanf(arg.c_str(), "%hhu, %d", &dual.mul, &dual.offset);
+		memory_t mul;
+		offset_t offset;
+		sscanf(arg.c_str(), "%hhu, %zd", &mul, &offset);
 
-		inst |= dual.mul;
-		if(_ABS(dual.offset) > 0xFFF)
-			fprintf(stderr, "Warning: offset %d at %zu is too large\n", dual.offset, address);
-		inst |= (dual.offset & 0xFFF) << 8;
+		inst |= mul;
+		if(_ABS(offset) > 0x7FF)
+			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
+		inst |= (offset & 0xFFF) << 8;
 	}
-
 	// Offset
-	if(op == "F" || op == "M")
+	else if(op == "F" || op == "M")
 	{
 		offset_t offset = 0;
 		sscanf(arg.c_str(), "%zd", &offset);
@@ -72,9 +72,8 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
 		inst |= offset & 0xFFFFF;
 	}
-
 	// JE & JN needs conversion to relative addresses
-	if(op == "JE" || op == "JN")
+	else if(op == "JE" || op == "JN")
 	{
 		addr_t addr = 0;
 		sscanf(arg.c_str(), "%zu", &addr);
@@ -83,6 +82,10 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		if(_ABS(offset) > ((1<<20) - 1))
 			fprintf(stderr, "Warning: addr %zu at %zu is too distant\n", addr, address);
 		inst |= offset & 0xFFFFF;
+	}
+	else
+	{
+		fprintf(stderr, "Error: unknown opcode %s at %zu\n", op.c_str(), address);
 	}
 
 	fprintf(fd, "%06lx\n", inst.to_ulong());
