@@ -5,9 +5,11 @@
 ![Brainfunk Logo](https://gitlab.com/Neo_Chen/Brainfunk/raw/master/Logo/Logo256px.png "Yes, this is the logo")
 
 # Build Instruction
+
 ```
 $ make
 ```
+
 # Modes
 
 bf: interpretes Brainfuck program
@@ -20,9 +22,10 @@ bit: prints out bitcode
 
 * text code (unprocessed plain Brainfuck)
 * bitcode (internal data structure)
-* bincode (processed format for virtual CPU execution)
+* bincode (processed machine code for virtual CPU execution)
 
 # Usage
+
 ```
 # Run Brainfuck program:
 $ ./brainfunk -f <source file>
@@ -32,6 +35,7 @@ $ ./brainfuck -m bfc -f <source file> [-o <output file>]
 ```
 
 # CPU core
+
 The ultimate Brainfuck CPU
 ![CPU core](https://github.com/NeoChen1024/Brainfunk/raw/master/CPU/CPU.png)
 
