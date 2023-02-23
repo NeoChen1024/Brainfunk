@@ -43,7 +43,7 @@ void readcode(string &code, string filename)
 
 void helpmsg(int argc, char **argv)
 {
-	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f code] [-o out]" << endl;
+	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f file] [-o out]" << endl;
 }
 
 int main(int argc, char **argv)
@@ -68,6 +68,7 @@ int main(int argc, char **argv)
 				break;
 			case 'h':
 				helpmsg(argc, argv);
+				return 0;
 				break;
 			case 'm':
 				mode = optarg;
@@ -89,16 +90,13 @@ int main(int argc, char **argv)
 
 	if(!valid)
 	{
+		cerr << "No input specified." << endl;
 		helpmsg(argc, argv);
 		return 1;
 	}
 
 	class Brainfunk bf(MEMSIZE);
 
-	if(mode == "xx")
-	{
-		return 0;
-	}
 	bf.translate(code);
 
 	if(mode == "bf")
