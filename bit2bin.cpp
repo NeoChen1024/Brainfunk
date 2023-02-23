@@ -7,7 +7,7 @@
 #include <bitset>
 #include <bit>
 
-#define TEXTLEN	(64)
+#define TEXTLEN	(65)
 
 using std::string;
 using std::bitset;
