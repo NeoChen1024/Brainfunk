@@ -83,6 +83,16 @@ enum formats
 	FMT_C
 };
 
+class BrainfunkException : public std::exception
+{
+public:
+	BrainfunkException(string msg);
+	~BrainfunkException() throw();
+	const char* what() const throw();
+private:
+	string msg;
+};
+
 class Bitcode
 {
 public:
@@ -95,19 +105,51 @@ public:
 	string to_string(enum formats formats = FMT_BIT) const;
 	bool execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is = std::cin, ostream &os = std::cout);
 
+private:
+	static constexpr const string opname[_OP_INSTS] =
+	{
+		"X",
+		"A",
+		"S",
+		"MUL",
+		"F",
+		"M",
+		"JE",
+		"JN",
+		"IO",
+		"H"
+	};
+
+	/* operand type of the opcode,
+	*
+	* N => None
+	* O => Offset
+	* M => mul's Dual Operand
+	* I => Intermediate
+	*/
+	static constexpr const char opcode_type[_OP_INSTS] =
+	{
+		'N',	/* X */
+		'O',	/* A */
+		'I',	/* S */
+		'M',	/* MUL */
+		'O',	/* F */
+		'O',	/* M */
+		'O',	/* JE */
+		'O',	/* JN */
+		'I',	/* IO */
+		'N'	/* H */
+	};
+
 	uint8_t opcode;
 	operand_s operand;
-
-private:
-	static string opname[_OP_INSTS];
-	static char opcode_type[_OP_INSTS];
 };
 
 struct code_patterns
 {
 	bool (*handler)(vector<Bitcode> &bytecode, vector<addr_t> &stack, const string &text);
 	regex pattern;
-	string regex_str;
+	const string regex_str;
 };
 
 class Brainfunk

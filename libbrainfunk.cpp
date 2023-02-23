@@ -15,6 +15,21 @@ using std::regex_search;
 using std::smatch;
 using std::cmatch;
 
+BrainfunkException::BrainfunkException(string msg)
+{
+	this->msg = msg;
+}
+
+BrainfunkException::~BrainfunkException() throw()
+{
+	this->msg.clear();
+}
+
+const char* BrainfunkException::what() const throw()
+{
+	return this->msg.c_str();
+}
+
 Brainfunk::Brainfunk(size_t memsize)
 {
 	this->ptr = 0;
@@ -193,7 +208,7 @@ SCAN(m)
 
 SCAN(je)
 {
-	class Bitcode t(_OP_JE);
+	class Bitcode t;
 	bitcode.emplace_back(t);
 
 	stack.emplace_back(bitcode.size() - 1);
@@ -208,21 +223,22 @@ SCAN(jn)
 
 	class Bitcode t(_OP_JN, (offset_t)(last_pc - bitcode.size()));
 	bitcode.emplace_back(t);
-	bitcode[last_pc].operand.offset = (bitcode.size() - 1) - last_pc;
+	bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
 
 	return true;
 }
 
 SCAN(io)
 {
-	class Bitcode t;
+	memory_t io = 0;
 	if(text[0] == ',')
-		t.operand.byte = _IO_IN;
+		io = _IO_IN;
 	else if(text[0] == '.')
-		t.operand.byte = _IO_OUT;
+		io = _IO_OUT;
+	else
+		return false;
 
-	t.opcode = _OP_IO;
-	bitcode.emplace_back(t);
+	bitcode.emplace_back(Bitcode(_OP_IO, io));
 	return true;
 }
 
@@ -258,7 +274,6 @@ void Brainfunk::translate(string &text)
 	size_t skip_chars = 0;
 
 	cmatch m;
-	//size_t count = 0;
 	
 	if(count_continus(code, "[]") != 0)
 	{
@@ -270,8 +285,6 @@ void Brainfunk::translate(string &text)
 	{
 		for(auto &it : patterns)
 		{
-			//count++;	// TODO: Remove
-			//cerr << "Trying pattern " << it.regex_str<< endl;	// TODO: Remove
 			if(regex_search(code + skip_chars, m, it.pattern))
 			{
 				if(it.handler(bitcode, stack, m[0].str()))
@@ -284,8 +297,6 @@ void Brainfunk::translate(string &text)
 	}
 
 	this->bitcode.emplace_back(Bitcode(_OP_H));
-
-	//cerr << "Tried " << count << " patterns" << endl; // TODO: Remove
 }
 
 void Brainfunk::dump(ostream &os, enum formats format)
@@ -345,41 +356,7 @@ void Brainfunk::run(istream &is, ostream &os)
 	while(codeit->execute(this->memory, codeit, this->ptr, is, os));
 }
 
-string Bitcode::opname[_OP_INSTS] =
-{
-	"X",
-	"A",
-	"S",
-	"MUL",
-	"F",
-	"M",
-	"JE",
-	"JN",
-	"IO",
-	"H"
-};
-
-/* operand type of the opcode,
- *
- * N => None
- * O => Offset
- * M => mul's Dual Operand
- * I => Intermediate
- */
-
-char Bitcode::opcode_type[_OP_INSTS] =
-{
-	'N',	/* X */
-	'O',	/* A */
-	'I',	/* S */
-	'M',	/* MUL */
-	'O',	/* F */
-	'O',	/* M */
-	'O',	/* JE */
-	'O',	/* JN */
-	'I',	/* IO */
-	'N'	/* H */
-};
+// Bitcode class
 
 Bitcode::Bitcode()
 {
@@ -389,18 +366,30 @@ Bitcode::Bitcode()
 
 Bitcode::Bitcode(uint8_t opcode, memory_t operand)
 {
+	if(opcode_type[opcode] != 'I')
+	{
+		throw BrainfunkException("Invalid opcode for intermediate instruction");
+	}
 	this->opcode = opcode;
 	this->operand.byte = operand;
 }
 
 Bitcode::Bitcode(uint8_t opcode, offset_t operand)
 {
+	if(opcode_type[opcode] != 'O')
+	{
+		throw BrainfunkException("Invalid opcode for offset instruction");
+	}
 	this->opcode = opcode;
 	this->operand.offset = operand;
 }
 
 Bitcode::Bitcode(uint8_t opcode, memory_t mul, offset_t offset)
 {
+	if(opcode_type[opcode] != 'M')
+	{
+		throw BrainfunkException("Invalid opcode for MUL instruction");
+	}
 	this->opcode = opcode;
 	this->operand.dual.mul = mul;
 	this->operand.dual.offset = offset;
@@ -408,6 +397,10 @@ Bitcode::Bitcode(uint8_t opcode, memory_t mul, offset_t offset)
 
 Bitcode::Bitcode(uint8_t opcode) // for instructions with no operand
 {
+	if(opcode_type[opcode] != 'N')
+	{
+		throw BrainfunkException("Invalid opcode for instruction with no operand");
+	}
 	this->opcode = opcode;
 }
 
@@ -461,7 +454,7 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 	{
 		case _OP_X:
 			// No operand
-			cerr << "Empty instruction" << endl;
+			throw BrainfunkException("Empty instruction");
 			return false;
 			break;
 		case _OP_A:
@@ -496,11 +489,15 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 			break;
 		case _OP_IO:
 			// 0: Input, 1: Output
+			static memory_t io_input = 0;
 			switch(operand.byte)
 			{
 				case 0:
 					// Input
-					is >> memory[wrap(ptr, size)];
+					is >> io_input;
+					if(is.eof())
+						io_input = 0;
+					memory[wrap(ptr, size)] = io_input;
 					break;
 				case 1:
 					// Output
