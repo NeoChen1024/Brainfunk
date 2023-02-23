@@ -13,6 +13,7 @@ using std::regex;
 using std::regex_match;
 using std::regex_search;
 using std::smatch;
+using std::cmatch;
 
 Brainfunk::Brainfunk(size_t memsize)
 {
@@ -32,7 +33,6 @@ void Brainfunk::clear()
 {
 	std::fill(this->memory.begin(), this->memory.end(), 0);
 	this->ptr = 0;
-	this->pc = 0;
 	this->bitcode.clear();
 }
 
@@ -78,13 +78,15 @@ ssize_t count_continus(string const &text, string symbolset)
 
 void count_mul_offset(string const &text, vector<memory_t> &mul, vector<offset_t> &offset, size_t lastoffset)
 {
-	mul.push_back(count_continus(text, "+-") % 256);
-	offset.push_back(count_continus(text, "><") + lastoffset);
+	mul.emplace_back(count_continus(text, "+-") % 256);
+	offset.emplace_back(count_continus(text, "><") + lastoffset);
 	return;
 }
 
 #define SCAN(name) \
-	bool (scan_ ## name)(vector<Bitcode> &bitcode, vector<addr_t> &stack, string const &text)
+	bool (scan_ ## name)(vector<Bitcode> &bitcode, vector<addr_t> &stack, const string &text)
+
+static const regex mul_match("^[><]+[+-]+", regex::optimize);
 
 SCAN(smul)
 {
@@ -97,7 +99,6 @@ SCAN(smul)
 
 	class Bitcode t;
 
-	regex preg("^[><]+[+-]+", regex::optimize);
 	smatch m;
 
 	/* First we need to validate if it goes back to where it was */
@@ -126,34 +127,34 @@ SCAN(smul)
 		mode = 2;
 	}
 
-	while(regex_search(substr, m, preg))
+	while(regex_search(substr, m, mul_match))
 	{
 		count_mul_offset(m.begin()->str(), mul, offset, offset.size() == 0 ? 0 : offset.back());
 		substr.erase(0, m.begin()->length());
 	}
 
-	assert(pairs > 0);
 	/* Omit the last false pair in mode 2 */
 	if(mode == 2)
 		pairs = offset.size() - 1;
 	else
 		pairs = offset.size();
 
+	assert(pairs > 0);
 	for(int i = 0; i < pairs; i++)
 	{
-		bitcode.push_back(Bitcode(_OP_MUL, {.dual = {mul[i], offset[i]}}));
+		bitcode.emplace_back(Bitcode(_OP_MUL, mul[i], offset[i]));
 	}
 
 	/* Insert a "S 0" to get correct behavior */
-	bitcode.push_back(Bitcode(_OP_S, {.byte = 0}));
+	bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
 	return true;
 }
 
 SCAN(s0)
 {
-	class Bitcode t(_OP_S, {.byte = 0});
-	bitcode.push_back(t);
+	class Bitcode t(_OP_S, (memory_t)0);
+	bitcode.emplace_back(t);
 
 	return true;
 }
@@ -162,8 +163,8 @@ SCAN(f)
 {
 	offset_t offset = count_continus(text, "><");
 
-	class Bitcode t(_OP_F, {.offset = offset});
-	bitcode.push_back(t);
+	class Bitcode t(_OP_F, offset);
+	bitcode.emplace_back(t);
 
 	return true;
 }
@@ -174,8 +175,8 @@ SCAN(a)
 
 	offset = count_continus(text, "+-");
 
-	class Bitcode t(_OP_A, {.offset = offset});
-	bitcode.push_back(t);
+	class Bitcode t(_OP_A, offset);
+	bitcode.emplace_back(t);
 
 	return true;
 }
@@ -184,8 +185,8 @@ SCAN(m)
 {
 	offset_t offset=0;
 	offset = count_continus(text, "><");
-	class Bitcode t(_OP_M, {.offset = offset});
-	bitcode.push_back(t);
+	class Bitcode t(_OP_M, offset);
+	bitcode.emplace_back(t);
 
 	return true;
 }
@@ -193,9 +194,9 @@ SCAN(m)
 SCAN(je)
 {
 	class Bitcode t(_OP_JE);
-	bitcode.push_back(t);
+	bitcode.emplace_back(t);
 
-	stack.push_back(bitcode.size() - 1);
+	stack.emplace_back(bitcode.size() - 1);
 
 	return true;
 }
@@ -205,10 +206,9 @@ SCAN(jn)
 	addr_t last_pc = stack.back();
 	stack.pop_back();
 
-	class Bitcode t(_OP_JN, {.addr = last_pc + 1});
-	bitcode.push_back(t);
-	/* Skip the je & jn instructions themselves, this improves speed a little */
-	bitcode[last_pc].operand.addr = bitcode.size();
+	class Bitcode t(_OP_JN, (offset_t)(last_pc - bitcode.size()));
+	bitcode.emplace_back(t);
+	bitcode[last_pc].operand.offset = (bitcode.size() - 1) - last_pc;
 
 	return true;
 }
@@ -222,21 +222,20 @@ SCAN(io)
 		t.operand.byte = _IO_OUT;
 
 	t.opcode = _OP_IO;
-	bitcode.push_back(t);
+	bitcode.emplace_back(t);
 	return true;
 }
 
-SCAN(split)
+SCAN(null)
 {
 	return true;
 }
 
-#define SCAN_HANDLER_DEF(name, pattern) \
-	{&scan_ ## name, regex(pattern, regex::optimize), pattern}
+#define SCAN_HANDLER_DEF(hname, text) \
+	{.handler = &scan_ ## hname, .pattern = regex(text, regex::optimize), .regex_str = text}
 
-struct code_patterns patterns[] =
+static struct code_patterns patterns[] =
 {
-		SCAN_HANDLER_DEF(split,	"^!"),	/* Doesn't emit instruction */
 		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
@@ -247,15 +246,19 @@ struct code_patterns patterns[] =
 		SCAN_HANDLER_DEF(jn,	"^\\]"),	/* JN */
 		SCAN_HANDLER_DEF(io,	"^\\."),	/* IO OUT */
 		SCAN_HANDLER_DEF(io,	"^,"),	/* IO IN */
+		SCAN_HANDLER_DEF(null,	"^[^+-<>\\[\\],\\.]+"),	/* NULL */
 };
 
 void Brainfunk::translate(string &text)
 {
 	vector<addr_t> stack;	// Jump address stack
-	string code = text;
 	this->bitcode.clear();
-	class Bitcode current_instruction(_OP_X);
-	smatch m;
+
+	const char * code = text.c_str();
+	size_t skip_chars = 0;
+
+	cmatch m;
+	//size_t count = 0;
 	
 	if(count_continus(code, "[]") != 0)
 	{
@@ -263,22 +266,26 @@ void Brainfunk::translate(string &text)
 		exit(1);
 	}
 
-	while(code.length() > 0)
+	while(text.length() > skip_chars)
 	{
 		for(auto &it : patterns)
 		{
-			if(regex_search(code, m, it.pattern))
+			//count++;	// TODO: Remove
+			//cerr << "Trying pattern " << it.regex_str<< endl;	// TODO: Remove
+			if(regex_search(code + skip_chars, m, it.pattern))
 			{
 				if(it.handler(bitcode, stack, m[0].str()))
 				{
-					code.erase(0, m[0].length());
+					skip_chars += m[0].length();
 					break;
 				}
 			}
 		}
 	}
 
-	this->bitcode.push_back(Bitcode(_OP_H));
+	this->bitcode.emplace_back(Bitcode(_OP_H));
+
+	//cerr << "Tried " << count << " patterns" << endl; // TODO: Remove
 }
 
 void Brainfunk::dump(ostream &os, enum formats format)
@@ -328,14 +335,14 @@ void Brainfunk::dump(ostream &os, enum formats format)
 	}
 }
 
-void Brainfunk::run()
+void Brainfunk::run(istream &is, ostream &os)
 {
-	this->pc = 0;
+	auto codeit = this->bitcode.begin();
 	std::fill(this->memory.begin(), this->memory.end(), 0);
 
 	if(this->bitcode.size() == 0)
 		return;
-	while(this->bitcode[this->pc].execute(this->memory, this->pc, this->ptr));
+	while(codeit->execute(this->memory, codeit, this->ptr, is, os));
 }
 
 string Bitcode::opname[_OP_INSTS] =
@@ -357,7 +364,6 @@ string Bitcode::opname[_OP_INSTS] =
  * N => None
  * O => Offset
  * M => mul's Dual Operand
- * A => Address
  * I => Intermediate
  */
 
@@ -369,24 +375,38 @@ char Bitcode::opcode_type[_OP_INSTS] =
 	'M',	/* MUL */
 	'O',	/* F */
 	'O',	/* M */
-	'A',	/* JE */
-	'A',	/* JN */
+	'O',	/* JE */
+	'O',	/* JN */
 	'I',	/* IO */
 	'N'	/* H */
 };
 
 Bitcode::Bitcode()
 {
+	this->opcode = _OP_X; // generate invalid opcode by default
 	return;
 }
 
-Bitcode::Bitcode(uint8_t opcode, operand_s operand)
+Bitcode::Bitcode(uint8_t opcode, memory_t operand)
 {
 	this->opcode = opcode;
-	this->operand = operand;
+	this->operand.byte = operand;
 }
 
-Bitcode::Bitcode(uint8_t opcode)
+Bitcode::Bitcode(uint8_t opcode, offset_t operand)
+{
+	this->opcode = opcode;
+	this->operand.offset = operand;
+}
+
+Bitcode::Bitcode(uint8_t opcode, memory_t mul, offset_t offset)
+{
+	this->opcode = opcode;
+	this->operand.dual.mul = mul;
+	this->operand.dual.offset = offset;
+}
+
+Bitcode::Bitcode(uint8_t opcode) // for instructions with no operand
 {
 	this->opcode = opcode;
 }
@@ -411,15 +431,12 @@ inline string Bitcode::to_string(enum formats format) const
 			// Dual Operand
 			operand << this->operand.dual.offset << ", " << (unsigned short int)this->operand.dual.mul;
 			break;
-		case 'A':
-			// Address
-			operand << this->operand.addr;
-			break;
 		case 'I':
 			// Intermediate byte
-			operand << (int)this->operand.byte;
+			operand << (unsigned short int)this->operand.byte;
 			break;
 		default:
+			cerr << "Unknown operand type" << endl;
 			break;
 	}
 	switch(format)
@@ -437,54 +454,45 @@ inline string Bitcode::to_string(enum formats format) const
 #define wrap(address, size) \
 	(((address) < (size)) ? (address) : (address) % (size))
 
-inline bool Bitcode::execute(vector<memory_t> &memory, addr_t &pc, addr_t &ptr)
+inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is, ostream &os)
 {
 	addr_t size = memory.size();
 	switch(opcode)
 	{
 		case _OP_X:
 			// No operand
-			cerr << "Empty instruction at: " << pc << endl;
+			cerr << "Empty instruction" << endl;
 			return false;
 			break;
 		case _OP_A:
 			// Offset
 			memory[wrap(ptr, size)] += operand.offset;
-			pc++;
 			break;
 		case _OP_S:
 			// Intermediate byte
 			memory[wrap(ptr, size)] = operand.byte;
-			pc++;
 			break;
 		case _OP_MUL:
 			// Dual Operand
 			memory[wrap(ptr + operand.dual.offset, size)] += memory[wrap(ptr, size)] * operand.dual.mul;
-			pc++;
 			break;
 		case _OP_F:
 			// Offset
 			for(; memory[wrap(ptr, size)] != 0; ptr = wrap(ptr + operand.offset, size));
-			pc++;
 			break;
 		case _OP_M:
 			// Offset
 			ptr = wrap(ptr + operand.offset, size);
-			pc++;
 			break;
 		case _OP_JE:
 			// Jump if equal to 0
 			if(memory[wrap(ptr, size)] == 0)
-				pc = operand.addr;
-			else
-				pc++;
+				codeit += operand.offset;
 			break;
 		case _OP_JN:
 			// Jump if not equal to 0
 			if(memory[wrap(ptr, size)] != 0)
-				pc = operand.addr;
-			else
-				pc++;
+				codeit += operand.offset;
 			break;
 		case _OP_IO:
 			// 0: Input, 1: Output
@@ -492,27 +500,27 @@ inline bool Bitcode::execute(vector<memory_t> &memory, addr_t &pc, addr_t &ptr)
 			{
 				case 0:
 					// Input
-					cin >> memory[wrap(ptr, size)];
+					is >> memory[wrap(ptr, size)];
 					break;
 				case 1:
 					// Output
-					cout << (char)memory[wrap(ptr, size)] << flush;
+					os << (char)memory[wrap(ptr, size)] << flush;
 					break;
 				default:
 					cerr << "Unknown IO instruction: " << operand.byte << endl;
 					return false;
 					break;
 			}
-			pc++;
 			break;
 		case _OP_H:
 			// No operand, halt
 			return false;
 			break;
 		default:
-			cerr << "Unknown instruction at: " << pc << endl;
+			cerr << "Unknown instruction" << endl;
 			return false;
 			break;
 	}
+	codeit++;
 	return true;
 }

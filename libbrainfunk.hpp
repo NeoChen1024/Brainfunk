@@ -63,17 +63,18 @@ enum opcodes
 	_OP_INSTS /* Total number of instructions */
 };
 
+typedef struct
+{
+	memory_t mul; // %256
+	offset_t offset;
+} dual_t;
 union operand_s
 {
-	uint8_t byte;
+	memory_t byte;
 	offset_t offset;
-	addr_t addr;
+	//addr_t addr;
 
-	struct
-	{
-		memory_t mul; // %256
-		offset_t offset;
-	} dual;
+	dual_t dual;
 };
 
 enum formats
@@ -86,10 +87,13 @@ class Bitcode
 {
 public:
 	Bitcode();
-	Bitcode(uint8_t opcode, operand_s operand);
+	//Bitcode(uint8_t opcode, operand_s operand);
+	Bitcode(uint8_t opcode, memory_t byte);
+	Bitcode(uint8_t opcode, offset_t offset);
+	Bitcode(uint8_t opcode, memory_t mul, offset_t offset);
 	Bitcode(uint8_t opcode);
 	string to_string(enum formats formats = FMT_BIT) const;
-	bool execute(vector<memory_t> &memory, addr_t &pc, addr_t &ptr);
+	bool execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is = std::cin, ostream &os = std::cout);
 
 	uint8_t opcode;
 	operand_s operand;
@@ -101,9 +105,9 @@ private:
 
 struct code_patterns
 {
-	bool (*handler)(vector<Bitcode> &bytecode, vector<addr_t> &stack, string const &text);
+	bool (*handler)(vector<Bitcode> &bytecode, vector<addr_t> &stack, const string &text);
 	regex pattern;
-	string regexp;
+	string regex_str;
 };
 
 class Brainfunk
@@ -112,12 +116,11 @@ public:
 	Brainfunk(size_t memsize = MEMSIZE);
 	~Brainfunk();
 	void translate(string &code);
-	void run();
+	void run(istream &is = std::cin, ostream &os = std::cout);
 	void clear();
 	void dump(ostream &os, enum formats formats = FMT_BIT);
 
 private:
-	addr_t pc;
 	addr_t ptr;
 	vector<memory_t> memory;
 	vector<class Bitcode> bitcode;

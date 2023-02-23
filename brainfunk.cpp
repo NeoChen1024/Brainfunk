@@ -73,7 +73,14 @@ int main(int argc, char **argv)
 				mode = optarg;
 				break;
 			case 'o': // Output file
-				output = new fstream(optarg, fstream::out);
+				try
+				{
+					output = new fstream(optarg, fstream::out);
+				}
+				catch(const std::exception& e)
+				{
+					std::cerr << e.what() << '\n';
+				}
 				break;
 			default:
 				break;
@@ -88,6 +95,10 @@ int main(int argc, char **argv)
 
 	class Brainfunk bf(MEMSIZE);
 
+	if(mode == "xx")
+	{
+		return 0;
+	}
 	bf.translate(code);
 
 	if(mode == "bf")
