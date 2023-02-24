@@ -277,7 +277,7 @@ void Brainfunk::translate(string &text)
 	
 	if(count_continus(code, "[]") != 0)
 	{
-		cerr << "Error: Brace mismatch" << endl;
+		throw BrainfunkException("Unmatched brackets");
 		exit(1);
 	}
 
@@ -429,7 +429,7 @@ inline string Bitcode::to_string(enum formats format) const
 			operand << (unsigned short int)this->operand.byte;
 			break;
 		default:
-			cerr << "Unknown operand type" << endl;
+			throw BrainfunkException("Invalid opcode operand type");
 			break;
 	}
 	switch(format)
@@ -503,10 +503,6 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 					// Output
 					os << (char)memory[wrap(ptr, size)] << flush;
 					break;
-				default:
-					cerr << "Unknown IO instruction: " << operand.byte << endl;
-					return false;
-					break;
 			}
 			break;
 		case _OP_H:
@@ -514,8 +510,7 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 			return false;
 			break;
 		default:
-			cerr << "Unknown instruction" << endl;
-			return false;
+			throw BrainfunkException("Invalid opcode");
 			break;
 	}
 	codeit++;
