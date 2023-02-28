@@ -166,14 +166,6 @@ SCAN(smul)
 	return true;
 }
 
-SCAN(s0)
-{
-	class Bitcode t(_OP_S, (memory_t)0);
-	bitcode.emplace_back(t);
-
-	return true;
-}
-
 SCAN(f)
 {
 	offset_t offset = count_continus(text, "><");
@@ -186,9 +178,7 @@ SCAN(f)
 
 SCAN(a)
 {
-	offset_t offset=0;
-
-	offset = count_continus(text, "+-");
+	offset_t offset = count_continus(text, "+-");
 
 	class Bitcode t(_OP_A, offset);
 	bitcode.emplace_back(t);
@@ -206,47 +196,6 @@ SCAN(m)
 	return true;
 }
 
-SCAN(je)
-{
-	class Bitcode t;
-	bitcode.emplace_back(t);
-
-	stack.emplace_back(bitcode.size() - 1);
-
-	return true;
-}
-
-SCAN(jn)
-{
-	addr_t last_pc = stack.back();
-	stack.pop_back();
-
-	class Bitcode t(_OP_JN, (offset_t)(last_pc - bitcode.size()));
-	bitcode.emplace_back(t);
-	bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
-
-	return true;
-}
-
-SCAN(io)
-{
-	memory_t io = 0;
-	if(text[0] == ',')
-		io = _IO_IN;
-	else if(text[0] == '.')
-		io = _IO_OUT;
-	else
-		return false;
-
-	bitcode.emplace_back(Bitcode(_OP_IO, io));
-	return true;
-}
-
-SCAN(null)
-{
-	return true;
-}
-
 #define SCAN_HANDLER_DEF(hname, text) \
 	{.handler = &scan_ ## hname, .pattern = regex(text, regex::optimize), .regex_str = text}
 
@@ -255,14 +204,8 @@ static struct code_patterns patterns[] =
 		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-]"),	/* S 0 & MUL */
 		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
-		SCAN_HANDLER_DEF(s0,	"^\\[-\\]"),	/* S 0 */
 		SCAN_HANDLER_DEF(a,	"^[+-]+"),	/* A */
 		SCAN_HANDLER_DEF(m,	"^[<>]+"),	/* M */
-		SCAN_HANDLER_DEF(je,	"^\\["),	/* JE */
-		SCAN_HANDLER_DEF(jn,	"^\\]"),	/* JN */
-		SCAN_HANDLER_DEF(io,	"^\\."),	/* IO OUT */
-		SCAN_HANDLER_DEF(io,	"^,"),	/* IO IN */
-		SCAN_HANDLER_DEF(null,	"^[^+-<>\\[\\],\\.]+"),	/* NULL */
 };
 
 void Brainfunk::translate(string &text)
@@ -281,18 +224,52 @@ void Brainfunk::translate(string &text)
 		exit(1);
 	}
 
+	addr_t last_pc = 0;
+cont_scan:
 	while(text.length() > skip_chars)
 	{
 		for(auto &it : patterns)
 		{
 			if(regex_search(code + skip_chars, m, it.pattern))
 			{
+				//cerr << "Matched " << it.regex_str << " with " << m[0].str() << endl;
 				if(it.handler(bitcode, stack, m[0].str()))
 				{
 					skip_chars += m[0].length();
-					break;
+					goto cont_scan;
 				}
 			}
+		}
+		if(std::strncmp(code + skip_chars, "[-]", 3) == 0)
+		{
+			class Bitcode t(_OP_S, (memory_t)0);
+			bitcode.emplace_back(t);
+
+			skip_chars += 3;
+			goto cont_scan;
+		}
+		else switch(code[skip_chars++])
+		{
+		case '[':
+			bitcode.emplace_back(Bitcode());
+			stack.emplace_back(bitcode.size() - 1);
+			goto cont_scan;
+		case ']':
+			last_pc = stack.back();
+			stack.pop_back();
+
+			bitcode.emplace_back(Bitcode(_OP_JN, (offset_t)(last_pc - bitcode.size())));
+			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
+
+			goto cont_scan;
+		case '.':
+			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
+			goto cont_scan;
+		case ',':
+			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_IN));
+			goto cont_scan;
+		default: // unrecognized characters
+			goto cont_scan;
 		}
 	}
 
