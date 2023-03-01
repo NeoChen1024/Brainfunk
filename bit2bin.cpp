@@ -58,7 +58,7 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		sscanf(arg.c_str(), "%hhu, %zd", &mul, &offset);
 
 		inst |= mul;
-		if(_ABS(offset) > 0x7FF)
+		if(_ABS(offset) > 0x3FF)
 			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
 		inst |= (offset & 0xFFF) << 8;
 	}
@@ -68,7 +68,7 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		offset_t offset = 0;
 		sscanf(arg.c_str(), "%zd", &offset);
 
-		if(_ABS(offset) > ((1<<20) - 1))
+		if(_ABS(offset) > ((1<<19) - 1))
 			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
 		inst |= offset & 0xFFFFF;
 	}
