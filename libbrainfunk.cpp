@@ -421,19 +421,19 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 			break;
 		case _OP_A:
 			// Offset
-			memory[wrap(ptr, size)] += operand.byte;
+			memory[ptr] += operand.byte;
 			break;
 		case _OP_S:
 			// Intermediate byte
-			memory[wrap(ptr, size)] = operand.byte;
+			memory[ptr] = operand.byte;
 			break;
 		case _OP_MUL:
 			// Dual Operand
-			memory[wrap(ptr + operand.dual.offset, size)] += memory[wrap(ptr, size)] * operand.dual.mul;
+			memory[wrap(ptr + operand.dual.offset, size)] += memory[ptr] * operand.dual.mul;
 			break;
 		case _OP_F:
 			// Offset
-			for(; memory[wrap(ptr, size)] != 0; ptr = wrap(ptr + operand.offset, size));
+			for(; memory[ptr] != 0; ptr = wrap(ptr + operand.offset, size));
 			break;
 		case _OP_M:
 			// Offset
@@ -441,12 +441,12 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 			break;
 		case _OP_JE:
 			// Jump if equal to 0
-			if(memory[wrap(ptr, size)] == 0)
+			if(memory[ptr] == 0)
 				codeit += operand.offset;
 			break;
 		case _OP_JN:
 			// Jump if not equal to 0
-			if(memory[wrap(ptr, size)] != 0)
+			if(memory[ptr] != 0)
 				codeit += operand.offset;
 			break;
 		case _OP_IO:
@@ -458,11 +458,11 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 					is >> std::noskipws >> io_input;
 					if(is.eof())
 						io_input = 0;
-					memory[wrap(ptr, size)] = io_input;
+					memory[ptr] = io_input;
 					break;
 				case 1:
 					// Output
-					os << (char)memory[wrap(ptr, size)] << flush;
+					os << (char)memory[ptr] << flush;
 					break;
 			}
 			break;
