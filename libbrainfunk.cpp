@@ -236,26 +236,7 @@ void Brainfunk::translate(string &text)
 cont_scan:
 	while(text.length() > skip_chars)
 	{
-		for(auto &it : patterns)
-		{
-			if(regex_search(code + skip_chars, m, it.pattern))
-			{
-				//cerr << "Matched " << it.regex_str << " with " << m[0].str() << endl;
-				if(it.handler(bitcode, stack, m[0].str()))
-				{
-					skip_chars += m[0].length();
-					goto cont_scan;
-				}
-			}
-		}
-		if(std::strncmp(code + skip_chars, "[-]", 3) == 0)
-		{
-			bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
-
-			skip_chars += 3;
-			goto cont_scan;
-		}
-		else switch(code[skip_chars++])
+		switch(code[skip_chars])
 		{
 		case '[':
 			for(auto &it : patterns)
