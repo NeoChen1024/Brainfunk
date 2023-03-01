@@ -63,24 +63,13 @@ void emit(addr_t address, string op, string arg, FILE *fd)
 		inst |= (offset & 0xFFF) << 8;
 	}
 	// Offset
-	else if(op == "F" || op == "M")
+	else if(op == "F" || op == "M" || op == "JE" || op == "JN")
 	{
 		offset_t offset = 0;
 		sscanf(arg.c_str(), "%zd", &offset);
 
 		if(_ABS(offset) > ((1<<20) - 1))
 			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
-		inst |= offset & 0xFFFFF;
-	}
-	// JE & JN needs conversion to relative addresses
-	else if(op == "JE" || op == "JN")
-	{
-		addr_t addr = 0;
-		sscanf(arg.c_str(), "%zu", &addr);
-		ssize_t offset = addr - address;
-
-		if(_ABS(offset) > ((1<<20) - 1))
-			fprintf(stderr, "Warning: addr %zu at %zu is too distant\n", addr, address);
 		inst |= offset & 0xFFFFF;
 	}
 	else
