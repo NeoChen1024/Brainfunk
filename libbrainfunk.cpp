@@ -1,4 +1,5 @@
 #include "libbrainfunk.hpp"
+#include "ctre.hpp"
 
 using std::string;
 using std::stringstream;
