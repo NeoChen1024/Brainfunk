@@ -455,7 +455,7 @@ inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator
 			{
 				case 0:
 					// Input
-					is >> io_input;
+					is >> std::noskipws >> io_input;
 					if(is.eof())
 						io_input = 0;
 					memory[wrap(ptr, size)] = io_input;
