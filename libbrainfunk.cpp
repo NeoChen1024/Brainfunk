@@ -222,7 +222,6 @@ void Brainfunk::translate(string &text)
 	if(count_continus(code, "[]") != 0)
 	{
 		throw BrainfunkException("Unmatched brackets");
-		exit(1);
 	}
 
 	addr_t last_pc = 0;
@@ -243,8 +242,7 @@ cont_scan:
 		}
 		if(std::strncmp(code + skip_chars, "[-]", 3) == 0)
 		{
-			class Bitcode t(_OP_S, (memory_t)0);
-			bitcode.emplace_back(t);
+			bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
 			skip_chars += 3;
 			goto cont_scan;
@@ -261,7 +259,6 @@ cont_scan:
 
 			bitcode.emplace_back(Bitcode(_OP_JN, (offset_t)(last_pc - bitcode.size())));
 			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
-
 			goto cont_scan;
 		case '.':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
