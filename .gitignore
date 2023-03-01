@@ -5,6 +5,7 @@ test
 brainfunk
 bf
 bit2bin
+bfstrip
 compile_commands.json
 .vscode
 *.bin.txt

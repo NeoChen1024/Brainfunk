@@ -7,10 +7,11 @@ CFLAGS	= $(FLAGS) $(DBG) -std=c99
 CXXFLAGS = $(FLAGS) $(DBG) -std=c++20
 LDFLAGS	= -Wl,-O1 -Wl,--as-needed
 OBJS	= brainfunk.o libbrainfunk.o
+PRGS	= brainfunk bf bit2bin bfstrip
 
 .PHONY: all clean countline
 
-all: brainfunk bf bit2bin
+all: $(PRGS)
 
 brainfunk: $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
@@ -19,4 +20,4 @@ countline:
 	wc -l *.h *.c
 
 clean:
-	rm -f $(OBJS) brainfunk bf bit2bin
+	rm -f $(OBJS) $(PRGS)
