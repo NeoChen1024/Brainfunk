@@ -145,13 +145,6 @@ private:
 	operand_s operand;
 };
 
-struct code_patterns
-{
-	bool (*handler)(vector<Bitcode> &bytecode, vector<addr_t> &stack, const string &text);
-	regex pattern;
-	const string regex_str;
-};
-
 class Brainfunk
 {
 public:

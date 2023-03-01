@@ -10,11 +10,6 @@ using std::cerr;
 using std::clog;
 using std::endl;
 using std::vector;
-using std::regex;
-using std::regex_match;
-using std::regex_search;
-using std::smatch;
-using std::cmatch;
 
 BrainfunkException::BrainfunkException(string msg)
 {
@@ -120,102 +115,6 @@ void count_mul_offset(string const &text, vector<memory_t> &mul, vector<offset_t
 	return;
 }
 
-#define SCAN(name) \
-	bool (scan_ ## name)(vector<Bitcode> &bitcode, vector<addr_t> &stack, const string &text)
-
-static auto smul_match = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">;
-
-SCAN(smul)
-{
-	ssize_t i=0;
-	int mode=0;
-	vector<memory_t> mul;
-	vector<offset_t> offset;
-	ssize_t pairs = 0;
-	string substr = text;
-
-	/* First we need to validate if it goes back to where it was */
-	i = count_continus(text, "><");
-	if(i != 0)
-		return false;
-
-
-	/* Basically, the text will look either like:
-	 *
-	 *	1. [->>++++>>>>++++++++<<--<<<<]
-	 *
-	 *	or
-	 *
-	 *	2. [>>+++++>>>>+++<<---<<<<-]
-	 */
-
-	if(substr[1] == '-')
-	{
-		substr.erase(0, 2);
-		mode = 1;
-	}
-	else
-	{
-		substr.erase(0, 1);
-		mode = 2;
-	}
-
-	while(auto m = smul_match(substr))
-	{
-		count_mul_offset(m.to_string(), mul, offset, offset.size() == 0 ? 0 : offset.back());
-		substr.erase(0, m.size());
-	}
-
-	/* Omit the last false pair in mode 2 */
-	if(mode == 2)
-		pairs = offset.size() - 1;
-	else
-		pairs = offset.size();
-
-	assert(pairs > 0);
-	for(int i = 0; i < pairs; i++)
-	{
-		bitcode.emplace_back(Bitcode(_OP_MUL, mul[i], offset[i]));
-	}
-
-	/* Insert a "S 0" to get correct behavior */
-	bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
-
-	return true;
-}
-
-SCAN(f)
-{
-	offset_t offset = count_continus(text, "><");
-
-	class Bitcode t(_OP_F, offset);
-	bitcode.emplace_back(t);
-
-	return true;
-}
-
-SCAN(s0)
-{
-	auto v = count_continus(text, "+-");
-	if(v % 2 != 1) // is even
-		return false;
-	class Bitcode t(_OP_S, (memory_t)0);
-	bitcode.emplace_back(t);
-
-	return true;
-}
-
-#define SCAN_HANDLER_DEF(hname, text) \
-	{.handler = &scan_ ## hname, .pattern = regex(text, regex::optimize), .regex_str = text}
-
-static struct code_patterns patterns[] =
-{
-		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+]"),	/* S 0 & MUL */
-		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-]"),	/* S 0 & MUL */
-		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
-		SCAN_HANDLER_DEF(s0,	"^\\[[+-]+\\]"),	/* S 0 */
-};
-
 void Brainfunk::translate(string &text)
 {
 	vector<addr_t> stack;	// Jump address stack
@@ -224,8 +123,6 @@ void Brainfunk::translate(string &text)
 	const char * code = text.c_str();
 	size_t skip_chars = 0;
 
-	cmatch m;
-	
 	if(count_continus(code, "[]") != 0)
 	{
 		throw BrainfunkException("Unmatched brackets");
@@ -239,21 +136,87 @@ cont_scan:
 		switch(code[skip_chars])
 		{
 		case '[':
-			for(auto &it : patterns)
+			if(auto m = ctre::starts_with<"^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]">(code + skip_chars))
 			{
-				if(regex_search(code + skip_chars, m, it.pattern))
+				ssize_t i = 0;
+				int mode = 0;
+				vector<memory_t> mul;
+				vector<offset_t> offset;
+				ssize_t pairs = 0;
+				string substr = m.to_string();
+
+				/* First we need to validate if it goes back to where it was */
+				i = count_continus(m.to_string(), "><");
+				if (i != 0)
+					goto bailout;
+
+				/* Basically, the text will look either like:
+				 *
+				 *	1. [->>++++>>>>++++++++<<--<<<<]
+				 *
+				 *	or
+				 *
+				 *	2. [>>+++++>>>>+++<<---<<<<-]
+				 */
+
+				if (substr[1] == '-')
 				{
-					//cerr << "Matched " << it.regex_str << " with " << m[0].str() << endl;
-					if(it.handler(bitcode, stack, m[0].str()))
-					{
-						skip_chars += m[0].length();
-						goto cont_scan;
-					}
+					substr.erase(0, 2);
+					mode = 1;
 				}
+				else
+				{
+					substr.erase(0, 1);
+					mode = 2;
+				}
+
+				while (auto m = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">(substr))
+				{
+					count_mul_offset(m.to_string(), mul, offset, offset.size() == 0 ? 0 : offset.back());
+					substr.erase(0, m.size());
+				}
+
+				/* Omit the last false pair in mode 2 */
+				if (mode == 2)
+					pairs = offset.size() - 1;
+				else
+					pairs = offset.size();
+
+				assert(pairs > 0);
+				for (int i = 0; i < pairs; i++)
+				{
+					bitcode.emplace_back(Bitcode(_OP_MUL, mul[i], offset[i]));
+				}
+
+				/* Insert a "S 0" to get correct behavior */
+				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
+
+				skip_chars += m.size();
+				goto cont_scan;
+			}
+			else if(auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code + skip_chars)) // F instruction
+			{
+				offset_t offset = count_continus(m.to_string(), "><");
+				bitcode.emplace_back(Bitcode(_OP_F, offset));
+
+				skip_chars += m.size();
+				goto cont_scan;
+			}
+			else if(auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code + skip_chars)) // S 0
+			{
+				auto v = count_continus(m.to_string(), "+-");
+				if(v % 2 != 1) // is even
+				{
+					goto bailout;
+				}
+				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
+
+				skip_chars += m.size();
+				goto cont_scan;
 			}
 
 			// No match, just a normal loop
-
+bailout:
 			bitcode.emplace_back(Bitcode());
 			stack.emplace_back(bitcode.size() - 1);
 
