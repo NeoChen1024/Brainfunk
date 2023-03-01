@@ -130,7 +130,7 @@ private:
 	static constexpr const char opcode_type[_OP_INSTS] =
 	{
 		'N',	/* X */
-		'O',	/* A */
+		'I',	/* A */
 		'I',	/* S */
 		'M',	/* MUL */
 		'O',	/* F */
