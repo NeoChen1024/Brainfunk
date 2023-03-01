@@ -1,4 +1,5 @@
 #include "libbrainfunk.hpp"
+#include "ctre.hpp"
 
 using std::string;
 using std::stringstream;
@@ -91,27 +92,6 @@ ssize_t count_continus(string const &text, string symbolset)
 	return ctr;
 }
 
-size_t find_continus(string const &text, string symbolset, ssize_t &value)
-{
-	size_t i=0;
-	ssize_t ctr=0;
-
-	assert(symbolset.length() == 2);
-
-	while(i < text.length())
-	{
-		if(text[i] == symbolset[0])
-			ctr++;
-		else if(text[i] == symbolset[1])
-			ctr--;
-		else
-			break;
-		i++;
-	}
-	value = ctr;
-	return i;
-}
-
 void count_mul_offset(string const &text, vector<memory_t> &mul, vector<offset_t> &offset, size_t lastoffset)
 {
 	mul.emplace_back(count_continus(text, "+-") % 256);
@@ -122,7 +102,7 @@ void count_mul_offset(string const &text, vector<memory_t> &mul, vector<offset_t
 #define SCAN(name) \
 	bool (scan_ ## name)(vector<Bitcode> &bitcode, vector<addr_t> &stack, const string &text)
 
-static const regex smul_preg("^[><]+[+-]+", regex::optimize);
+static const regex mul_match("^[><]+[+-]+", regex::optimize);
 
 SCAN(smul)
 {
@@ -133,9 +113,9 @@ SCAN(smul)
 	ssize_t pairs = 0;
 	string substr = text;
 
-	smatch m;
-
 	class Bitcode t;
+
+	smatch m;
 
 	/* First we need to validate if it goes back to where it was */
 	i = count_continus(text, "><");
@@ -163,7 +143,7 @@ SCAN(smul)
 		mode = 2;
 	}
 
-	while(regex_search(substr, m, smul_preg))
+	while(regex_search(substr, m, mul_match))
 	{
 		count_mul_offset(m.begin()->str(), mul, offset, offset.size() == 0 ? 0 : offset.back());
 		substr.erase(0, m.begin()->length());
@@ -187,13 +167,46 @@ SCAN(smul)
 	return true;
 }
 
+SCAN(f)
+{
+	offset_t offset = count_continus(text, "><");
+
+	class Bitcode t(_OP_F, offset);
+	bitcode.emplace_back(t);
+
+	return true;
+}
+
+SCAN(a)
+{
+	offset_t offset = count_continus(text, "+-");
+
+	class Bitcode t(_OP_A, offset);
+	bitcode.emplace_back(t);
+
+	return true;
+}
+
+SCAN(m)
+{
+	offset_t offset=0;
+	offset = count_continus(text, "><");
+	class Bitcode t(_OP_M, offset);
+	bitcode.emplace_back(t);
+
+	return true;
+}
+
 #define SCAN_HANDLER_DEF(hname, text) \
 	{.handler = &scan_ ## hname, .pattern = regex(text, regex::optimize), .regex_str = text}
 
 static struct code_patterns patterns[] =
 {
-		SCAN_HANDLER_DEF(smul,	"^\\[-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\]"),	/* S 0 & MUL */
-		SCAN_HANDLER_DEF(smul,	"^\\[([\\<\\>]+[\\+\\-]+)+[\\<\\>]+-\\]"),	/* S 0 & MUL */
+		SCAN_HANDLER_DEF(smul,	"^\\[-([<>]+[+-]+)+[<>]+]"),	/* S 0 & MUL */
+		SCAN_HANDLER_DEF(smul,	"^\\[([<>]+[+-]+)+[<>]+-]"),	/* S 0 & MUL */
+		SCAN_HANDLER_DEF(f,	"^\\[[><]+\\]"),	/* F + / - */
+		SCAN_HANDLER_DEF(a,	"^[+-]+"),	/* A */
+		SCAN_HANDLER_DEF(m,	"^[<>]+"),	/* M */
 };
 
 void Brainfunk::translate(string &text)
@@ -228,77 +241,36 @@ cont_scan:
 				}
 			}
 		}
-		if(code[skip_chars] == '+' || code[skip_chars] == '-')
-		{
-			ssize_t value = 0;
-			skip_chars += find_continus(code + skip_chars, "+-", value);
-			class Bitcode t(_OP_A, (memory_t)value);
-			bitcode.emplace_back(t);
-
-			continue;
-		}
-		else if(code[skip_chars] == '>' || code[skip_chars] == '<')
-		{
-			ssize_t value = 0;
-			skip_chars += find_continus(code + skip_chars, "><", value);
-			class Bitcode t(_OP_M, (offset_t)value);
-			bitcode.emplace_back(t);
-
-			continue;
-		}
-		else if(std::strncmp(code + skip_chars, "[-]", 3) == 0)
+		if(std::strncmp(code + skip_chars, "[-]", 3) == 0)
 		{
 			class Bitcode t(_OP_S, (memory_t)0);
 			bitcode.emplace_back(t);
 
 			skip_chars += 3;
-			continue;
+			goto cont_scan;
 		}
-		else if(std::strncmp(code + skip_chars, "[>", 2) == 0 || std::strncmp(code + skip_chars, "[<", 2) == 0) // F
-		{
-			ssize_t value = 0;
-			ssize_t skip = find_continus(code + skip_chars + 1, "><", value) + 1;
-			if(code[skip_chars + skip] != ']')
-			{
-				goto bailout;
-			}
-			else
-			{
-				skip_chars += skip + 1; // Skip the ']'
-			}
-			class Bitcode t(_OP_F, (offset_t)value);
-			bitcode.emplace_back(t);
-
-			continue;
-		}
-		else
-bailout:	switch(code[skip_chars++])
+		else switch(code[skip_chars++])
 		{
 		case '[':
 			bitcode.emplace_back(Bitcode());
 			stack.emplace_back(bitcode.size() - 1);
-			continue;
+			goto cont_scan;
 		case ']':
-			if(stack.empty())
-			{
-				throw BrainfunkException("Unmatched brackets");
-				exit(1);
-			}
 			last_pc = stack.back();
 			stack.pop_back();
 
 			bitcode.emplace_back(Bitcode(_OP_JN, (offset_t)(last_pc - bitcode.size())));
 			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
 
-			continue;
+			goto cont_scan;
 		case '.':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
-			continue;
+			goto cont_scan;
 		case ',':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_IN));
-			continue;
+			goto cont_scan;
 		default: // unrecognized characters
-			continue;
+			goto cont_scan;
 		}
 	}
 
