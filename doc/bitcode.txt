@@ -6,7 +6,7 @@ S		INTERMEDIATE	Set to a fixed integer
 MUL		DUAL		Multiply
 F		OFFSET		Find 0
 M		OFFSET		Move Data Pointer (Forward and Reverse)
-JE		ADDR		Jump if equal to zero
-JN		ADDR		Jump if not zero
+JE		OFFSET		Jump if equal to zero
+JN		OFFSET		Jump if not zero
 IO		INTERMEDIATE	IO
 H		None		Halt
