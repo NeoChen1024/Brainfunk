@@ -32,6 +32,7 @@ Brainfunk::Brainfunk(size_t memsize)
 	try
 	{
 		this->memory.resize(memsize);
+		std::fill(this->memory.begin(), this->memory.end(), 0);
 		this->bitcode.reserve(memsize);
 	}
 	catch(const std::exception& e)
@@ -51,22 +52,6 @@ Brainfunk::~Brainfunk()
 {
 	this->memory.clear();
 	this->bitcode.clear();
-}
-
-bool strcmp_code(string &code, string pattern, addr_t &start)
-{
-	addr_t i = 0;
-	for(; i < pattern.size(); i++)
-	{
-		if(start + i >= code.size())
-			return false;
-		if(code.at(start + i) != pattern.at(i))
-		{
-			return false;
-		}
-	}
-	start += i;
-	return true;
 }
 
 ssize_t count_continus(string const &text, string symbolset)
@@ -138,7 +123,6 @@ cont_scan:
 		case '[':
 			if(auto m = ctre::starts_with<"^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]">(code + skip_chars))
 			{
-				ssize_t i = 0;
 				int mode = 0;
 				vector<memory_t> mul;
 				vector<offset_t> offset;
@@ -146,9 +130,10 @@ cont_scan:
 				string substr = m.to_string();
 
 				/* First we need to validate if it goes back to where it was */
-				i = count_continus(m.to_string(), "><");
-				if (i != 0)
-					goto bailout;
+				if(count_continus(m.to_string(), "><") != 0)
+				{
+					goto bailout;	// Not a valid mul-offset loop
+				}
 
 				/* Basically, the text will look either like:
 				 *
