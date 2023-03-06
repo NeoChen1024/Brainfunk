@@ -101,7 +101,7 @@ void count_mul_offset(const string_view &text, vector<memory_t> &mul, vector<off
 	return;
 }
 
-void Brainfunk::translate(string &text)
+void Brainfunk::translate(const string &text)
 {
 	vector<addr_t> stack;	// Jump address stack
 	this->bitcode.clear();
@@ -246,7 +246,7 @@ bailout:
 	this->bitcode.emplace_back(Bitcode(_OP_H));
 }
 
-void Brainfunk::dump(ostream &os, enum formats format)
+void Brainfunk::dump(ostream &os, enum formats format) const
 {
 	if(format == FMT_C)
 	{
@@ -351,7 +351,7 @@ Bitcode::Bitcode(uint8_t opcode) // for instructions with no operand
 	this->opcode = opcode;
 }
 
-inline string Bitcode::to_string(enum formats format) const
+inline const string Bitcode::to_string(enum formats format) const
 {
 	stringstream operand;
 	stringstream output;
@@ -394,7 +394,7 @@ inline string Bitcode::to_string(enum formats format) const
 #define wrap(address, size) \
 	(((address) < (size)) ? (address) : (address) % (size))
 
-inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is, ostream &os)
+inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is, ostream &os) const
 {
 	memory_t io_input = 0;
 	addr_t size = memory.size();

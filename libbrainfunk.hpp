@@ -101,8 +101,8 @@ public:
 	Bitcode(uint8_t opcode, offset_t offset);
 	Bitcode(uint8_t opcode, memory_t mul, offset_t offset);
 	Bitcode(uint8_t opcode);
-	string to_string(enum formats formats = FMT_BIT) const;
-	bool execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is = std::cin, ostream &os = std::cout);
+	const string to_string(enum formats formats = FMT_BIT) const;
+	bool execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is = std::cin, ostream &os = std::cout) const;
 
 private:
 	static constexpr const char opname[_OP_INSTS][4] =
@@ -149,10 +149,10 @@ class Brainfunk
 public:
 	Brainfunk(size_t memsize = MEMSIZE);
 	~Brainfunk();
-	void translate(string &code);
+	void translate(const string &code);
 	void run(istream &is = std::cin, ostream &os = std::cout);
 	void clear();
-	void dump(ostream &os, enum formats formats = FMT_BIT);
+	void dump(ostream &os, enum formats formats = FMT_BIT) const;
 
 private:
 	addr_t ptr;
