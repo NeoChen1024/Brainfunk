@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 set -e
 SRC="$1"
-OPT="${2:-1}"
 
 msg_echo()
 {
@@ -14,4 +13,4 @@ if [ $# -lt 1 ]; then
 fi
 
 msg_echo "$SRC"
-./brainfunk -O "$OPT" -m bit -f "$SRC" | ./bit2bin
+./brainfunk -m bit -f "$SRC" | ./bit2bin
