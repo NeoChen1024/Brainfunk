@@ -33,7 +33,7 @@ static arg_t ptr=0;
 static vector<string::iterator> stack;
 static string code;
 
-static bool is_code(char c)
+_INLINE bool is_code(char c)
 {
 	switch(c)
 	{
@@ -85,9 +85,9 @@ static void read_code(FILE* fp)
 	while((c = getc(fp)) != EOF)
 	{
 		if(is_code(c))
-			code.push_back((char)c);
+			code += c;
 	}
-	code.push_back('\0');
+	code += '\0';
 
 	validate_code(code);
 }
