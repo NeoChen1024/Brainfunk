@@ -115,7 +115,7 @@ void Brainfunk::translate(string &text)
 
 	addr_t last_pc = 0;
 	ssize_t value = 0;
-cont_scan:
+
 	while(code.length() > 0)
 	{
 		switch(code.front())
@@ -177,7 +177,7 @@ cont_scan:
 				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
 				code.remove_prefix(m.size());
-				goto cont_scan;
+				continue;
 			}
 			else if(auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code)) // F instruction
 			{
@@ -185,7 +185,7 @@ cont_scan:
 				bitcode.emplace_back(Bitcode(_OP_F, offset));
 
 				code.remove_prefix(m.size());
-				goto cont_scan;
+				continue;
 			}
 			else if(auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code)) // S 0
 			{
@@ -197,7 +197,7 @@ cont_scan:
 				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
 				code.remove_prefix(m.size());
-				goto cont_scan;
+				continue;
 			}
 
 			// No match, just a normal loop
@@ -206,7 +206,7 @@ bailout:
 			stack.emplace_back(bitcode.size() - 1);
 
 			code.remove_prefix(1);
-			goto cont_scan;
+			continue;
 		case ']':
 			assert(stack.size() > 0);
 			last_pc = stack.back();
@@ -216,30 +216,30 @@ bailout:
 			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
 
 			code.remove_prefix(1);
-			goto cont_scan;
+			continue;
 		case '+':
 		case '-':
 			code.remove_prefix(find_continus(code, "+-", value));
 			bitcode.emplace_back(Bitcode(_OP_A, (memory_t)value));
 			
-			goto cont_scan;
+			continue;
 		case '>':
 		case '<':
 			code.remove_prefix(find_continus(code, "><", value));
 			bitcode.emplace_back(Bitcode(_OP_M, (offset_t)value));
 
-			goto cont_scan;
+			continue;
 		case '.':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
 			code.remove_prefix(1);
-			goto cont_scan;
+			continue;
 		case ',':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_IN));
 			code.remove_prefix(1);
-			goto cont_scan;
+			continue;
 		default: // unrecognized characters
 			code.remove_prefix(1);
-			goto cont_scan;
+			continue;
 		}
 	}
 
