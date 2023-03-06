@@ -4,15 +4,12 @@
 using std::string;
 using std::string_view;
 using std::stringstream;
-using std::cout;
-using std::cin;
 using std::flush;
 using std::cerr;
-using std::clog;
 using std::endl;
 using std::vector;
 
-BrainfunkException::BrainfunkException(string msg)
+BrainfunkException::BrainfunkException(const string &msg)
 {
 	this->msg = msg;
 }

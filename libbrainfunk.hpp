@@ -85,7 +85,7 @@ enum formats
 class BrainfunkException : public std::exception
 {
 public:
-	BrainfunkException(string msg);
+	BrainfunkException(const string &msg);
 	~BrainfunkException() throw();
 	const char* what() const throw();
 private:
