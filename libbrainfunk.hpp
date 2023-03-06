@@ -9,7 +9,7 @@
 #include <cstring>
 #include <cstdint>
 #include <cassert>
-#include <regex>
+#include <string_view>
 
 #pragma once
 
@@ -40,7 +40,6 @@
 
 using std::string;
 using std::vector;
-using std::regex;
 using std::ostream;
 using std::istream;
 
@@ -106,7 +105,7 @@ public:
 	bool execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is = std::cin, ostream &os = std::cout);
 
 private:
-	static constexpr const string opname[_OP_INSTS] =
+	static constexpr const char opname[_OP_INSTS][4] =
 	{
 		"X",
 		"A",

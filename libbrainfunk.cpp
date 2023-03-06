@@ -2,6 +2,7 @@
 #include "ctre.hpp"
 
 using std::string;
+using std::string_view;
 using std::stringstream;
 using std::cout;
 using std::cin;
@@ -54,7 +55,7 @@ Brainfunk::~Brainfunk()
 	this->bitcode.clear();
 }
 
-ssize_t count_continus(string const &text, string symbolset)
+ssize_t count_continus(const string_view &text, string symbolset)
 {
 	size_t i=0;
 	ssize_t ctr=0;
@@ -72,7 +73,7 @@ ssize_t count_continus(string const &text, string symbolset)
 	return ctr;
 }
 
-size_t find_continus(string const &text, string symbolset, ssize_t &value)
+size_t find_continus(const string_view &text, string symbolset, ssize_t &value)
 {
 	size_t i=0;
 	ssize_t ctr=0;
@@ -93,7 +94,7 @@ size_t find_continus(string const &text, string symbolset, ssize_t &value)
 	return i;
 }
 
-void count_mul_offset(string const &text, vector<memory_t> &mul, vector<offset_t> &offset, size_t lastoffset)
+void count_mul_offset(const string_view &text, vector<memory_t> &mul, vector<offset_t> &offset, size_t lastoffset)
 {
 	mul.emplace_back(count_continus(text, "+-") % 256);
 	offset.emplace_back(count_continus(text, "><") + lastoffset);
@@ -105,8 +106,7 @@ void Brainfunk::translate(string &text)
 	vector<addr_t> stack;	// Jump address stack
 	this->bitcode.clear();
 
-	const char * code = text.c_str();
-	size_t skip_chars = 0;
+	string_view code = text;
 
 	if(count_continus(code, "[]") != 0)
 	{
@@ -116,21 +116,21 @@ void Brainfunk::translate(string &text)
 	addr_t last_pc = 0;
 	ssize_t value = 0;
 cont_scan:
-	while(text.length() > skip_chars)
+	while(code.length() > 0)
 	{
-		switch(code[skip_chars])
+		switch(code.front())
 		{
 		case '[':
-			if(auto m = ctre::starts_with<"^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]">(code + skip_chars))
+			if(auto m = ctre::starts_with<"^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]">(code))
 			{
 				int mode = 0;
 				vector<memory_t> mul;
 				vector<offset_t> offset;
 				ssize_t pairs = 0;
-				string substr = m.to_string();
+				string_view substr = m.to_view();
 
 				/* First we need to validate if it goes back to where it was */
-				if(count_continus(m.to_string(), "><") != 0)
+				if(count_continus(m.to_view(), "><") != 0)
 				{
 					goto bailout;	// Not a valid mul-offset loop
 				}
@@ -146,19 +146,19 @@ cont_scan:
 
 				if (substr[1] == '-')
 				{
-					substr.erase(0, 2);
+					substr.remove_prefix(2);
 					mode = 1;
 				}
 				else
 				{
-					substr.erase(0, 1);
+					substr.remove_prefix(1);
 					mode = 2;
 				}
 
 				while (auto m = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">(substr))
 				{
-					count_mul_offset(m.to_string(), mul, offset, offset.size() == 0 ? 0 : offset.back());
-					substr.erase(0, m.size());
+					count_mul_offset(m.to_view(), mul, offset, offset.size() == 0 ? 0 : offset.back());
+					substr.remove_prefix(m.size());
 				}
 
 				/* Omit the last false pair in mode 2 */
@@ -176,27 +176,27 @@ cont_scan:
 				/* Insert a "S 0" to get correct behavior */
 				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
-				skip_chars += m.size();
+				code.remove_prefix(m.size());
 				goto cont_scan;
 			}
-			else if(auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code + skip_chars)) // F instruction
+			else if(auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code)) // F instruction
 			{
-				offset_t offset = count_continus(m.to_string(), "><");
+				offset_t offset = count_continus(m.to_view(), "><");
 				bitcode.emplace_back(Bitcode(_OP_F, offset));
 
-				skip_chars += m.size();
+				code.remove_prefix(m.size());
 				goto cont_scan;
 			}
-			else if(auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code + skip_chars)) // S 0
+			else if(auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code)) // S 0
 			{
-				auto v = count_continus(m.to_string(), "+-");
+				auto v = count_continus(m.to_view(), "+-");
 				if(v % 2 != 1) // is even
 				{
 					goto bailout;
 				}
 				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
 
-				skip_chars += m.size();
+				code.remove_prefix(m.size());
 				goto cont_scan;
 			}
 
@@ -205,7 +205,7 @@ bailout:
 			bitcode.emplace_back(Bitcode());
 			stack.emplace_back(bitcode.size() - 1);
 
-			skip_chars++;
+			code.remove_prefix(1);
 			goto cont_scan;
 		case ']':
 			assert(stack.size() > 0);
@@ -215,30 +215,30 @@ bailout:
 			bitcode.emplace_back(Bitcode(_OP_JN, (offset_t)(last_pc - bitcode.size())));
 			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
 
-			skip_chars++;
+			code.remove_prefix(1);
 			goto cont_scan;
 		case '+':
 		case '-':
-			skip_chars += find_continus(code + skip_chars, "+-", value);
+			code.remove_prefix(find_continus(code, "+-", value));
 			bitcode.emplace_back(Bitcode(_OP_A, (memory_t)value));
 			
 			goto cont_scan;
 		case '>':
 		case '<':
-			skip_chars += find_continus(code + skip_chars, "><", value);
+			code.remove_prefix(find_continus(code, "><", value));
 			bitcode.emplace_back(Bitcode(_OP_M, (offset_t)value));
 
 			goto cont_scan;
 		case '.':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
-			skip_chars++;
+			code.remove_prefix(1);
 			goto cont_scan;
 		case ',':
 			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_IN));
-			skip_chars++;
+			code.remove_prefix(1);
 			goto cont_scan;
 		default: // unrecognized characters
-			skip_chars++;
+			code.remove_prefix(1);
 			goto cont_scan;
 		}
 	}
