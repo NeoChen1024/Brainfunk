@@ -97,26 +97,33 @@ int main(int argc, char **argv)
 
 	class Brainfunk bf(MEMSIZE);
 
-	bf.translate(code);
+	try
+	{
+		bf.translate(code);
+	
+		if(mode == "bf")
+		{
+			bf.run();
+		}
+		else if(mode == "bit")
+		{
+			bf.dump(*output, FMT_BIT);
+		}
+		else if(mode == "bfc")
+		{
+			bf.dump(*output, FMT_C);
+		}
+		else
+		{
+			cerr << "Unknown mode: " << mode << endl;
+			return 1;
+		}
 
-	if(mode == "bf")
-	{
-		bf.run();
+		bf.clear();
 	}
-	else if(mode == "bit")
+	catch(const std::exception& e)
 	{
-		bf.dump(*output, FMT_BIT);
+		std::cerr << e.what() << '\n';
 	}
-	else if(mode == "bfc")
-	{
-		bf.dump(*output, FMT_C);
-	}
-	else
-	{
-		cerr << "Unknown mode: " << mode << endl;
-		return 1;
-	}
-
-	bf.clear();
 	return 0;
 }
