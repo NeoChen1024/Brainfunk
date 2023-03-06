@@ -116,4 +116,7 @@ int main(int argc, char **argv)
 		cerr << "Unknown mode: " << mode << endl;
 		return 1;
 	}
+
+	bf.clear();
+	return 0;
 }
