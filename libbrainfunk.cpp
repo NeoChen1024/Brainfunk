@@ -52,7 +52,7 @@ Brainfunk::~Brainfunk()
 	this->bitcode.clear();
 }
 
-ssize_t count_continus(const string_view &text, string symbolset)
+ssize_t count_continus(const string_view &text, const string &symbolset)
 {
 	size_t i=0;
 	ssize_t ctr=0;
@@ -70,7 +70,7 @@ ssize_t count_continus(const string_view &text, string symbolset)
 	return ctr;
 }
 
-size_t find_continus(const string_view &text, string symbolset, ssize_t &value)
+size_t find_continus(const string_view &text, const string &symbolset, ssize_t &value)
 {
 	size_t i=0;
 	ssize_t ctr=0;
