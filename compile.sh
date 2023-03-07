@@ -17,7 +17,6 @@ if [ $# -lt 2 ]; then
 fi
 
 msg_echo "$SRC"
-./brainfunk -m bfc -f "$SRC" -o "$FILE"
-"$CC" -x c $CFLAGS "$FILE" -o "$OUT"
+./brainfunk -m bfc -f "$SRC" -o - | "$CC" -x c $CFLAGS - -o "$OUT"
 
 rm "$FILE"

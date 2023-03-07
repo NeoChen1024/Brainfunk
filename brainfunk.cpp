@@ -76,7 +76,10 @@ int main(int argc, char **argv)
 			case 'o': // Output file
 				try
 				{
-					output = new fstream(optarg, fstream::out);
+					if(strcmp(optarg, "-") == 0)
+						output = &cout;
+					else
+						output = new fstream(optarg, fstream::out);
 				}
 				catch(const std::exception& e)
 				{
