@@ -167,7 +167,7 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	/* Parse Argument */
-	FILE *corefile;
+	FILE *codefile;
 	int opt;
 
 	if(!(argc >= 2))
@@ -185,12 +185,12 @@ int main(int argc, char **argv)
 						read_code(stdin);
 					else
 					{
-						if((corefile = fopen(optarg, "r")) == NULL)
+						if((codefile = fopen(optarg, "r")) == NULL)
 						{
 							perror(optarg);
 							exit(EXIT_FAILURE);
 						}
-						read_code(corefile);
+						read_code(codefile);
 					}
 					break;
 				case 's':
