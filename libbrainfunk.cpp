@@ -1,461 +1,420 @@
 #include "libbrainfunk.hpp"
 #include "ctre.hpp"
 
-using std::string;
-using std::string_view;
-using std::stringstream;
-using std::flush;
-using std::cerr;
-using std::endl;
-using std::vector;
+#include <algorithm>
+#include <cassert>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
 
-BrainfunkException::BrainfunkException(const string &msg)
-{
-	this->msg = msg;
+/* ================================================================
+ *             Brainfunk implementation
+ * ================================================================ */
+
+// ------------------------------------------------------------------
+// Construction / destruction
+// ------------------------------------------------------------------
+
+Brainfunk::Brainfunk(std::size_t memsize) {
+    ptr_ = 0;
+    try {
+        memory_.resize(memsize, memory_t{0});
+        bitcode_.reserve(memsize);
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << '\n';
+    }
 }
 
-BrainfunkException::~BrainfunkException() throw()
-{
-	this->msg.clear();
+Brainfunk::~Brainfunk() = default;   // RAII handles everything
+
+void Brainfunk::clear() {
+    std::fill(memory_.begin(), memory_.end(), memory_t{0});
+    ptr_ = 0;
+    bitcode_.clear();
 }
 
-const char* BrainfunkException::what() const throw()
-{
-	return this->msg.c_str();
+// ------------------------------------------------------------------
+//  count_mul_offset  –  accumulates one mul/offset pair
+// ------------------------------------------------------------------
+
+namespace {
+
+void count_mul_offset(std::string_view text,
+                      std::vector<memory_t>& mul,
+                      std::vector<offset_t>& offset,
+                      offset_t last_offset) {
+    auto add = count_net(text, "+-");
+    auto mov = count_net(text, "><");
+    mul.emplace_back(static_cast<memory_t>(add % 256));
+    offset.emplace_back(mov + last_offset);
 }
 
-Brainfunk::Brainfunk(size_t memsize)
-{
-	this->ptr = 0;
-	try
-	{
-		this->memory.resize(memsize);
-		std::fill(this->memory.begin(), this->memory.end(), 0);
-		this->bitcode.reserve(memsize);
-	}
-	catch(const std::exception& e)
-	{
-		std::cerr << e.what() << '\n';
-	}
+} // anonymous namespace
+
+// ------------------------------------------------------------------
+//  translate  –  Brainfuck source → bitcode
+// ------------------------------------------------------------------
+
+void Brainfunk::translate(std::string_view code) {
+    bitcode_.clear();
+
+    /* Validate bracket matching */
+    if (count_net(code, "[]") != 0) {
+        throw BrainfunkException("Unmatched brackets");
+    }
+
+    std::vector<addr_t> stack;   // jump-address stack
+    offset_t last_pc = 0;
+
+    while (!code.empty()) {
+
+        /* ---------- Optimisation patterns ---------- */
+        if (code.front() == '[') {
+
+            if (try_parse_mul_offset_loop_(code)) continue;
+            if (try_parse_scan_loop_(code))        continue;
+            if (try_parse_set_zero_loop_(code))    continue;
+
+            /* Fall through – ordinary loop */
+            bitcode_.emplace_back(Opcode::X);               // placeholder
+            stack.push_back(bitcode_.size() - 1);
+            code.remove_prefix(1);
+            continue;
+        }
+
+        if (code.front() == ']') {
+            assert(!stack.empty());
+            last_pc = static_cast<offset_t>(stack.back());
+            stack.pop_back();
+
+            auto pc = static_cast<offset_t>(bitcode_.size());
+            bitcode_.emplace_back(Opcode::JN, last_pc - pc);
+            bitcode_[static_cast<std::size_t>(last_pc)] =
+                Bitcode(Opcode::JE, pc - last_pc);
+
+            code.remove_prefix(1);
+            continue;
+        }
+
+        /* ---- simple instructions ---- */
+        if (code.front() == '+' || code.front() == '-') {
+            auto [net, len] = leading_run(code, "+-");
+            bitcode_.emplace_back(Opcode::A,
+                                  static_cast<memory_t>(net));
+            code.remove_prefix(len);
+            continue;
+        }
+
+        if (code.front() == '>' || code.front() == '<') {
+            auto [net, len] = leading_run(code, "><");
+            bitcode_.emplace_back(Opcode::M,
+                                  static_cast<offset_t>(net));
+            code.remove_prefix(len);
+            continue;
+        }
+
+        if (code.front() == '.') {
+            bitcode_.emplace_back(Opcode::IO, IO_OUT);
+            code.remove_prefix(1);
+            continue;
+        }
+
+        if (code.front() == ',') {
+            bitcode_.emplace_back(Opcode::IO, IO_IN);
+            code.remove_prefix(1);
+            continue;
+        }
+
+        /* Skip any unrecognised character */
+        code.remove_prefix(1);
+    }
+
+    bitcode_.emplace_back(Opcode::H);
 }
 
-void Brainfunk::clear()
-{
-	std::fill(this->memory.begin(), this->memory.end(), 0);
-	this->ptr = 0;
-	this->bitcode.clear();
+// ------------------------------------------------------------------
+//  try_parse_mul_offset_loop_
+//
+//  Pattern: [ -? ( [><]+ [+-]+ )+ [><]+ ]   (mode 1: starts with '-')
+//           [ ( [><]+ [+-]+ )+ [><]+ - ]     (mode 2: ends   with '-')
+//
+//  When a match is found we emit one MUL instruction per
+//  (offset, mul) pair, followed by an S(0) to clear the cell.
+// ------------------------------------------------------------------
+
+bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
+
+    // clang-format off
+    auto m = ctre::starts_with<
+        "^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]"
+    >(code);
+    // clang-format on
+
+    if (!m) return false;
+
+    std::string_view body = m.to_view();
+
+    /* Must return to the original cell */
+    if (count_net(body, "><") != 0) return false;
+
+    /* Strip brackets */
+    int mode;
+    if (body[1] == '-') {          // mode 1:  [- ...]
+        body.remove_prefix(2);
+        mode = 1;
+    } else {                       // mode 2:  [ ... -]
+        body.remove_prefix(1);
+        mode = 2;
+    }
+
+    std::vector<memory_t> mul;
+    std::vector<offset_t> offset;
+
+    while (auto p = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">(body)) {
+        count_mul_offset(p.to_view(), mul, offset,
+                         offset.empty() ? 0 : offset.back());
+        body.remove_prefix(p.size());
+    }
+
+    /* In mode 2 the last pair is a fake – we omit it */
+    auto pairs = (mode == 2) ? offset.size() - 1 : offset.size();
+
+    assert(pairs > 0);
+    for (std::size_t i = 0; i < pairs; ++i) {
+        bitcode_.emplace_back(Opcode::MUL, mul[i], offset[i]);
+    }
+
+    /* Insert S(0) to clear the cell */
+    bitcode_.emplace_back(Opcode::S, memory_t{0});
+
+    code.remove_prefix(m.size());
+    return true;
 }
 
-Brainfunk::~Brainfunk()
-{
-	this->memory.clear();
-	this->bitcode.clear();
+// ------------------------------------------------------------------
+//  try_parse_scan_loop_
+//
+//  Pattern: [ [><]+ ]   →  F(offset)
+// ------------------------------------------------------------------
+
+bool Brainfunk::try_parse_scan_loop_(std::string_view& code) {
+    auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code);
+    if (!m) return false;
+
+    auto net = count_net(m.to_view(), "><");
+    bitcode_.emplace_back(Opcode::F, static_cast<offset_t>(net));
+    code.remove_prefix(m.size());
+    return true;
 }
 
-ssize_t count_continus(const string_view &text, const string &symbolset)
-{
-	size_t i=0;
-	ssize_t ctr=0;
+// ------------------------------------------------------------------
+//  try_parse_set_zero_loop_
+//
+//  Pattern: [ [+-]+ ]   →  S(0)   (but only when the length is odd)
+// ------------------------------------------------------------------
 
-	assert(symbolset.length() == 2);
+bool Brainfunk::try_parse_set_zero_loop_(std::string_view& code) {
+    auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code);
+    if (!m) return false;
 
-	while(i < text.length())
-	{
-		if(text[i] == symbolset[0])
-			ctr++;
-		else if(text[i] == symbolset[1])
-			ctr--;
-		i++;
-	}
-	return ctr;
+    auto net = count_net(m.to_view(), "+-");
+    /* The operation inside is e.g. "+-", net == 0 but length == 2.
+     * We need the parity of the *length* of the inner run of +- to be odd.
+     * The original code checked net just to be sure, but really it's
+     * the length parity that matters.  Keep the original semantics:
+     * net must be odd for the net effect to be set-to-zero. */
+    if (net % 2 != 1 && net % 2 != -1) return false;
+
+    bitcode_.emplace_back(Opcode::S, memory_t{0});
+    code.remove_prefix(m.size());
+    return true;
 }
 
-size_t find_continus(const string_view &text, const string &symbolset, ssize_t &value)
-{
-	size_t i=0;
-	ssize_t ctr=0;
+// ------------------------------------------------------------------
+//  dump  –  prints bitcode as plain text or C source
+// ------------------------------------------------------------------
 
-	assert(symbolset.length() == 2);
+void Brainfunk::dump(std::ostream& os, Format format) const {
+    if (format == Format::C) {
+        // clang-format off
+        os << "#include <stdio.h>\n"
+              "#include <stdlib.h>\n"
+              "#include <stdint.h>\n"
+              "uint8_t *mem;\n"
+              "#define MEMSIZE\t\t(1<<21)\n"
+              "#define\tX(x)\t/* NOP */\n"
+              "#define\tA(x)\t*mem += x\n"
+              "#define\tS(x)\t*mem = x\n"
+              "#define\tMUL(offset, mul)\tmem[offset] += *mem * mul\n"
+              "#define\tF(x)\twhile(*mem != 0) mem += x\n"
+              "#define\tM(x)\tmem += x\n"
+              "#define\tJE(x)\twhile(*mem) {\n"
+              "#define\tJN(x)\t}\n"
+              "#define\tH()\texit(0);\n"
+              "static inline void IO(uint8_t arg)\n"
+              "{\n"
+              "\tint c = 0;\n"
+              "\tswitch(arg)\n"
+              "\t{\n"
+              "\t\tcase 0: /* IN */ c = getchar(); *mem = c == EOF ? 0 : c; break;\n"
+              "\t\tcase 1: /* OUT */ putchar(*mem); break;\n"
+              "\t}\n"
+              "}\n"
+              "int main(void)\n"
+              "{\n"
+              "\tsetvbuf(stdin, NULL, _IONBF, 0);\n"
+              "\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
+              "\tmem = (uint8_t *)calloc(sizeof(uint8_t), MEMSIZE) + MEMSIZE/2;\n"
+              "\tif(!mem) { puts(\"Out of memory\"); exit(1); }\n\n";
+        // clang-format on
+    }
 
-	while(i < text.length())
-	{
-		if(text[i] == symbolset[0])
-			ctr++;
-		else if(text[i] == symbolset[1])
-			ctr--;
-		else
-			break;
-		i++;
-	}
-	value = ctr;
-	return i;
+    for (addr_t pc = 0; pc < bitcode_.size(); ++pc) {
+        if (format == Format::BIT)
+            os << pc << ":\t" << bitcode_[pc].to_string(BITCODE_FORMAT_PLAIN)
+               << '\n';
+        else
+            os << bitcode_[pc].to_string(BITCODE_FORMAT_C) << '\n';
+    }
+
+    if (format == Format::C) {
+        os << "}" << std::endl;
+    }
 }
 
-void count_mul_offset(const string_view &text, vector<memory_t> &mul, vector<offset_t> &offset, size_t lastoffset)
-{
-	mul.emplace_back(count_continus(text, "+-") % 256);
-	offset.emplace_back(count_continus(text, "><") + lastoffset);
-	return;
+// ------------------------------------------------------------------
+//  run  –  execute the bitcode
+// ------------------------------------------------------------------
+
+void Brainfunk::run(std::istream& is, std::ostream& os) {
+    if (bitcode_.empty()) return;
+
+    /* Reset memory */
+    std::fill(memory_.begin(), memory_.end(), memory_t{0});
+
+    auto mem_span = std::span(memory_);
+    addr_t pc = 0;      // program counter
+
+    while (pc < bitcode_.size()) {
+        if (!bitcode_[pc].execute(mem_span, pc, ptr_, is, os)) {
+            break;   // halt
+        }
+    }
 }
 
-void Brainfunk::translate(const string &text)
-{
-	vector<addr_t> stack;	// Jump address stack
-	this->bitcode.clear();
+/* ================================================================
+ *             Bitcode implementation
+ * ================================================================ */
 
-	string_view code = text;
+// ------------------------------------------------------------------
+//  to_string
+// ------------------------------------------------------------------
 
-	if(count_continus(code, "[]") != 0)
-	{
-		throw BrainfunkException("Unmatched brackets");
-	}
+std::string Bitcode::to_string(int format) const {
+    auto idx = static_cast<std::size_t>(opcode_);
+    std::ostringstream operand;
 
-	addr_t last_pc = 0;
-	ssize_t value = 0;
+    /* Build the operand string */
+    std::visit([&](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, memory_t>) {
+            operand << static_cast<unsigned>(arg);
+        } else if constexpr (std::is_same_v<T, offset_t>) {
+            operand << arg;
+        } else if constexpr (std::is_same_v<T, DualOperand>) {
+            operand << arg.offset << ", " << static_cast<unsigned>(arg.mul);
+        } else {
+            operand << "";   // std::monostate – no operand
+        }
+    }, operand_);
 
-	while(code.length() > 0)
-	{
-		switch(code.front())
-		{
-		case '[':
-			if(auto m = ctre::starts_with<"^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]">(code))
-			{
-				int mode = 0;
-				vector<memory_t> mul;
-				vector<offset_t> offset;
-				ssize_t pairs = 0;
-				string_view substr = m.to_view();
-
-				/* First we need to validate if it goes back to where it was */
-				if(count_continus(m.to_view(), "><") != 0)
-				{
-					goto bailout;	// Not a valid mul-offset loop
-				}
-
-				/* Basically, the text will look either like:
-				 *
-				 *	1. [->>++++>>>>++++++++<<--<<<<]
-				 *
-				 *	or
-				 *
-				 *	2. [>>+++++>>>>+++<<---<<<<-]
-				 */
-
-				if (substr[1] == '-')
-				{
-					substr.remove_prefix(2);
-					mode = 1;
-				}
-				else
-				{
-					substr.remove_prefix(1);
-					mode = 2;
-				}
-
-				while (auto m = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">(substr))
-				{
-					count_mul_offset(m.to_view(), mul, offset, offset.size() == 0 ? 0 : offset.back());
-					substr.remove_prefix(m.size());
-				}
-
-				/* Omit the last false pair in mode 2 */
-				if (mode == 2)
-					pairs = offset.size() - 1;
-				else
-					pairs = offset.size();
-
-				assert(pairs > 0);
-				for (int i = 0; i < pairs; i++)
-				{
-					bitcode.emplace_back(Bitcode(_OP_MUL, mul[i], offset[i]));
-				}
-
-				/* Insert a "S 0" to get correct behavior */
-				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
-
-				code.remove_prefix(m.size());
-				continue;
-			}
-			else if(auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code)) // F instruction
-			{
-				offset_t offset = count_continus(m.to_view(), "><");
-				bitcode.emplace_back(Bitcode(_OP_F, offset));
-
-				code.remove_prefix(m.size());
-				continue;
-			}
-			else if(auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code)) // S 0
-			{
-				auto v = count_continus(m.to_view(), "+-");
-				if(v % 2 != 1) // is even
-				{
-					goto bailout;
-				}
-				bitcode.emplace_back(Bitcode(_OP_S, (memory_t)0));
-
-				code.remove_prefix(m.size());
-				continue;
-			}
-
-			// No match, just a normal loop
-bailout:
-			bitcode.emplace_back(Bitcode());
-			stack.emplace_back(bitcode.size() - 1);
-
-			code.remove_prefix(1);
-			continue;
-		case ']':
-			assert(stack.size() > 0);
-			last_pc = stack.back();
-			stack.pop_back();
-
-			bitcode.emplace_back(Bitcode(_OP_JN, (offset_t)(last_pc - bitcode.size())));
-			bitcode[last_pc] = Bitcode(_OP_JE, (offset_t)((bitcode.size() - 1) - last_pc));
-
-			code.remove_prefix(1);
-			continue;
-		case '+':
-		case '-':
-			code.remove_prefix(find_continus(code, "+-", value));
-			bitcode.emplace_back(Bitcode(_OP_A, (memory_t)value));
-			
-			continue;
-		case '>':
-		case '<':
-			code.remove_prefix(find_continus(code, "><", value));
-			bitcode.emplace_back(Bitcode(_OP_M, (offset_t)value));
-
-			continue;
-		case '.':
-			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_OUT));
-			code.remove_prefix(1);
-			continue;
-		case ',':
-			bitcode.emplace_back(Bitcode(_OP_IO, (memory_t)_IO_IN));
-			code.remove_prefix(1);
-			continue;
-		default: // unrecognized characters
-			code.remove_prefix(1);
-			continue;
-		}
-	}
-
-	this->bitcode.emplace_back(Bitcode(_OP_H));
+    /* Format output */
+    if (format == BITCODE_FORMAT_C) {
+        return opcode_name(idx) + std::string("(") + operand.str() + std::string(");");
+    }
+    return opcode_name(idx) + std::string("\t") + operand.str();
 }
 
-void Brainfunk::dump(ostream &os, enum formats format) const
-{
-	if(format == FMT_C)
-	{
-		os << "#include <stdio.h>\n"
-		"#include <stdlib.h>\n"
-		"#include <stdint.h>\n"
-		"uint8_t *mem;\n"
-		"#define MEMSIZE		(1<<21)\n"
-		"#define	X(x)	/* NOP */\n"
-		"#define	A(x)	*mem += x\n"
-		"#define	S(x)	*mem = x\n"
-		"#define	MUL(offset, mul)	mem[offset] += *mem * mul\n"
-		"#define	F(x)	while(*mem != 0) mem += x\n"
-		"#define	M(x)	mem += x\n"
-		"#define	JE(x)	while(*mem) {\n"
-		"#define	JN(x)	}\n"
-		"#define	H()	exit(0);\n"
-		"static inline void IO(uint8_t arg)\n"
-		"{\n"
-		"	int c = 0;\n"
-		"	switch(arg)\n"
-		"	{\n"
-		"		case 0: /* IN */ c = getchar(); *mem = c == EOF ? 0 : c; break;\n"
-		"		case 1: /* OUT */ putchar(*mem); break;\n"
-		"	}\n"
-		"}\n"
-		"int main(void)\n"
-		"{\n"
-		"	setvbuf(stdin, NULL, _IONBF, 0);\n"
-		"	setvbuf(stdout, NULL, _IONBF, 0);\n"
-		"	mem = (uint8_t *)calloc(sizeof(uint8_t), MEMSIZE) + MEMSIZE/2;\n"
-		"	if(!mem) { puts(\"Out of memory\"); exit(1); }\n\n";
-	}
-	for(addr_t pc = 0; pc < bitcode.size(); pc++)
-	{
-		if(format == FMT_BIT)
-			os << pc << ":\t" << this->bitcode[pc].to_string(format) << endl;
-		else if(format == FMT_C)
-			os << this->bitcode[pc].to_string(format) << endl;
-	}
-	if(format == FMT_C)
-	{
-		os << "}" << endl;
-	}
-}
+// ------------------------------------------------------------------
+//  execute  –  runs one instruction, returns false on halt
+// ------------------------------------------------------------------
 
-void Brainfunk::run(istream &is, ostream &os)
-{
-	auto codeit = this->bitcode.begin();
-	std::fill(this->memory.begin(), this->memory.end(), 0);
+bool Bitcode::execute(std::span<memory_t> memory,
+                      addr_t& pc,
+                      addr_t& ptr,
+                      std::istream& is,
+                      std::ostream& os) const {
 
-	if(this->bitcode.size() == 0)
-		return;
-	while(codeit->execute(this->memory, codeit, this->ptr, is, os));
-}
+    auto size = memory.size();
 
-// Bitcode class
+    switch (opcode_) {
 
-Bitcode::Bitcode()
-{
-	this->opcode = _OP_X; // generate invalid opcode by default
-	return;
-}
+    case Opcode::X:
+        throw BrainfunkException("Empty instruction");
 
-Bitcode::Bitcode(uint8_t opcode, memory_t operand)
-{
-	if(opcode_type[opcode] != 'I')
-	{
-		throw BrainfunkException("Invalid opcode for intermediate instruction");
-	}
-	this->opcode = opcode;
-	this->operand.byte = operand;
-}
+    case Opcode::A:
+        memory[ptr] += std::get<memory_t>(operand_);
+        break;
 
-Bitcode::Bitcode(uint8_t opcode, offset_t operand)
-{
-	if(opcode_type[opcode] != 'O')
-	{
-		throw BrainfunkException("Invalid opcode for offset instruction");
-	}
-	this->opcode = opcode;
-	this->operand.offset = operand;
-}
+    case Opcode::S:
+        memory[ptr] = std::get<memory_t>(operand_);
+        break;
 
-Bitcode::Bitcode(uint8_t opcode, memory_t mul, offset_t offset)
-{
-	if(opcode_type[opcode] != 'M')
-	{
-		throw BrainfunkException("Invalid opcode for MUL instruction");
-	}
-	this->opcode = opcode;
-	this->operand.dual.mul = mul;
-	this->operand.dual.offset = offset;
-}
+    case Opcode::MUL: {
+        auto d = std::get<DualOperand>(operand_);
+        memory[wrap_addr(ptr + static_cast<addr_t>(d.offset), size)] +=
+            static_cast<memory_t>(memory[ptr] * d.mul);
+        break;
+    }
 
-Bitcode::Bitcode(uint8_t opcode) // for instructions with no operand
-{
-	if(opcode_type[opcode] != 'N')
-	{
-		throw BrainfunkException("Invalid opcode for instruction with no operand");
-	}
-	this->opcode = opcode;
-}
+    case Opcode::F: {
+        auto off = std::get<offset_t>(operand_);
+        while (memory[ptr] != 0) {
+            ptr = wrap_addr(ptr + static_cast<addr_t>(off), size);
+        }
+        break;
+    }
 
-inline const string Bitcode::to_string(enum formats format) const
-{
-	stringstream operand;
-	stringstream output;
-	string opcode_name = opname[this->opcode];
+    case Opcode::M:
+        ptr = wrap_addr(ptr + static_cast<addr_t>(std::get<offset_t>(operand_)),
+                        size);
+        break;
 
-	switch(opcode_type[this->opcode])
-	{
-		case 'N':
-			// No operand
-			operand << "";
-			break;
-		case 'O':
-			// Offset
-			operand << this->operand.offset;
-			break;
-		case 'M':
-			// Dual Operand
-			operand << this->operand.dual.offset << ", " << (unsigned short int)this->operand.dual.mul;
-			break;
-		case 'I':
-			// Intermediate byte
-			operand << (unsigned short int)this->operand.byte;
-			break;
-		default:
-			throw BrainfunkException("Invalid opcode operand type");
-			break;
-	}
-	switch(format)
-	{
-		case FMT_BIT:
-			output << opcode_name << "\t" << operand.str();
-			break;
-		case FMT_C:
-			output << opcode_name << "(" << operand.str() << ");";
-			break;
-	}
-	return output.str();
-}
+    case Opcode::JE:
+        if (memory[ptr] == 0) {
+            pc += static_cast<addr_t>(std::get<offset_t>(operand_));
+        }
+        break;
 
-#define wrap(address, size) \
-	(((address) < (size)) ? (address) : (address) % (size))
+    case Opcode::JN:
+        if (memory[ptr] != 0) {
+            pc += static_cast<addr_t>(std::get<offset_t>(operand_));
+        }
+        break;
 
-inline bool Bitcode::execute(vector<memory_t> &memory, vector<Bitcode>::iterator &codeit, addr_t &ptr, istream &is, ostream &os) const
-{
-	memory_t io_input = 0;
-	addr_t size = memory.size();
-	switch(opcode)
-	{
-		case _OP_X:
-			// No operand
-			throw BrainfunkException("Empty instruction");
-			break;
-		case _OP_A:
-			// Offset
-			memory[ptr] += operand.byte;
-			break;
-		case _OP_S:
-			// Intermediate byte
-			memory[ptr] = operand.byte;
-			break;
-		case _OP_MUL:
-			// Dual Operand
-			memory[wrap(ptr + operand.dual.offset, size)] += memory[ptr] * operand.dual.mul;
-			break;
-		case _OP_F:
-			// Offset
-			for(; memory[ptr] != 0; ptr = wrap(ptr + operand.offset, size));
-			break;
-		case _OP_M:
-			// Offset
-			ptr = wrap(ptr + operand.offset, size);
-			break;
-		case _OP_JE:
-			// Jump if equal to 0
-			if(memory[ptr] == 0)
-				codeit += operand.offset;
-			break;
-		case _OP_JN:
-			// Jump if not equal to 0
-			if(memory[ptr] != 0)
-				codeit += operand.offset;
-			break;
-		case _OP_IO:
-			// 0: Input, 1: Output
-			switch(operand.byte)
-			{
-				case 0:
-					// Input
-					is >> std::noskipws >> io_input;
-					if(is.eof())
-						io_input = 0;
-					memory[ptr] = io_input;
-					break;
-				case 1:
-					// Output
-					os << (char)memory[ptr] << flush;
-					break;
-			}
-			break;
-		case _OP_H:
-			// No operand, halt
-			return false;
-			break;
-		default:
-			throw BrainfunkException("Invalid opcode");
-			break;
-	}
-	codeit++;
-	return true;
+    case Opcode::IO: {
+        auto which = std::get<memory_t>(operand_);
+        if (which == IO_IN) {
+            memory_t io_input = 0;
+            is >> std::noskipws >> io_input;
+            if (is.eof()) io_input = 0;
+            memory[ptr] = io_input;
+        } else {
+            os << static_cast<char>(memory[ptr]) << std::flush;
+        }
+        break;
+    }
+
+    case Opcode::H:
+        return false;   // halt
+
+    default:
+        throw BrainfunkException("Invalid opcode");
+    }
+
+    ++pc;
+    return true;
 }

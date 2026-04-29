@@ -1,132 +1,128 @@
 #include "libbrainfunk.hpp"
 #include <getopt.h>
 
-using std::fstream;
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+
+using std::cerr;
 using std::cin;
 using std::cout;
-using std::string;
 using std::endl;
-using std::cerr;
+using std::string;
 
-/* Read code and filter out unnecessary characters */
-void readcode(string &code, string filename)
-{
-	fstream input;
-	input.open(filename);
-	if (!input.is_open())
-	{
-		perror(filename.c_str());
-		exit(1);
-	}
+// ------------------------------------------------------------------
+// readcode  –  read & filter Brainfuck source from a file
+// ------------------------------------------------------------------
 
-	char c;
-	while(input.get(c))
-	{
-		switch(c)
-		{
-			case '+':
-			case '-':
-			case '>':
-			case '<':
-			case '[':
-			case ']':
-			case '.':
-			case ',':
-				code += c;
-				break;
-			default:
-				break;
-		}
-	}
-	input.close();
+static void readcode(string& code, const std::string& filename) {
+    std::ifstream input(filename);
+    if (!input.is_open()) {
+        std::perror(filename.c_str());
+        std::exit(1);
+    }
+
+    char c;
+    while (input.get(c)) {
+        switch (c) {
+        case '+': case '-': case '>': case '<':
+        case '[': case ']': case '.': case ',':
+            code += c;
+            break;
+        default:
+            break;
+        }
+    }
+    // input closed automatically by ~ifstream()
 }
 
-void helpmsg(int argc, char **argv)
-{
-	cerr << "Usage: " << argv[0] << " [-h] [-m mode] [-s code string] [-f file] [-o out]" << endl;
+// ------------------------------------------------------------------
+// helpmsg
+// ------------------------------------------------------------------
+
+[[noreturn]] static void helpmsg(int argc, char** argv) {
+    cerr << "Usage: " << argv[0]
+         << " [-h] [-m mode] [-s code string] [-f file] [-o out]\n";
+    std::exit(0);
 }
 
-int main(int argc, char **argv)
-{
-	string code;
-	string mode = "bf";
-	ostream *output = &cout;
+// ==================================================================
+//  main
+// ==================================================================
 
-	bool valid = false;
-	int opt;
-	while((opt = getopt(argc, argv, "hm:s:f:o:")) != -1)
-	{
-		switch(opt)
-		{
-			case 'f':
-				readcode(code, optarg);
-				valid = true;
-				break;
-			case 's':
-				code = optarg;
-				valid = true;
-				break;
-			case 'h':
-				helpmsg(argc, argv);
-				return 0;
-				break;
-			case 'm':
-				mode = optarg;
-				break;
-			case 'o': // Output file
-				try
-				{
-					if(strcmp(optarg, "-") == 0)
-						output = &cout;
-					else
-						output = new fstream(optarg, fstream::out);
-				}
-				catch(const std::exception& e)
-				{
-					std::cerr << e.what() << '\n';
-				}
-				break;
-			default:
-				break;
-		}
-	}
+int main(int argc, char** argv) {
+    string code;
+    string mode = "bf";
 
-	if(!valid)
-	{
-		cerr << "No input specified." << endl;
-		helpmsg(argc, argv);
-		return 1;
-	}
+    /* Manage output stream – use RAII to avoid leaks */
+    std::unique_ptr<std::ostream> output_owner;
+    std::ostream* output = &cout;
 
-	class Brainfunk bf(MEMSIZE);
+    bool valid = false;
 
-	try
-	{
-		bf.translate(code);
-	
-		if(mode == "bf")
-		{
-			bf.run();
-		}
-		else if(mode == "bit")
-		{
-			bf.dump(*output, FMT_BIT);
-		}
-		else if(mode == "bfc")
-		{
-			bf.dump(*output, FMT_C);
-		}
-		else
-		{
-			cerr << "Unknown mode: " << mode << endl;
-			return 1;
-		}
+    int opt;
+    while ((opt = ::getopt(argc, argv, "hm:s:f:o:")) != -1) {
+        switch (opt) {
+        case 'f':
+            readcode(code, optarg);
+            valid = true;
+            break;
+        case 's':
+            code = optarg;
+            valid = true;
+            break;
+        case 'h':
+            helpmsg(argc, argv);
+            break;
+        case 'm':
+            mode = optarg;
+            break;
+        case 'o':
+            if (std::strcmp(optarg, "-") == 0) {
+                output = &cout;
+            } else {
+                auto fs = std::make_unique<std::ofstream>(optarg);
+                if (!fs->is_open()) {
+                    cerr << "Failed to open output file: " << optarg << '\n';
+                    return 1;
+                }
+                output_owner = std::move(fs);
+                output = output_owner.get();
+            }
+            break;
+        default:
+            break;
+        }
+    }
 
-		bf.clear();
-	}
-	catch(const std::exception& e)
-	{
-		std::cerr << e.what() << '\n';
-	}
-	return 0;
+    if (!valid) {
+        cerr << "No input specified." << endl;
+        helpmsg(argc, argv);
+    }
+
+    try {
+        Brainfunk bf(MEMSIZE);
+        bf.translate(code);
+
+        if (mode == "bf") {
+            bf.run();
+        } else if (mode == "bit") {
+            bf.dump(*output, Format::BIT);
+        } else if (mode == "bfc") {
+            bf.dump(*output, Format::C);
+        } else {
+            cerr << "Unknown mode: " << mode << '\n';
+            return 1;
+        }
+
+        bf.clear();
+    } catch (const std::exception& e) {
+        cerr << e.what() << '\n';
+    }
+
+    return 0;
 }
