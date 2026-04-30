@@ -177,14 +177,27 @@ public:
     /* Execute the translated program */
     void run(std::istream& is = std::cin, std::ostream& os = std::cout);
 
-    /* Reset state */
+    /* Execute exactly one bitcode instruction. Returns false on halt. */
+    [[nodiscard]] bool step(std::istream& is = std::cin, std::ostream& os = std::cout);
+
+    /* Reset execution state (memory + pc + ptr) without clearing bitcode */
+    void reset_state();
+
+    /* Reset everything */
     void clear();
+
+    /* ---- const accessors for TUI ---- */
+    [[nodiscard]] addr_t                       pc()      const noexcept { return pc_; }
+    [[nodiscard]] addr_t                       ptr()     const noexcept { return ptr_; }
+    [[nodiscard]] const std::vector<memory_t>& memory()  const noexcept { return memory_; }
+    [[nodiscard]] const std::vector<Bitcode>&  bitcode() const noexcept { return bitcode_; }
 
     /* Dump bitcode to stream */
     void dump(std::ostream& os, Format format = Format::BIT) const;
 
 private:
     addr_t                         ptr_ = 0;
+    addr_t                         pc_  = 0;
     std::vector<memory_t>          memory_;
     std::vector<Bitcode>           bitcode_;
 

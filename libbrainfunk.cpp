@@ -31,9 +31,14 @@ Brainfunk::Brainfunk(std::size_t memsize) {
 Brainfunk::~Brainfunk() = default;   // RAII handles everything
 
 void Brainfunk::clear() {
+    reset_state();
+    bitcode_.clear();
+}
+
+void Brainfunk::reset_state() {
     std::fill(memory_.begin(), memory_.end(), memory_t{0});
     ptr_ = 0;
-    bitcode_.clear();
+    pc_  = 0;
 }
 
 // ------------------------------------------------------------------
@@ -290,19 +295,21 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
 // ------------------------------------------------------------------
 
 void Brainfunk::run(std::istream& is, std::ostream& os) {
-    if (bitcode_.empty()) return;
+    reset_state();
+    while (step(is, os)) {
+        /* nothing — step() handles everything */
+    }
+}
 
-    /* Reset memory */
-    std::fill(memory_.begin(), memory_.end(), memory_t{0});
+// ------------------------------------------------------------------
+//  step  –  execute exactly one bitcode instruction
+// ------------------------------------------------------------------
+
+bool Brainfunk::step(std::istream& is, std::ostream& os) {
+    if (bitcode_.empty() || pc_ >= bitcode_.size()) return false;
 
     auto mem_span = std::span(memory_);
-    addr_t pc = 0;      // program counter
-
-    while (pc < bitcode_.size()) {
-        if (!bitcode_[pc].execute(mem_span, pc, ptr_, is, os)) {
-            break;   // halt
-        }
-    }
+    return bitcode_[pc_].execute(mem_span, pc_, ptr_, is, os);
 }
 
 /* ================================================================
