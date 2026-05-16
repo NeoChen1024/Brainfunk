@@ -6,6 +6,7 @@ brainfunk
 bf
 bit2bin
 bfstrip
+visualbrainfunk
 compile_commands.json
 .vscode
 *.bin.txt
