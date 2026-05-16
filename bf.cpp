@@ -70,9 +70,12 @@ static void validate_code(string &code)
 		if(c == '[')
 			++level;
 		else if(c == ']')
+		{
 			--level;
+			panic("Unmatched Loop!\n", level < 0);
+		}
 	}
-	
+
 	panic("Unmatched Loop!\n", level != 0);
 }
 
@@ -138,8 +141,11 @@ void interprete(string &code)
 				stack.pop_back(); /* Drop */
 			break;
 		case ',':
-			memory[ptr] = (uint8_t)getc(stdin);
-			break;
+			{
+				int input = getc(stdin);
+				memory[ptr] = input == EOF ? 0 : static_cast<uint8_t>(input);
+				break;
+			}
 		case '.':
 			putc(memory.at(ptr), stdout);
 			break;
@@ -159,7 +165,7 @@ int main(int argc, char **argv)
 {
 	/* Init */
 	memory.resize(MEMSIZE);
-	stack.resize(STACKSIZE);
+	stack.reserve(STACKSIZE);
 	code.resize(CODESIZE);
 
 	/* Disable Buffering */

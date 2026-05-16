@@ -255,3 +255,17 @@ struct LeadingRun {
                                           addr_t size) noexcept {
     return (address < size) ? address : address % size;
 }
+
+[[nodiscard]] constexpr addr_t wrap_offset(addr_t address,
+                                           offset_t offset,
+                                           addr_t size) noexcept {
+    if (size == 0) return 0;
+
+    const auto base = address % size;
+    if (offset >= 0) {
+        return (base + (static_cast<addr_t>(offset) % size)) % size;
+    }
+
+    const auto backward = static_cast<addr_t>(-(offset + 1)) + 1;
+    return (base + size - (backward % size)) % size;
+}

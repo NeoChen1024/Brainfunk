@@ -122,6 +122,7 @@ int main(int argc, char** argv) {
         bf.clear();
     } catch (const std::exception& e) {
         cerr << e.what() << '\n';
+        return 1;
     }
 
     return 0;

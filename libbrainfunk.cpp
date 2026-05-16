@@ -19,13 +19,12 @@
 // ------------------------------------------------------------------
 
 Brainfunk::Brainfunk(std::size_t memsize) {
-    ptr_ = 0;
-    try {
-        memory_.resize(memsize, memory_t{0});
-        bitcode_.reserve(memsize);
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << '\n';
+    if (memsize == 0) {
+        throw BrainfunkException("Memory size must be greater than zero");
     }
+
+    ptr_ = 0;
+    memory_.resize(memsize, memory_t{0});
 }
 
 Brainfunk::~Brainfunk() = default;   // RAII handles everything
@@ -47,6 +46,25 @@ void Brainfunk::reset_state() {
 
 namespace {
 
+void validate_brackets(std::string_view code) {
+    std::vector<std::size_t> stack;
+
+    for (std::size_t i = 0; i < code.size(); ++i) {
+        if (code[i] == '[') {
+            stack.push_back(i);
+        } else if (code[i] == ']') {
+            if (stack.empty()) {
+                throw BrainfunkException("Unmatched closing bracket");
+            }
+            stack.pop_back();
+        }
+    }
+
+    if (!stack.empty()) {
+        throw BrainfunkException("Unmatched opening bracket");
+    }
+}
+
 void count_mul_offset(std::string_view text,
                       std::vector<memory_t>& mul,
                       std::vector<offset_t>& offset,
@@ -65,11 +83,10 @@ void count_mul_offset(std::string_view text,
 
 void Brainfunk::translate(std::string_view code) {
     bitcode_.clear();
+    bitcode_.reserve(code.size() + 1);
 
     /* Validate bracket matching */
-    if (count_net(code, "[]") != 0) {
-        throw BrainfunkException("Unmatched brackets");
-    }
+    validate_brackets(code);
 
     std::vector<addr_t> stack;   // jump-address stack
     offset_t last_pc = 0;
@@ -91,7 +108,9 @@ void Brainfunk::translate(std::string_view code) {
         }
 
         if (code.front() == ']') {
-            assert(!stack.empty());
+            if (stack.empty()) {
+                throw BrainfunkException("Unmatched closing bracket");
+            }
             last_pc = static_cast<offset_t>(stack.back());
             stack.pop_back();
 
@@ -138,6 +157,10 @@ void Brainfunk::translate(std::string_view code) {
     }
 
     bitcode_.emplace_back(Opcode::H);
+
+    if (!stack.empty()) {
+        throw BrainfunkException("Unmatched opening bracket");
+    }
 }
 
 // ------------------------------------------------------------------
@@ -248,6 +271,7 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
         os << "#include <stdio.h>\n"
               "#include <stdlib.h>\n"
               "#include <stdint.h>\n"
+              "uint8_t *base;\n"
               "uint8_t *mem;\n"
               "#define MEMSIZE\t\t(1<<21)\n"
               "#define\tX(x)\t/* NOP */\n"
@@ -272,8 +296,9 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
               "{\n"
               "\tsetvbuf(stdin, NULL, _IONBF, 0);\n"
               "\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
-              "\tmem = (uint8_t *)calloc(sizeof(uint8_t), MEMSIZE) + MEMSIZE/2;\n"
-              "\tif(!mem) { puts(\"Out of memory\"); exit(1); }\n\n";
+              "\tbase = (uint8_t *)calloc(MEMSIZE, sizeof(uint8_t));\n"
+              "\tif(!base) { puts(\"Out of memory\"); exit(1); }\n"
+              "\tmem = base + MEMSIZE/2;\n\n";
         // clang-format on
     }
 
@@ -372,7 +397,7 @@ bool Bitcode::execute(std::span<memory_t> memory,
 
     case Opcode::MUL: {
         auto d = std::get<DualOperand>(operand_);
-        memory[wrap_addr(ptr + static_cast<addr_t>(d.offset), size)] +=
+        memory[wrap_offset(ptr, d.offset, size)] +=
             static_cast<memory_t>(memory[ptr] * d.mul);
         break;
     }
@@ -380,14 +405,13 @@ bool Bitcode::execute(std::span<memory_t> memory,
     case Opcode::F: {
         auto off = std::get<offset_t>(operand_);
         while (memory[ptr] != 0) {
-            ptr = wrap_addr(ptr + static_cast<addr_t>(off), size);
+            ptr = wrap_offset(ptr, off, size);
         }
         break;
     }
 
     case Opcode::M:
-        ptr = wrap_addr(ptr + static_cast<addr_t>(std::get<offset_t>(operand_)),
-                        size);
+        ptr = wrap_offset(ptr, std::get<offset_t>(operand_), size);
         break;
 
     case Opcode::JE:
