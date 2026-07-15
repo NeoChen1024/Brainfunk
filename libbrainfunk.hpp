@@ -2,17 +2,12 @@
 
 #pragma once
 
-#include <cassert>
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
 #include <iostream>
-#include <optional>
-#include <sstream>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -37,8 +32,7 @@ inline constexpr memory_t IO_IN  = 0;
 inline constexpr memory_t IO_OUT = 1;
 
 /* Bitcode format constants (exported for external use) */
-inline constexpr int BITCODE_FORMAT_C     = 0;
-inline constexpr int BITCODE_FORMAT_PLAIN = 1;
+enum class BitcodeFormat : std::uint8_t { C, Plain };
 
 /* ================================================================
  * Opcode – strongly typed enum (was: `enum opcodes`)
@@ -55,21 +49,26 @@ enum class Opcode : std::uint8_t {
     JN,      // (offset)   jump-if-not-zero
     IO,      // (imm)      input / output
     H,       // (none)     halt
-    _COUNT   // sentinel – total number of opcodes
+    Count    // sentinel – total number of opcodes
 };
 
 /* Friendly names – must match Opcode ordering */
-inline constexpr const char* opcode_name(std::size_t i) noexcept {
-    constexpr const char* names[] = {
-        "X", "A", "S", "MUL", "F", "M", "JE", "JN", "IO", "H"
+inline constexpr std::string_view opcode_name(Opcode opcode) noexcept {
+    constexpr std::array names = {
+        std::string_view{"X"}, std::string_view{"A"}, std::string_view{"S"},
+        std::string_view{"MUL"}, std::string_view{"F"}, std::string_view{"M"},
+        std::string_view{"JE"}, std::string_view{"JN"}, std::string_view{"IO"},
+        std::string_view{"H"},
     };
-    return (i < std::size(names)) ? names[i] : "???";
+    static_assert(names.size() == static_cast<std::size_t>(Opcode::Count));
+    const auto index = static_cast<std::size_t>(opcode);
+    return (index < names.size()) ? names[index] : std::string_view{"???"};
 }
 
 /* Operand type classifier:
  *    N – none, O – offset, M – dual (mul + offset), I – immediate */
-inline constexpr char opcode_operand_type(std::size_t i) noexcept {
-    constexpr char types[] = {
+inline constexpr char opcode_operand_type(Opcode opcode) noexcept {
+    constexpr std::array types = {
         'N', /* X */
         'I', /* A */
         'I', /* S */
@@ -81,7 +80,9 @@ inline constexpr char opcode_operand_type(std::size_t i) noexcept {
         'I', /* IO */
         'N'  /* H */
     };
-    return (i < std::size(types)) ? types[i] : '?';
+    static_assert(types.size() == static_cast<std::size_t>(Opcode::Count));
+    const auto index = static_cast<std::size_t>(opcode);
+    return (index < types.size()) ? types[index] : '?';
 }
 
 /* ================================================================
@@ -99,17 +100,9 @@ using Operand = std::variant<std::monostate, memory_t, offset_t, DualOperand>;
  * Exception
  * ================================================================ */
 
-class BrainfunkException : public std::exception {
+class BrainfunkException : public std::runtime_error {
 public:
-    explicit BrainfunkException(const std::string& msg)
-        : msg_(msg) {}
-
-    [[nodiscard]] const char* what() const noexcept override {
-        return msg_.c_str();
-    }
-
-private:
-    std::string msg_;
+    using std::runtime_error::runtime_error;
 };
 
 /* ================================================================
@@ -132,13 +125,14 @@ public:
         : opcode_(op), operand_(off) {}
 
     Bitcode(Opcode op, memory_t mul, offset_t off)  // dual operand
-        : opcode_(op), operand_(DualOperand{mul, off}) {}
+        : opcode_(op), operand_(DualOperand{.mul = mul, .offset = off}) {}
 
     /* ---- accessors ---- */
     [[nodiscard]] Opcode opcode() const noexcept { return opcode_; }
 
     /* ---- formatting ---- */
-    [[nodiscard]] std::string to_string(int format = BITCODE_FORMAT_PLAIN) const;
+    [[nodiscard]] std::string to_string(
+        BitcodeFormat format = BitcodeFormat::Plain) const;
 
     /* ---- execution ---- */
     /* Returns false when halt instruction is reached. */
@@ -151,6 +145,8 @@ public:
     ) const;
 
 private:
+    friend class Brainfunk;
+
     Opcode   opcode_;
     Operand  operand_;
 };
@@ -159,12 +155,11 @@ private:
  * Brainfunk – the main interpreter / compiler
  * ================================================================ */
 
-enum class Format { BIT, C };
+enum class Format { BIT, C, LLVM_IR };
 
 class Brainfunk {
 public:
     explicit Brainfunk(std::size_t memsize = MEMSIZE);
-    ~Brainfunk();
 
     Brainfunk(const Brainfunk&)            = delete;
     Brainfunk& operator=(const Brainfunk&) = delete;
@@ -189,8 +184,8 @@ public:
     /* ---- const accessors for TUI ---- */
     [[nodiscard]] addr_t                       pc()      const noexcept { return pc_; }
     [[nodiscard]] addr_t                       ptr()     const noexcept { return ptr_; }
-    [[nodiscard]] const std::vector<memory_t>& memory()  const noexcept { return memory_; }
-    [[nodiscard]] const std::vector<Bitcode>&  bitcode() const noexcept { return bitcode_; }
+    [[nodiscard]] std::span<const memory_t> memory() const noexcept { return memory_; }
+    [[nodiscard]] std::span<const Bitcode> bitcode() const noexcept { return bitcode_; }
 
     /* Dump bitcode to stream */
     void dump(std::ostream& os, Format format = Format::BIT) const;
@@ -200,6 +195,8 @@ private:
     addr_t                         pc_  = 0;
     std::vector<memory_t>          memory_;
     std::vector<Bitcode>           bitcode_;
+
+    void dump_llvm_ir(std::ostream& os) const;
 
     /* ---- internal helpers for translate() ---- */
 
@@ -231,6 +228,11 @@ private:
     return ctr;
 }
 
+[[nodiscard]] constexpr bool is_brainfuck_instruction(char ch) noexcept {
+    constexpr std::string_view instructions = "+-><[].,";
+    return instructions.find(ch) != std::string_view::npos;
+}
+
 /* Scan the longest leading run of `sym[0]`/`sym[1]` characters.
  * Returns the net count and the number of consumed characters. */
 struct LeadingRun {
@@ -247,7 +249,7 @@ struct LeadingRun {
         else if (text[i] == sym[1]) { --ctr; }
         else                        { break; }
     }
-    return {ctr, i};
+    return {.net = ctr, .length = i};
 }
 
 /* Modular-wrapping address arithmetic. */

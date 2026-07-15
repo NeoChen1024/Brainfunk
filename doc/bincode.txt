@@ -1,14 +1,14 @@
 MNEMONIC	Operand		Description
 ---------------|---------------|--------------------------------------------------------------------------------
-X	(0)	None		Invaild Instruction, to indicate it's the end of code
-A	(1)	INTERMEDIATE	Add operation
-S	(2)	INTERMEDIATE	Set to a fixed integer
+X	(0)	None		Invalid instruction / placeholder
+A	(1)	IMMEDIATE	Add operation
+S	(2)	IMMEDIATE	Set to a fixed integer
 MUL	(3)	DUAL		Multiply
 F	(4)	OFFSET		Find 0
 M	(5)	OFFSET		Move Data Pointer (Forward and Reverse)
 JE	(6)	OFFSET		Jump if equal to zero (Relative Address)
 JN	(7)	OFFSET		Jump if not zero (Relative Address)
-IO	(8)	INTERMEDIATE	IO
+IO	(8)	IMMEDIATE	IO
 H	(9)	None		Halt
 
 24bit Instruction Format:
@@ -28,7 +28,7 @@ DUAL:
 |     O   P	|+/-|		 ADDRESS OFFSET			|	  D   A   T   A		|
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
-INTERMEDIATE:
+IMMEDIATE:
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 |     O   P	|						|	  D   A   T   A		|
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+

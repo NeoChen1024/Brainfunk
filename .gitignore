@@ -1,4 +1,5 @@
 *.o
+*.d
 *.a
 *.bit
 test
@@ -8,5 +9,6 @@ bit2bin
 bfstrip
 visualbrainfunk
 compile_commands.json
+/tests/test-libbrainfunk
 .vscode
 *.bin.txt

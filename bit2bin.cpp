@@ -4,27 +4,24 @@
 #include <cstdio>
 #include <iostream>
 #include <limits>
-#include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 
 using std::fprintf;
 using std::string;
 
-const std::map<string, memory_t> opcodes = {
-	{"X", 0x00},
-	{"A", 0x01},
-	{"S", 0x02},
-	{"MUL", 0x03},
-	{"F", 0x04},
-	{"M", 0x05},
-	{"JE", 0x06},
-	{"JN", 0x07},
-	{"IO", 0x08},
-	{"H", 0x09}
-};
-
 namespace {
+
+std::optional<Opcode> parse_opcode(std::string_view name)
+{
+    for (std::size_t i = 0; i < static_cast<std::size_t>(Opcode::Count); ++i) {
+        const auto opcode = static_cast<Opcode>(i);
+        if (opcode_name(opcode) == name)
+            return opcode;
+    }
+    return std::nullopt;
+}
 
 struct ParsedLine {
 	addr_t address = 0;
@@ -97,16 +94,20 @@ bool parse_offset(std::string_view text, offset_t &value)
 	return true;
 }
 
-bool fits_signed_bits(offset_t value, int bits)
+template <unsigned Bits>
+    requires (Bits > 0 && Bits < 32)
+bool fits_signed_bits(offset_t value)
 {
-	const offset_t min = -(offset_t{1} << (bits - 1));
-	const offset_t max = (offset_t{1} << (bits - 1)) - 1;
-	return value >= min && value <= max;
+    const offset_t min = -(offset_t{1} << (Bits - 1));
+    const offset_t max = (offset_t{1} << (Bits - 1)) - 1;
+    return value >= min && value <= max;
 }
 
-std::uint32_t encode_signed(offset_t value, int bits)
+template <unsigned Bits>
+    requires (Bits > 0 && Bits < 32)
+std::uint32_t encode_signed(offset_t value)
 {
-	const std::uint32_t mask = (std::uint32_t{1} << bits) - 1;
+    const std::uint32_t mask = (std::uint32_t{1} << Bits) - 1;
 	return static_cast<std::uint32_t>(value) & mask;
 }
 
@@ -146,13 +147,13 @@ bool emit(addr_t address, const string &op, std::string_view arg, FILE *fd)
 {
 	std::uint32_t inst = 0;
 
-	auto opcode = opcodes.find(op);
-	if(opcode == opcodes.end()) {
+    const auto opcode = parse_opcode(op);
+    if(!opcode) {
 		fprintf(stderr, "Error: unknown opcode %s at %zu\n", op.c_str(), address);
 		return false;
 	}
 
-	inst |= static_cast<std::uint32_t>(opcode->second) << 20;
+    inst |= static_cast<std::uint32_t>(*opcode) << 20;
 
 	// None
 	if(op == "X" || op == "H")
@@ -191,10 +192,12 @@ bool emit(addr_t address, const string &op, std::string_view arg, FILE *fd)
 		}
 
 		inst |= mul;
-		if(!fits_signed_bits(offset, 12)) {
-			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
+        if(!fits_signed_bits<12>(offset)) {
+			fprintf(stderr, "Error: offset %zd at %zu does not fit in 12 bits\n",
+			        offset, address);
+			return false;
 		}
-		inst |= encode_signed(offset, 12) << 8;
+        inst |= encode_signed<12>(offset) << 8;
 	}
 	// Offset
 	else if(op == "F" || op == "M" || op == "JE" || op == "JN")
@@ -205,10 +208,12 @@ bool emit(addr_t address, const string &op, std::string_view arg, FILE *fd)
 			return false;
 		}
 
-		if(!fits_signed_bits(offset, 20)) {
-			fprintf(stderr, "Warning: offset %zd at %zu is too large\n", offset, address);
+        if(!fits_signed_bits<20>(offset)) {
+			fprintf(stderr, "Error: offset %zd at %zu does not fit in 20 bits\n",
+			        offset, address);
+			return false;
 		}
-		inst |= encode_signed(offset, 20);
+        inst |= encode_signed<20>(offset);
 	}
 
 	fprintf(fd, "%06x\n", inst);
@@ -217,7 +222,7 @@ bool emit(addr_t address, const string &op, std::string_view arg, FILE *fd)
 
 } // namespace
 
-int main(int argc, char **argv)
+int main()
 {
 	size_t inst_ctr = 0;
 	int exit_status = 0;

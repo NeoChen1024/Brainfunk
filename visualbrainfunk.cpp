@@ -9,19 +9,19 @@
 #include <ncurses.h>
 
 #include <algorithm>
-#include <cerrno>
+#include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdlib>
-#include <cstring>
+#include <deque>
 #include <fstream>
 #include <getopt.h>
 #include <iostream>
 #include <locale>
-#include <sstream>
+#include <limits>
 #include <streambuf>
 #include <string>
-#include <thread>
-#include <unistd.h>
+#include <string_view>
 #include <vector>
 
 /* ================================================================
@@ -42,7 +42,7 @@
  * ================================================================ */
 
 /* ---------- colour pair IDs ---------- */
-enum {
+enum ColourPair : std::uint8_t {
     CP_MSG   = 1,
     CP_MEM   = 2,
     CP_CODE  = 3,
@@ -53,7 +53,7 @@ enum {
 };
 
 /* ---------- UI strings ---------- */
-static constexpr const char* HELP_TEXT[] = {
+static constexpr std::array HELP_TEXT = {
     " SPACE / p  Pause",
     " s          Step",
     " q / ESC    Quit",
@@ -61,7 +61,6 @@ static constexpr const char* HELP_TEXT[] = {
     " DOWN / -   Slower",
     "",
     " Delay:",
-    nullptr,
 };
 
 /* ================================================================
@@ -71,69 +70,98 @@ static constexpr const char* HELP_TEXT[] = {
 
 class NcursesStreambuf : public std::streambuf {
 public:
-    explicit NcursesStreambuf(WINDOW* io_win, WINDOW* msg_win = nullptr)
-        : io_win_(io_win), msg_win_(msg_win) {}
+    NcursesStreambuf(WINDOW*& io_win, WINDOW*& msg_win,
+                     std::deque<unsigned char>& pending_input, bool& resize_requested)
+        : io_win_(&io_win), msg_win_(&msg_win), pending_input_(&pending_input),
+          resize_requested_(&resize_requested) {}
+
+    NcursesStreambuf(WINDOW*& io_win, std::deque<unsigned char>& output_history)
+        : io_win_(&io_win), output_history_(&output_history) {}
 
 protected:
     /* ---- output (program prints '.' etc. to IO window) ---- */
     int_type overflow(int_type ch) override {
         if (ch == traits_type::eof()) return traits_type::eof();
-        waddch(io_win_, static_cast<char>(ch));
-        wrefresh(io_win_);
-        return ch;
+        append_output_(static_cast<unsigned char>(ch));
+        return traits_type::not_eof(ch);
     }
 
     std::streamsize xsputn(const char* s, std::streamsize n) override {
         for (std::streamsize i = 0; i < n; ++i) {
-            waddch(io_win_, s[i]);
+            append_output_(static_cast<unsigned char>(s[i]));
         }
-        wrefresh(io_win_);
         return n;
     }
 
     /* ---- input (program reads ',' to IO window) ---- */
     int_type underflow() override {
-        if (has_pending_input_) {
-            return pending_char_;
-        }
-        return do_input_();
-    }
+        if (gptr() != nullptr && gptr() < egptr())
+            return traits_type::to_int_type(*gptr());
 
-    int_type uflow() override {
-        if (has_pending_input_) {
-            has_pending_input_ = false;
-            return pending_char_;
-        }
-        return do_input_();
+        const auto input = do_input_();
+        if (traits_type::eq_int_type(input, traits_type::eof()))
+            return traits_type::eof();
+
+        input_char_ = traits_type::to_char_type(input);
+        setg(&input_char_, &input_char_, &input_char_ + 1);
+        return traits_type::to_int_type(input_char_);
     }
 
 private:
-    WINDOW* io_win_;
-    WINDOW* msg_win_;
-    bool    has_pending_input_ = false;
-    int     pending_char_      = 0;
+    WINDOW** io_win_;
+    WINDOW** msg_win_ = nullptr;
+    std::deque<unsigned char>* pending_input_ = nullptr;
+    std::deque<unsigned char>* output_history_ = nullptr;
+    bool* resize_requested_ = nullptr;
+    char input_char_ = 0;
+
+    void append_output_(unsigned char ch) {
+        waddch(*io_win_, ch);
+        if (output_history_ != nullptr) {
+            output_history_->push_back(ch);
+            constexpr std::size_t max_history = std::size_t{64} * 1024;
+            if (output_history_->size() > max_history)
+                output_history_->pop_front();
+        }
+    }
 
     int_type do_input_() {
-        if (msg_win_) {
-            wattron(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
-            mvwprintw(msg_win_, 0, 0, " Input (press a key)... ");
-            wattroff(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
-            wrefresh(msg_win_);
+        if (pending_input_ != nullptr && !pending_input_->empty()) {
+            const auto ch = pending_input_->front();
+            pending_input_->pop_front();
+            return traits_type::to_int_type(static_cast<char>(ch));
         }
 
-        /* Block until a character is received */
-        int ch = wgetch(io_win_);
+        if (msg_win_ != nullptr && *msg_win_ != nullptr) {
+            wattron(*msg_win_, A_BOLD);
+            mvwprintw(*msg_win_, 0, 0, " PROGRAM INPUT — press a key ");
+            wattroff(*msg_win_, A_BOLD);
+            wnoutrefresh(*msg_win_);
+            doupdate();
+        }
 
-        if (msg_win_) {
-            werase(msg_win_);
-            wrefresh(msg_win_);
+        /* Program input is intentionally blocking; controls are suspended. */
+        wtimeout(*io_win_, -1);
+        int ch = wgetch(*io_win_);
+        while (ch > 0xff) {
+            if (ch == KEY_RESIZE && resize_requested_ != nullptr)
+                *resize_requested_ = true;
+            ch = wgetch(*io_win_);
+        }
+        wtimeout(*io_win_, 0);
+
+        if (msg_win_ != nullptr && *msg_win_ != nullptr) {
+            werase(*msg_win_);
         }
 
         if (ch == ERR) {
             return traits_type::eof();
         }
 
-        return static_cast<char>(ch);
+        if (ch < 0 || ch > 0xff)
+            return traits_type::eof();
+        return traits_type::to_int_type(static_cast<char>(
+            static_cast<unsigned char>(ch)));
     }
 };
 
@@ -143,10 +171,11 @@ private:
 
 class VisualBrainfunk {
 public:
-    VisualBrainfunk(int delay_ms = 100)
-        : delay_us_(delay_ms * 1000), bf_(MEMSIZE) {}
+    explicit VisualBrainfunk(std::chrono::milliseconds delay = std::chrono::milliseconds{100})
+        : delay_(delay), bf_(MEMSIZE) {}
 
     ~VisualBrainfunk() {
+        destroy_windows_();
         if (ncurses_inited_) endwin();
     }
 
@@ -160,19 +189,16 @@ public:
         std::string code;
         char c;
         while (input.get(c)) {
-            switch (c) {
-            case '+': case '-': case '>': case '<':
-            case '[': case ']': case '.': case ',':
+            if (is_brainfuck_instruction(c))
                 code += c;
-                break;
-            default: break;
-            }
         }
         bf_.translate(code);
+        cache_code_();
     }
 
     void load_code(const std::string& code_str) {
         bf_.translate(code_str);
+        cache_code_();
     }
 
     /* ---- main event loop ---- */
@@ -185,24 +211,44 @@ public:
         bool step_requested = false;
 
         /* Create custom I/O streams */
-        NcursesStreambuf  ncurses_buf(io_win_, msg_win_);
-        NcursesStreambuf  ncurses_out(io_win_);  // output only, no msg window
+        NcursesStreambuf  ncurses_buf(io_win_, msg_win_, pending_program_input_,
+                                      resize_requested_);
+        NcursesStreambuf  ncurses_out(io_win_, output_history_);
         std::ostream      ncurses_os(&ncurses_out);
         std::istream      ncurses_is(&ncurses_buf);
 
+        print_mem_();
+        print_code_();
+        print_reg_(paused);
+        print_help_();
+        refresh_all_();
+
+        auto next_step = std::chrono::steady_clock::now();
+
         while (!halted && !quit_requested_) {
-            /* ---------- handle keyboard ---------- */
-            handle_input_(paused, step_requested);
+            const auto now = std::chrono::steady_clock::now();
+            int timeout_ms = -1;
+            if (!paused) {
+                const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(
+                    next_step - now);
+                const auto bounded = std::clamp<std::int64_t>(
+                    remaining.count(), 0, std::numeric_limits<int>::max());
+                timeout_ms = static_cast<int>(bounded);
+            }
+
+            handle_input_(paused, step_requested, timeout_ms);
+            if (quit_requested_) break;
 
             /* ---------- execute if not paused ---------- */
-            if (!halted && (!paused || step_requested)) {
+            const auto after_input = std::chrono::steady_clock::now();
+            if (!halted && (step_requested || (!paused && after_input >= next_step))) {
                 halted = !bf_.step(ncurses_is, ncurses_os);
                 step_requested = false;
-
-                if (!halted && !paused) {
-                    /* Sleep for the configured delay */
-                    std::this_thread::sleep_for(
-                        std::chrono::microseconds(delay_us_));
+                next_step = std::chrono::steady_clock::now() + delay_;
+                if (resize_requested_) {
+                    resize_term(0, 0);
+                    rebuild_windows_();
+                    resize_requested_ = false;
                 }
             }
 
@@ -222,21 +268,26 @@ public:
             print_help_();
             refresh_all_();
 
-            wattron(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
+            wattron(msg_win_, pair_attr_(CP_MSG) | A_BOLD);
             mvwprintw(msg_win_, 0, 0, " HALTED — press any key to quit ");
-            wattroff(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
+            wattroff(msg_win_, pair_attr_(CP_MSG) | A_BOLD);
             wrefresh(msg_win_);
             wgetch(msg_win_);
         }
     }
 
-    int delay_ms() const { return static_cast<int>(delay_us_ / 1000); }
+    [[nodiscard]] int delay_ms() const { return static_cast<int>(delay_.count()); }
 
 private:
-    int        delay_us_;           // microseconds per step
+    std::chrono::milliseconds delay_;
     Brainfunk  bf_;
     bool       ncurses_inited_ = false;
     bool       quit_requested_ = false;
+    bool       colours_enabled_ = false;
+    bool       resize_requested_ = false;
+    std::deque<unsigned char> pending_program_input_;
+    std::deque<unsigned char> output_history_;
+    std::vector<std::string> code_cache_;
 
     /* ncurses windows */
     WINDOW* mem_win_  = nullptr;
@@ -251,72 +302,126 @@ private:
         setlocale(LC_ALL, "");
         initscr();
         ncurses_inited_ = true;
-
-        if (!has_colors()) {
-            endwin();
-            ncurses_inited_ = false;
-            std::cerr << "Terminal does not support colours.\n";
-            std::exit(1);
-        }
-
-        start_color();
         cbreak();
         noecho();
         curs_set(0);   // hide cursor
         keypad(stdscr, TRUE);
 
-        /* Colour pairs */
-        init_pair(CP_MSG,   COLOR_BLACK,  COLOR_WHITE);
-        init_pair(CP_MEM,   COLOR_WHITE,  COLOR_BLACK);
-        init_pair(CP_CODE,  COLOR_BLACK,  COLOR_YELLOW);
-        init_pair(CP_REG,   COLOR_BLACK,  COLOR_GREEN);
-        init_pair(CP_IO,    COLOR_WHITE,  COLOR_BLUE);
-        init_pair(CP_HELP,  COLOR_BLACK,  COLOR_CYAN);
-        init_pair(CP_HIGHLIGHT, COLOR_YELLOW, COLOR_RED);
+        colours_enabled_ = has_colors();
+        if (colours_enabled_) {
+            start_color();
+            init_pair(CP_MSG,   COLOR_BLACK,  COLOR_WHITE);
+            init_pair(CP_MEM,   COLOR_WHITE,  COLOR_BLACK);
+            init_pair(CP_CODE,  COLOR_BLACK,  COLOR_YELLOW);
+            init_pair(CP_REG,   COLOR_BLACK,  COLOR_GREEN);
+            init_pair(CP_IO,    COLOR_WHITE,  COLOR_BLUE);
+            init_pair(CP_HELP,  COLOR_BLACK,  COLOR_CYAN);
+            init_pair(CP_HIGHLIGHT, COLOR_YELLOW, COLOR_RED);
+        }
 
-        /* Window layout — fixed 24 rows × 80 columns */
-        mem_win_  = newwin(4,  80, 0,  0);
-        code_win_ = newwin(7,  60, 4,  0);
-        reg_win_  = newwin(7,  20, 4,  60);
-        io_win_   = newwin(12, 60, 11, 0);
-        help_win_ = newwin(12, 20, 11, 60);
-        msg_win_  = newwin(1,  80, 23, 0);
-
-        /* Background colours */
-        wbkgd(mem_win_,  COLOR_PAIR(CP_MEM));
-        wbkgd(code_win_, COLOR_PAIR(CP_CODE));
-        wbkgd(reg_win_,  COLOR_PAIR(CP_REG));
-        wbkgd(io_win_,   COLOR_PAIR(CP_IO));
-        wbkgd(help_win_, COLOR_PAIR(CP_HELP));
-        wbkgd(msg_win_,  COLOR_PAIR(CP_MSG));
-
-        scrollok(io_win_, TRUE);
-        keypad(io_win_, TRUE);
-
-        /* Non-blocking input: poll every 50ms */
-        wtimeout(io_win_, 50);
+        rebuild_windows_();
 
         refresh_all_();
 
         /* Start message */
-        wattron(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
+        wattron(msg_win_, pair_attr_(CP_MSG) | A_BOLD);
         mvwprintw(msg_win_, 0, 0, " READY — press any key to start ");
-        wattroff(msg_win_, COLOR_PAIR(CP_MSG) | A_BOLD);
+        wattroff(msg_win_, pair_attr_(CP_MSG) | A_BOLD);
         wrefresh(msg_win_);
         wgetch(msg_win_);
         werase(msg_win_);
         wrefresh(msg_win_);
     }
 
-    void refresh_all_() {
-        for (auto* w : {mem_win_, code_win_, reg_win_, io_win_, help_win_, msg_win_}) {
-            if (w) wrefresh(w);
+    [[nodiscard]] chtype pair_attr_(ColourPair pair) const noexcept {
+        return colours_enabled_ ? COLOR_PAIR(pair) : A_NORMAL;
+    }
+
+    [[nodiscard]] chtype highlight_attr_() const noexcept {
+        return colours_enabled_ ? COLOR_PAIR(CP_HIGHLIGHT) | A_BOLD
+                                : A_REVERSE | A_BOLD;
+    }
+
+    void destroy_windows_() noexcept {
+        for (auto** window : {&mem_win_, &code_win_, &reg_win_,
+                              &io_win_, &help_win_, &msg_win_}) {
+            if (*window != nullptr) {
+                delwin(*window);
+                *window = nullptr;
+            }
         }
     }
 
+    void rebuild_windows_() {
+        int rows = 0;
+        int columns = 0;
+        getmaxyx(stdscr, rows, columns);
+
+        while (rows < 18 || columns < 60) {
+            erase();
+            mvprintw(0, 0, "Terminal too small: need at least 60x18 (current %dx%d)",
+                     columns, rows);
+            mvprintw(1, 0, "Resize the terminal, or press q to quit.");
+            refresh();
+            const int ch = getch();
+            if (ch == 'q' || ch == 'Q' || ch == 27)
+                throw BrainfunkException("Terminal is too small for the visualizer");
+            resize_term(0, 0);
+            getmaxyx(stdscr, rows, columns);
+        }
+
+        destroy_windows_();
+        const int mem_height = 4;
+        const int message_height = 1;
+        const int available_height = rows - mem_height - message_height;
+        const int code_height = std::max(7, available_height / 3);
+        const int io_height = available_height - code_height;
+        const int right_width = std::max(20, columns / 4);
+        const int left_width = columns - right_width;
+
+        mem_win_  = newwin(mem_height, columns, 0, 0);
+        code_win_ = newwin(code_height, left_width, mem_height, 0);
+        reg_win_  = newwin(code_height, right_width, mem_height, left_width);
+        io_win_   = newwin(io_height, left_width, mem_height + code_height, 0);
+        help_win_ = newwin(io_height, right_width, mem_height + code_height, left_width);
+        msg_win_  = newwin(message_height, columns, rows - message_height, 0);
+
+        if (mem_win_ == nullptr || code_win_ == nullptr || reg_win_ == nullptr ||
+            io_win_ == nullptr || help_win_ == nullptr || msg_win_ == nullptr)
+            throw BrainfunkException("Unable to create ncurses windows");
+
+        wbkgd(mem_win_,  pair_attr_(CP_MEM));
+        wbkgd(code_win_, pair_attr_(CP_CODE));
+        wbkgd(reg_win_,  pair_attr_(CP_REG));
+        wbkgd(io_win_,   pair_attr_(CP_IO));
+        wbkgd(help_win_, pair_attr_(CP_HELP));
+        wbkgd(msg_win_,  pair_attr_(CP_MSG));
+        scrollok(io_win_, TRUE);
+        keypad(io_win_, TRUE);
+        wtimeout(io_win_, 0);
+        for (const auto ch : output_history_)
+            waddch(io_win_, ch);
+    }
+
+    void cache_code_() {
+        code_cache_.clear();
+        code_cache_.reserve(bf_.bitcode().size());
+        for (const auto& instruction : bf_.bitcode())
+            code_cache_.push_back(instruction.to_string(BitcodeFormat::Plain));
+    }
+
+    void refresh_all_() {
+        for (auto* w : {mem_win_, code_win_, reg_win_, io_win_, help_win_, msg_win_}) {
+            if (w) wnoutrefresh(w);
+        }
+        doupdate();
+    }
+
     /* ---------- keyboard handler ---------- */
-    void handle_input_(bool& paused, bool& step_requested) {
+    void handle_input_(bool& paused, bool& step_requested, int timeout_ms) {
+        wtimeout(io_win_, timeout_ms);
         int ch = wgetch(io_win_);
+        wtimeout(io_win_, 0);
         while (ch != ERR) {
             switch (ch) {
             case ' ':
@@ -327,19 +432,26 @@ private:
 
             case 's':
             case 'S':
+                paused = true;
                 step_requested = true;
                 break;
 
             case KEY_UP:
             case '+':
             case '=':
-                delay_us_ = std::max(0, delay_us_ - 10000);  // -10ms
+                delay_ = std::max(std::chrono::milliseconds{0},
+                                  delay_ - std::chrono::milliseconds{10});
                 break;
 
             case KEY_DOWN:
             case '-':
             case '_':
-                delay_us_ += 10000;  // +10ms
+                delay_ += std::chrono::milliseconds{10};
+                break;
+
+            case KEY_RESIZE:
+                resize_term(0, 0);
+                rebuild_windows_();
                 break;
 
             case 'q':
@@ -349,6 +461,8 @@ private:
                 return;
 
             default:
+                if (ch >= 0 && ch <= 0xff)
+                    pending_program_input_.push_back(static_cast<unsigned char>(ch));
                 break;
             }
             ch = wgetch(io_win_);
@@ -358,63 +472,58 @@ private:
     /* ---------- MEM window ---------- */
     void print_mem_() {
         werase(mem_win_);
-        const auto& mem = bf_.memory();
-        auto memsize = mem.size();
-        auto ptr = bf_.ptr();
+        const auto mem = bf_.memory();
+        const auto memsize = mem.size();
+        const auto ptr = bf_.ptr();
+        int cells = std::max(1, getmaxx(mem_win_) / 6);
+        if (cells % 2 == 0) --cells;
+        const int half = cells / 2;
 
-        /* Show 6 cells before and 5 after ptr (fits 80-col window) */
-        for (int offset = -6; offset <= 5; ++offset) {
-            auto addr = static_cast<long>(ptr) + offset;
-            if (addr < 0 || static_cast<std::size_t>(addr) >= memsize) {
-                wprintw(mem_win_, "    |");
+        for (int offset = -half; offset <= half; ++offset) {
+            const auto addr = wrap_offset(ptr, offset, memsize);
+            if (offset == 0) {
+                wattron(mem_win_, highlight_attr_());
+                wprintw(mem_win_, " %02x |",
+                        static_cast<unsigned>(mem[addr]));
+                wattroff(mem_win_, highlight_attr_());
             } else {
-                if (offset == 0) {
-                    wattron(mem_win_, COLOR_PAIR(CP_HIGHLIGHT) | A_BOLD);
-                    wprintw(mem_win_, " %02x |",
-                            static_cast<unsigned>(mem[static_cast<std::size_t>(addr)]));
-                    wattroff(mem_win_, COLOR_PAIR(CP_HIGHLIGHT) | A_BOLD);
-                } else {
-                    wprintw(mem_win_, " %02x |",
-                            static_cast<unsigned>(mem[static_cast<std::size_t>(addr)]));
-                }
+                wprintw(mem_win_, " %02x |",
+                        static_cast<unsigned>(mem[addr]));
             }
         }
-        mvwprintw(mem_win_, 3, 0, " Memory  (ptr = %zu)", ptr);
+        mvwprintw(mem_win_, getmaxy(mem_win_) - 1, 0, " Memory  (ptr = %zu)", ptr);
     }
 
     /* ---------- CODE window ---------- */
     void print_code_() {
         werase(code_win_);
-        const auto& bc = bf_.bitcode();
-        auto pc = bf_.pc();
+        const auto bc = bf_.bitcode();
+        const auto pc = bf_.pc();
 
         if (bc.empty()) {
             mvwprintw(code_win_, 0, 0, " (empty)");
             return;
         }
 
-        /* Show a window of ~7 instructions around pc */
-        int lines = 7;
-        int half  = lines / 2;
-        long start = static_cast<long>(pc) - half;
-        if (start < 0) start = 0;
-        if (start + lines > static_cast<long>(bc.size()))
-            start = static_cast<long>(bc.size()) - lines;
-        if (start < 0) start = 0;
+        const auto lines = static_cast<std::size_t>(getmaxy(code_win_));
+        const auto half = lines / 2;
+        auto start = pc > half ? pc - half : addr_t{0};
+        if (bc.size() > lines && start + lines > bc.size())
+            start = bc.size() - lines;
 
-        for (int i = 0; i < lines; ++i) {
-            long idx = start + i;
-            if (idx < 0 || static_cast<std::size_t>(idx) >= bc.size()) {
+        for (std::size_t i = 0; i < lines; ++i) {
+            const auto idx = start + i;
+            if (idx >= bc.size()) {
                 wprintw(code_win_, "\n");
                 continue;
             }
-            auto str = bc[static_cast<std::size_t>(idx)].to_string(BITCODE_FORMAT_PLAIN);
-            if (static_cast<addr_t>(idx) == pc) {
-                wattron(code_win_, COLOR_PAIR(CP_HIGHLIGHT) | A_BOLD);
-                wprintw(code_win_, "%zu:\t%s\n", static_cast<std::size_t>(idx), str.c_str());
-                wattroff(code_win_, COLOR_PAIR(CP_HIGHLIGHT) | A_BOLD);
+            const auto& str = code_cache_[idx];
+            if (idx == pc) {
+                wattron(code_win_, highlight_attr_());
+                wprintw(code_win_, "%zu:\t%s\n", idx, str.c_str());
+                wattroff(code_win_, highlight_attr_());
             } else {
-                wprintw(code_win_, "%zu:\t%s\n", static_cast<std::size_t>(idx), str.c_str());
+                wprintw(code_win_, "%zu:\t%s\n", idx, str.c_str());
             }
         }
     }
@@ -426,14 +535,14 @@ private:
         mvwprintw(reg_win_, 2, 0, " PC  = %zu", bf_.pc());
         mvwprintw(reg_win_, 3, 0, " PTR = %zu", bf_.ptr());
 
-        const auto& mem = bf_.memory();
+        const auto mem = bf_.memory();
         auto ptr = bf_.ptr();
         if (ptr < mem.size()) {
             mvwprintw(reg_win_, 4, 0, " *PTR= 0x%02x (%d)",
                       static_cast<unsigned>(mem[ptr]),
                       static_cast<int>(mem[ptr]));
         }
-        mvwprintw(reg_win_, 6, 0, " [%s]",
+        mvwprintw(reg_win_, std::min(6, getmaxy(reg_win_) - 1), 0, " [%s]",
                   paused ? "PAUSED" : "RUNNING");
     }
 
@@ -443,17 +552,21 @@ private:
         mvwprintw(help_win_, 0, 0, " Controls");
 
         int row = 2;
-        for (int i = 0; HELP_TEXT[i] != nullptr; ++i, ++row) {
-            if (HELP_TEXT[i][0] == '\0') {
+        for (std::string_view text : HELP_TEXT) {
+            if (row >= getmaxy(help_win_)) break;
+            if (text.empty()) {
                 /* Blank line for separator */
+                ++row;
                 continue;
             }
-            if (std::strncmp(HELP_TEXT[i], " Delay:", 7) == 0) {
-                mvwprintw(help_win_, row, 0, "%s %d ms",
-                          HELP_TEXT[i], delay_ms());
+            if (text == " Delay:") {
+                mvwprintw(help_win_, row, 0, "%.*s %d ms",
+                          static_cast<int>(text.size()), text.data(), delay_ms());
             } else {
-                mvwprintw(help_win_, row, 0, "%s", HELP_TEXT[i]);
+                mvwprintw(help_win_, row, 0, "%.*s",
+                          static_cast<int>(text.size()), text.data());
             }
+            ++row;
         }
     }
 };
@@ -462,7 +575,7 @@ private:
  *  main
  * ================================================================ */
 
-[[noreturn]] static void helpmsg(int argc, char** argv) {
+[[noreturn]] static void helpmsg(char** argv, int status = 0) {
     std::cerr
         << "Usage: " << argv[0]
         << " [-h] [-f file] [-s code] [-t msec]\n"
@@ -477,13 +590,13 @@ private:
         << "  q / ESC    Quit\n"
         << "  UP / +     Decrease delay (faster)\n"
         << "  DOWN / -   Increase delay (slower)\n";
-    std::exit(0);
+    std::exit(status);
 }
 
 int main(int argc, char** argv) {
     std::string filename;
     std::string code_str;
-    int delay_ms = 100;
+    auto delay = std::chrono::milliseconds{100};
     bool valid = false;
 
     int opt;
@@ -498,11 +611,22 @@ int main(int argc, char** argv) {
             valid = true;
             break;
         case 't':
-            delay_ms = std::atoi(optarg);
-            if (delay_ms < 0) delay_ms = 0;
+        {
+            std::int64_t milliseconds = 0;
+            const std::string_view argument{optarg};
+            const auto result = std::from_chars(argument.data(),
+                                                argument.data() + argument.size(),
+                                                milliseconds);
+            if (result.ec != std::errc{} || result.ptr != argument.data() + argument.size() ||
+                milliseconds < 0 || milliseconds > std::numeric_limits<int>::max()) {
+                std::cerr << "Invalid delay: " << argument << '\n';
+                return 1;
+            }
+            delay = std::chrono::milliseconds{milliseconds};
             break;
+        }
         case 'h':
-            helpmsg(argc, argv);
+            helpmsg(argv);
             break;
         default:
             std::exit(1);
@@ -510,11 +634,11 @@ int main(int argc, char** argv) {
     }
 
     if (!valid) {
-        helpmsg(argc, argv);
+        helpmsg(argv, 1);
     }
 
     try {
-        VisualBrainfunk vbf(delay_ms);
+        VisualBrainfunk vbf(delay);
 
         if (!filename.empty()) {
             vbf.load_file(filename);

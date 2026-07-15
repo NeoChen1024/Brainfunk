@@ -1,25 +1,14 @@
 #include <iostream>
+#include <string_view>
 
-int main(void)
+int main()
 {
+	constexpr std::string_view instructions = "+-><[].,";
 	char c = 0;
 	while(std::cin.get(c))
 	{
-		switch(c)
-		{
-			case '+':
-			case '-':
-			case '>':
-			case '<':
-			case '[':
-			case ']':
-			case '.':
-			case ',':
-				std::cout << c;
-				break;
-			default:
-				break;
-		}
+		if (instructions.find(c) != std::string_view::npos)
+			std::cout << c;
 	}
-	std::cout << std::endl;
+	std::cout << '\n';
 }

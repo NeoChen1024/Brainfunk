@@ -1,8 +1,7 @@
 #!/usr/bin/env sh
 set -e
 CC="${CC:-cc}"
-CFLAGS="-Ofast -pipe -static"
-FILE="$(mktemp)"
+CFLAGS="${CFLAGS:--O3 -pipe}"
 SRC="$1"
 OUT="$2"
 
@@ -12,11 +11,9 @@ msg_echo()
 }
 
 if [ $# -lt 2 ]; then
-	echo "${0}: <mode> <infile> <outfile>"
+	echo "${0}: <infile> <outfile>"
 	exit 4
 fi
 
 msg_echo "$SRC"
 ./brainfunk -m bfc -f "$SRC" -o - | "$CC" -x c $CFLAGS - -o "$OUT"
-
-rm "$FILE"

@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,15 +26,13 @@ Brainfunk::Brainfunk(std::size_t memsize) {
     memory_.resize(memsize, memory_t{0});
 }
 
-Brainfunk::~Brainfunk() = default;   // RAII handles everything
-
 void Brainfunk::clear() {
     reset_state();
     bitcode_.clear();
 }
 
 void Brainfunk::reset_state() {
-    std::fill(memory_.begin(), memory_.end(), memory_t{0});
+    std::ranges::fill(memory_, memory_t{0});
     ptr_ = 0;
     pc_  = 0;
 }
@@ -266,52 +263,80 @@ bool Brainfunk::try_parse_set_zero_loop_(std::string_view& code) {
 // ------------------------------------------------------------------
 
 void Brainfunk::dump(std::ostream& os, Format format) const {
+    if (format == Format::LLVM_IR) {
+        dump_llvm_ir(os);
+        return;
+    }
+
     if (format == Format::C) {
+        const auto has_opcode = [this](Opcode opcode) {
+            return std::ranges::any_of(bitcode_, [opcode](const Bitcode& instruction) {
+                return instruction.opcode() == opcode;
+            });
+        };
+        const bool needs_wrap = has_opcode(Opcode::M) || has_opcode(Opcode::MUL) ||
+                                has_opcode(Opcode::F);
+        const bool needs_io = has_opcode(Opcode::IO);
+        const bool needs_memory = std::ranges::any_of(bitcode_, [](const Bitcode& instruction) {
+            return instruction.opcode() != Opcode::X && instruction.opcode() != Opcode::H;
+        });
+
         // clang-format off
-        os << "#include <stdio.h>\n"
-              "#include <stdlib.h>\n"
+        os << "#include <stddef.h>\n"
               "#include <stdint.h>\n"
-              "uint8_t *base;\n"
-              "uint8_t *mem;\n"
-              "#define MEMSIZE\t\t(1<<21)\n"
-              "#define\tX(x)\t/* NOP */\n"
-              "#define\tA(x)\t*mem += x\n"
-              "#define\tS(x)\t*mem = x\n"
-              "#define\tMUL(offset, mul)\tmem[offset] += *mem * mul\n"
-              "#define\tF(x)\twhile(*mem != 0) mem += x\n"
-              "#define\tM(x)\tmem += x\n"
-              "#define\tJE(x)\twhile(*mem) {\n"
-              "#define\tJN(x)\t}\n"
-              "#define\tH()\texit(0);\n"
-              "static inline void IO(uint8_t arg)\n"
+              "#include <stdio.h>\n\n"
+              "#define MEMSIZE " << memory_.size() << "u\n";
+        if (needs_memory) {
+            os << "static uint8_t memory[MEMSIZE];\n"
+                  "static size_t ptr;\n";
+        }
+        os << '\n';
+        if (needs_wrap) {
+            os << "static size_t wrap_offset(size_t address, int64_t offset)\n"
               "{\n"
-              "\tint c = 0;\n"
-              "\tswitch(arg)\n"
-              "\t{\n"
-              "\t\tcase 0: /* IN */ c = getchar(); *mem = c == EOF ? 0 : c; break;\n"
-              "\t\tcase 1: /* OUT */ putchar(*mem); break;\n"
+              "\tif (offset >= 0)\n"
+              "\t\treturn (address + (uint64_t)offset % MEMSIZE) % MEMSIZE;\n"
+              "\tconst uint64_t backward = (uint64_t)(-(offset + 1)) + 1;\n"
+              "\treturn (address + MEMSIZE - backward % MEMSIZE) % MEMSIZE;\n"
+              "}\n\n";
+        }
+        if (needs_io) {
+            os << "static void brainfunk_io(uint8_t arg)\n"
+              "{\n"
+              "\tif (arg == 0) {\n"
+              "\t\tconst int input = getchar();\n"
+              "\t\tmemory[ptr] = input == EOF ? 0 : (uint8_t)input;\n"
+              "\t} else {\n"
+              "\t\tputchar(memory[ptr]);\n"
+              "\t\tfflush(stdout);\n"
               "\t}\n"
-              "}\n"
+              "}\n\n";
+        }
+        os << "#define X()                 ((void)0)\n"
+              "#define A(value)             (memory[ptr] += (uint8_t)(value))\n"
+              "#define S(value)             (memory[ptr] = (uint8_t)(value))\n"
+              "#define MUL(offset, factor)  (memory[wrap_offset(ptr, (offset))] += (uint8_t)(memory[ptr] * (factor)))\n"
+              "#define F(offset)            while (memory[ptr] != 0) ptr = wrap_offset(ptr, (offset))\n"
+              "#define M(offset)            (ptr = wrap_offset(ptr, (offset)))\n"
+              "#define JE(offset)           while (memory[ptr] != 0) {\n"
+              "#define JN(offset)           }\n"
+              "#define IO(operation)        brainfunk_io(operation)\n"
+              "#define H()                  return 0\n\n"
               "int main(void)\n"
-              "{\n"
-              "\tsetvbuf(stdin, NULL, _IONBF, 0);\n"
-              "\tsetvbuf(stdout, NULL, _IONBF, 0);\n"
-              "\tbase = (uint8_t *)calloc(MEMSIZE, sizeof(uint8_t));\n"
-              "\tif(!base) { puts(\"Out of memory\"); exit(1); }\n"
-              "\tmem = base + MEMSIZE/2;\n\n";
+              "{\n";
         // clang-format on
     }
 
     for (addr_t pc = 0; pc < bitcode_.size(); ++pc) {
         if (format == Format::BIT)
-            os << pc << ":\t" << bitcode_[pc].to_string(BITCODE_FORMAT_PLAIN)
+            os << pc << ":\t" << bitcode_[pc].to_string(BitcodeFormat::Plain)
                << '\n';
         else
-            os << bitcode_[pc].to_string(BITCODE_FORMAT_C) << '\n';
+            os << '\t' << bitcode_[pc].to_string(BitcodeFormat::C) << '\n';
     }
 
     if (format == Format::C) {
-        os << "}" << std::endl;
+        os << "}\n";
     }
 }
 
@@ -345,8 +370,7 @@ bool Brainfunk::step(std::istream& is, std::ostream& os) {
 //  to_string
 // ------------------------------------------------------------------
 
-std::string Bitcode::to_string(int format) const {
-    auto idx = static_cast<std::size_t>(opcode_);
+std::string Bitcode::to_string(BitcodeFormat format) const {
     std::ostringstream operand;
 
     /* Build the operand string */
@@ -364,10 +388,10 @@ std::string Bitcode::to_string(int format) const {
     }, operand_);
 
     /* Format output */
-    if (format == BITCODE_FORMAT_C) {
-        return opcode_name(idx) + std::string("(") + operand.str() + std::string(");");
+    if (format == BitcodeFormat::C) {
+        return std::string(opcode_name(opcode_)) + "(" + operand.str() + ");";
     }
-    return opcode_name(idx) + std::string("\t") + operand.str();
+    return std::string(opcode_name(opcode_)) + "\t" + operand.str();
 }
 
 // ------------------------------------------------------------------

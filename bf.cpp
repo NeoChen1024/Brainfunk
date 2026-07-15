@@ -3,66 +3,51 @@
 |* Neo_Chen				  *|
 \* ====================================== */
 
-#include <stdint.h>
-#include <unistd.h>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <getopt.h>
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <cstring>
+#include <string_view>
 
 using std::vector;
 using std::string;
 
-#define STACKSIZE (1ULL<<12)
-#define MEMSIZE (1ULL<<20)
-#define CODESIZE (1ULL<<16)
+inline constexpr std::size_t STACKSIZE = 1ULL << 12;
+inline constexpr std::size_t MEMSIZE = 1ULL << 20;
+inline constexpr std::size_t CODESIZE = 1ULL << 16;
 
-#define _INLINE	static inline
-
-#define ERR_MSG_ALLOC	("Unable to allocate memory!\n")
-
-typedef uint8_t memory_t;
-typedef unsigned int arg_t;
+using memory_t = std::uint8_t;
+using arg_t = std::size_t;
 
 /* init */
 
 static vector<memory_t> memory;
 static arg_t ptr=0;
-static vector<string::iterator> stack;
+static vector<string::const_iterator> stack;
 static string code;
 
-_INLINE bool is_code(char c)
+[[nodiscard]] constexpr bool is_code(char c) noexcept
 {
-	switch(c)
-	{
-		case '+':
-		case '-':
-		case '>':
-		case '<':
-		case '[':
-		case ']':
-		case '.':
-		case ',':
-			return true;
-		default:
-			return false;
-	}
+	constexpr std::string_view instructions = "+-><[].,";
+	return instructions.find(c) != std::string_view::npos;
 }
 
-void panic(string msg, int condition)
+void panic(std::string_view msg, bool condition)
 {
 	if(condition)
 	{
-		fputs(msg.c_str(), stderr);
+		fwrite(msg.data(), 1, msg.size(), stderr);
 		exit(EXIT_FAILURE);
 	}
 }
 
-static void validate_code(string &code)
+static void validate_code(std::string_view code)
 {
-	ssize_t level = 0;
+	std::ptrdiff_t level = 0;
 
 	/* Validate that the '[' and ']'s is matched */
 	for(auto &c : code)
@@ -84,21 +69,22 @@ static void validate_code(string &code)
 static void read_code(FILE* fp)
 {
 	int c;
-	code = "";
+	code.clear();
 	while((c = getc(fp)) != EOF)
 	{
-		if(is_code(c))
-			code += c;
+		if(is_code(static_cast<char>(c)))
+			code += static_cast<char>(c);
 	}
-	code += '\0';
 
 	validate_code(code);
 }
 
-void interprete(string &code)
+void interprete(const string &code)
 {
-	string::iterator c = code.begin();
-	std::fill(memory.begin(), memory.end(), 0);
+	auto c = code.cbegin();
+	std::ranges::fill(memory, memory_t{0});
+	ptr = 0;
+	stack.clear();
 
 	while(c != code.end())
 	{
@@ -121,7 +107,7 @@ void interprete(string &code)
 		case '[':
 			if(memory[ptr] == 0)
 			{
-				ssize_t level = 1;
+					std::ptrdiff_t level = 1;
 				while(level != 0)
 				{
 					c++;
@@ -156,9 +142,10 @@ void interprete(string &code)
 	}
 }
 
-static void help(int argc, char **argv)
+[[noreturn]] static void help(char **argv, int status = 0)
 {
 	printf("Usage: %s [-h] [-f file] [-s code]\n", argv[0]);
+	exit(status);
 }
 
 int main(int argc, char **argv)
@@ -166,7 +153,7 @@ int main(int argc, char **argv)
 	/* Init */
 	memory.resize(MEMSIZE);
 	stack.reserve(STACKSIZE);
-	code.resize(CODESIZE);
+	code.reserve(CODESIZE);
 
 	/* Disable Buffering */
 	setvbuf(stdin, NULL, _IONBF, 0);
@@ -178,7 +165,7 @@ int main(int argc, char **argv)
 
 	if(!(argc >= 2))
 	{
-		help(argc, argv);
+		help(argv, 1);
 	}
 	else
 	{
@@ -191,12 +178,14 @@ int main(int argc, char **argv)
 						read_code(stdin);
 					else
 					{
-						if((codefile = fopen(optarg, "r")) == NULL)
+							codefile = fopen(optarg, "r");
+							if(codefile == nullptr)
 						{
 							perror(optarg);
 							exit(EXIT_FAILURE);
 						}
-						read_code(codefile);
+							read_code(codefile);
+							fclose(codefile);
 					}
 					break;
 				case 's':
@@ -204,7 +193,7 @@ int main(int argc, char **argv)
 					validate_code(code);
 					break;
 				case 'h':
-					help(argc, argv);
+					help(argv);
 					break;
 				default:
 					exit(EXIT_FAILURE);
