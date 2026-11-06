@@ -22,7 +22,7 @@ if command -v "$CLANG" >/dev/null 2>&1 &&
     have_llvm=true
 fi
 
-OPT_LEVELS="0 1 2"
+OPT_LEVELS="0 1 2 3"
 
 # Every optimization level, through every backend, must match the unoptimized
 # interpreter, and must still assemble.
@@ -113,6 +113,22 @@ check_codegen moving-loop "$tmpdir/moving-loop.bf" "$tmpdir/empty.input"
 printf '%s' '<<<+.>>>.<<<[-].' >"$tmpdir/pending-negative.bf"
 check_codegen pending-negative "$tmpdir/pending-negative.bf" "$tmpdir/empty.input"
 
+# Instruction fusion.
+printf '%s' ',[>+>++<<-]>.>.' >"$tmpdir/fused-mulc.bf"
+check_codegen fused-mulc "$tmpdir/fused-mulc.bf" "$tmpdir/one-byte.input"
+printf '%s' '+++[.>+<-]>.' >"$tmpdir/fused-djn.bf"
+check_codegen fused-djn "$tmpdir/fused-djn.bf" "$tmpdir/empty.input"
+printf '%s' '+>+>+>+>+<<<<[.>]<.' >"$tmpdir/fused-mjn.bf"
+check_codegen fused-mjn "$tmpdir/fused-mjn.bf" "$tmpdir/empty.input"
+printf '%s' ',>,>,>,<<<[-]>[-]>[-]>[-]<<<.>.>.>.' >"$tmpdir/fused-srun.bf"
+printf '%s' 'abcd' >"$tmpdir/four-bytes.input"
+check_codegen fused-srun "$tmpdir/fused-srun.bf" "$tmpdir/four-bytes.input"
+printf '%s' ',[>+>++<<-]+++[.>+<-]+>+<[.>]<,>,>,<<[-]>[-]>[-]<<.' >"$tmpdir/fused.bf"
+check_codegen fused "$tmpdir/fused.bf" "$tmpdir/four-bytes.input"
+for mnemonic in MULC DJN MJN SRUN; do
+    grep -q "$mnemonic" "$tmpdir/fused.O3.c"
+done
+
 # Offsets that overflow each field force an early flush.  No real program in the
 # corpus reaches these, so they are only covered here.
 repeat() { awk -v n="$2" -v c="$1" 'BEGIN { for (i = 0; i < n; ++i) printf "%s", c }'; }
@@ -154,7 +170,7 @@ if [ "$have_llvm" = true ]; then
         wasm64-unknown-unknown
     do
         "$CLANG" -target "$target" -O2 -Wno-override-module \
-            -c "$tmpdir/hello.O0.ll" -o "$tmpdir/hello.$target.o"
+            -c "$tmpdir/fused.O3.ll" -o "$tmpdir/fused.$target.o"
     done
 
     CLANG="$CLANG" CFLAGS='-O2 -pipe' \
@@ -189,12 +205,20 @@ check_encoding 'JE 1, -2' 601ffffe
 check_encoding 'JN 127, 524287' 77f7ffff
 check_encoding 'IO 0, 1' 80000001
 check_encoding 'H' 90000000
+check_encoding 'MULC 3, 2, 3' a0200303
+check_encoding 'DJN 1, -2' b01ffffe
+check_encoding 'MJN 1, -2, -3' c01feffd
+check_encoding 'MJN -128, 127, 2047' c807f7ff
+check_encoding 'SRUN 5, 7, 3' d0300507
+check_encoding 'SRUN -1, 0, 255' dfffff00
 
 for rejected in \
     'A 2048, 1' 'A -2049, 1' 'A 0, 256' 'A 0, -1' 'A 5' 'H 1' 'IO 0, 2' \
     'MUL 1, 2' 'MUL 2048, 0, 1' 'MUL 1, 128, 1' 'MUL 1, -129, 1' 'MUL 1, 0, 256' \
     'F 128, 1' 'F 0, 524288' 'M 524288' 'M -524289' \
-    'JE 128, 0' 'JN -129, 0' 'JE 0, 524288' 'NOPE 1'
+    'JE 128, 0' 'JN -129, 0' 'JE 0, 524288' 'NOPE 1' \
+    'MULC 1, 128, 1' 'DJN 128, 0' 'MJN 1, 128, 0' 'MJN 1, 0, 2048' 'MJN 128, 0, 0' 'MJN 1, 2' \
+    'SRUN 0, 0, 0' 'SRUN 0, 0, 256' 'SRUN 0, 0, -1' 'SRUN 2048, 0, 1' 'SRUN 0, 256, 1' 'SRUN 0, 0'
 do
     if printf '0: %s\n' "$rejected" | ./bit2bin >/dev/null 2>&1; then
         echo "bit2bin accepted invalid instruction: $rejected" >&2
@@ -206,7 +230,7 @@ awk 'BEGIN { printf "+[-"; for (i = 0; i < 3000; ++i) printf ">"; printf "+";
             for (i = 0; i < 3000; ++i) printf "<"; printf "]" }' >"$tmpdir/far-mul.bf"
 ./brainfunk -m bit -f "$tmpdir/far-mul.bf" | ./bit2bin >/dev/null
 
-./brainfunk -m stat -s '++[->+<]>.' >/dev/null 2>"$tmpdir/stat.out"
+./brainfunk -O0 -m stat -s '++[->+<]>.' >/dev/null 2>"$tmpdir/stat.out"
 grep -q '^MUL	1	1$' "$tmpdir/stat.out"
 grep -q '^memory_reads	4$' "$tmpdir/stat.out"
 ./brainfunk -m stat -s '+' -o "$tmpdir/stat-file.out"

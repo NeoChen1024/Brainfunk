@@ -23,7 +23,7 @@ make test
 # Optimization levels
 
 `-O0` runs the translated bitcode as is. `-O1` adds lazy moves. `-O2` adds block-local
-folding. `brainfunk` defaults to the
+folding. `-O3` adds fused instructions. `brainfunk` defaults to the
 highest level; `visualbrainfunk` defaults to `-O0`, which is easier to follow while stepping.
 
 # Modes

@@ -17,6 +17,7 @@ namespace {
 constexpr unsigned OPCODE_SHIFT = 28;
 constexpr unsigned NARROW_SHIFT = 20;
 constexpr unsigned ADDR_SHIFT   = 8;
+constexpr unsigned MJN_MOVE_SHIFT = 12;
 
 std::optional<Opcode> parse_opcode(std::string_view name)
 {
@@ -187,6 +188,41 @@ std::optional<std::uint32_t> encode(Opcode opcode, std::string_view operands, ad
 		if (!check_signed("move_offset", move_offset, LONG_OFFSET_BITS, address))
 			return std::nullopt;
 		return word | signed_field(move_offset, LONG_OFFSET_BITS);
+	}
+
+	case OperandLayout::MoveBranch: {
+		const auto values = parse_operands<3>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		const auto [test_offset, move_offset, jump_offset] = *values;
+		if (!check_signed("test_offset", test_offset, TEST_OFFSET_BITS, address) ||
+		    !check_signed("move_offset", move_offset, MJN_MOVE_BITS, address) ||
+		    !check_signed("jump_offset", jump_offset, MJN_JUMP_BITS, address))
+			return std::nullopt;
+		return word | signed_field(test_offset, TEST_OFFSET_BITS) << NARROW_SHIFT |
+		       signed_field(move_offset, MJN_MOVE_BITS) << MJN_MOVE_SHIFT |
+		       signed_field(jump_offset, MJN_JUMP_BITS);
+	}
+
+	case OperandLayout::Fill: {
+		const auto values = parse_operands<3>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		const auto [addr_offset, data, count] = *values;
+		if (!check_signed("addr_offset", addr_offset, ADDR_OFFSET_BITS, address) ||
+		    !check_byte("data", data, address) || !check_byte("count", count, address))
+			return std::nullopt;
+		if (count == 0) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		return word | static_cast<std::uint32_t>(count) << NARROW_SHIFT |
+		       signed_field(addr_offset, ADDR_OFFSET_BITS) << ADDR_SHIFT |
+		       static_cast<std::uint32_t>(data);
 	}
 	}
 	return std::nullopt;

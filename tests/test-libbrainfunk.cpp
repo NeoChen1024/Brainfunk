@@ -347,6 +347,69 @@ int main() {
         check(agrees(far, {}, "\x01"), "known values follow base_ptr across M");
     }
 
+    /* ---- fuse ---- */
+    const auto fused = [](std::string_view code) { return dump(code, Format::BIT, OPT_FUSE); };
+    {
+        const auto listing = fused(",[->+<].");
+        check(contains(listing, "MULC\t1, 0, 1"), "multiply loop clears through MULC");
+        check(!contains(listing, "S\t"), "MULC replaces the clear");
+    }
+    {
+        const auto listing = fused(",[->+>++<<]");
+        check(contains(listing, "MUL\t1, 0, 1") && contains(listing, "MULC\t2, 0, 2"),
+              "only the last multiply of a chain clears");
+    }
+    check(contains(fused(",[-]"), "S\t0, 0"), "a clear with no multiply stays S");
+    {
+        const auto listing = fused(",[.>+<-]");
+        check(contains(listing, "DJN\t0,"), "decrement fuses into the loop branch");
+        check(!contains(listing, "A\t0, 255"), "DJN replaces the decrement");
+        check(contains(listing, "A\t1, 1"), "DJN leaves other cells alone");
+    }
+    {
+        const auto listing = fused(",[-.]");
+        check(!contains(listing, "DJN"), "decrement read before the branch stays");
+        check(contains(fused(",[--.,]"), "IO\t0, 0"), "input stays in a loop");
+    }
+    check(!contains(fused(",[.+]"), "DJN"), "increment does not fuse");
+    {
+        const auto listing = fused(",[.>]");
+        check(contains(listing, "MJN\t0, 1, "), "back-edge move fuses into the branch");
+        check(!contains(listing, "\tM\t"), "MJN replaces M");
+    }
+    {
+        const std::string far_move = ",[." + std::string(128, '>') + "]";
+        check(!contains(fused(far_move), "MJN"), "move beyond 8 bits stays M");
+        const std::string near_move = ",[." + std::string(127, '>') + "]";
+        check(contains(fused(near_move), "MJN"), "move of exactly 8 bits fuses");
+    }
+    {
+        std::string long_loop = ",[";
+        for (int i = 0; i < 2048; ++i) long_loop += ".,";
+        const auto long_listing = fused(long_loop + ">]");
+        check(!contains(long_listing, "MJN"), "jump beyond 12 bits stays JN");
+    }
+    {
+        const auto listing = fused(",>,>,<<[-]>[-]>[-]<<");
+        check(contains(listing, "SRUN\t0, 0, 3"), "adjacent clears become SRUN");
+        check(!contains(listing, "S\t"), "SRUN replaces the sets");
+    }
+    check(!contains(fused(",>,<[-]>>[-]<<."), "SRUN"), "a gap breaks a run");
+    {
+        std::string long_run = ",";
+        for (int i = 0; i < 300; ++i) long_run += ">,";
+        long_run.append(300, '<');
+        for (int i = 0; i < 300; ++i) long_run += "[-]>";
+        long_run += "<.";
+        const auto listing = fused(long_run);
+        check(contains(listing, "SRUN\t0, 0, 255"), "a run stops at the count limit");
+        const auto input = std::string(301, 'x');
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            check(execute(long_run, level, MEMSIZE, input, 100000).output == std::string(1, '\0'),
+                  "long run executes correctly");
+        }
+    }
+
     /* ---- differential: every level against the unoptimized program ---- */
     constexpr addr_t step_limit = 20000;
     constexpr std::string_view input = "Az\xff\x01?";

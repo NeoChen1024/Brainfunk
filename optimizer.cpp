@@ -53,7 +53,7 @@ std::vector<Bitcode> lazy_move(std::span<const Bitcode> code) {
                 !fits_signed(instruction.src_offset() + pending, SRC_OFFSET_BITS)) {
                 flush();
             }
-            out.push_back(Bitcode::mul(instruction.addr_offset() + pending,
+            out.push_back(Bitcode::mul(Opcode::MUL, instruction.addr_offset() + pending,
                                        instruction.src_offset() + pending, instruction.data()));
             break;
 
@@ -87,8 +87,7 @@ std::vector<Bitcode> lazy_move(std::span<const Bitcode> code) {
             out.push_back(instruction);
             break;
 
-        case Opcode::X:
-        case Opcode::Count:
+        default:
             throw BrainfunkException("Invalid instruction in optimizer");
         }
     }
@@ -179,8 +178,7 @@ public:
                 out_.push_back(instruction);
                 break;
 
-            case Opcode::X:
-            case Opcode::Count:
+            default:
                 throw BrainfunkException("Invalid instruction in optimizer");
             }
         }
@@ -299,20 +297,195 @@ private:
     }
 };
 
+/* ------------------------------------------------------------------
+ *  fuse: merge common instruction pairs into one instruction
+ *
+ *  Each rewrite moves a memory access over instructions that do not touch that
+ *  cell, so it cannot be observed.
+ * ------------------------------------------------------------------ */
+class Fuser {
+public:
+    Fuser(std::span<const Bitcode> code, addr_t memory_size)
+        : code_(code), memory_size_(memory_size) {
+        out_.reserve(code.size());
+    }
+
+    std::vector<Bitcode> run() {
+        for (const auto& instruction : code_) {
+            switch (instruction.opcode()) {
+            case Opcode::A:
+            case Opcode::IO:
+                last_reader_.erase(key(instruction.addr_offset()));
+                out_.push_back(instruction);
+                break;
+
+            case Opcode::S:
+                if (!clear_in_last_reader(instruction)) out_.push_back(instruction);
+                break;
+
+            case Opcode::MUL:
+                last_reader_.erase(key(instruction.addr_offset()));
+                last_reader_[key(instruction.src_offset())] = out_.size();
+                out_.push_back(instruction);
+                break;
+
+            case Opcode::JE:
+                last_reader_.clear();
+                open_loops_.push_back(out_.size());
+                out_.push_back(instruction);
+                break;
+
+            case Opcode::JN:
+                last_reader_.clear();
+                close_loop(instruction);
+                break;
+
+            case Opcode::F:
+            case Opcode::M:
+            case Opcode::H:
+                last_reader_.clear();
+                out_.push_back(instruction);
+                break;
+
+            default:
+                throw BrainfunkException("Invalid instruction in optimizer");
+            }
+        }
+        return std::move(out_);
+    }
+
+private:
+    std::span<const Bitcode>      code_;
+    addr_t                        memory_size_;
+    std::vector<Bitcode>          out_;
+    std::vector<std::size_t>      open_loops_;
+    std::map<addr_t, std::size_t> last_reader_;   // cell -> MUL that last read it, if
+                                                  // nothing else touched it since
+
+    [[nodiscard]] addr_t key(offset_t offset) const {
+        return effective_address(0, offset, memory_size_);
+    }
+
+    /* MUL ... ; S src,0  ->  MULC ... */
+    bool clear_in_last_reader(const Bitcode& set) {
+        const auto found = last_reader_.find(key(set.addr_offset()));
+        if (found == last_reader_.end()) return false;
+
+        const auto index = found->second;
+        last_reader_.erase(found);
+        if (set.data() != 0) return false;
+
+        const auto& mul = out_[index];
+        out_[index] = Bitcode::mul(Opcode::MULC, mul.addr_offset(), mul.src_offset(), mul.data());
+        return true;
+    }
+
+    void close_loop(const Bitcode& jump) {
+        const auto open = open_loops_.back();
+        open_loops_.pop_back();
+
+        if (fuse_decrement(jump)) return;
+        if (fuse_move(jump, open)) return;
+        out_.push_back(jump);
+    }
+
+    /* A t,-1 ; (not touching t) ; JN t  ->  (not touching t) ; DJN t */
+    bool fuse_decrement(const Bitcode& jump) {
+        const auto cell = key(jump.test_offset());
+
+        for (auto i = out_.size(); i-- > 0;) {
+            const auto& instruction = out_[i];
+            switch (instruction.opcode()) {
+            case Opcode::A:
+                if (key(instruction.addr_offset()) != cell) continue;
+                if (instruction.data() != memory_t{255}) return false;
+                out_.erase(out_.begin() + static_cast<std::ptrdiff_t>(i));
+                out_.push_back(Bitcode::branch(Opcode::DJN, jump.test_offset(), 0));
+                return true;
+
+            case Opcode::S:
+            case Opcode::IO:
+                if (key(instruction.addr_offset()) == cell) return false;
+                continue;
+
+            case Opcode::MUL:
+            case Opcode::MULC:
+                if (key(instruction.addr_offset()) == cell ||
+                    key(instruction.src_offset()) == cell) {
+                    return false;
+                }
+                continue;
+
+            default:
+                return false;   // the block starts here
+            }
+        }
+        return false;
+    }
+
+    /* M d ; JN t  ->  MJN t,d, when both fit the narrower fields */
+    bool fuse_move(const Bitcode& jump, std::size_t open) {
+        if (out_.empty() || out_.back().opcode() != Opcode::M) return false;
+
+        const auto move_offset = out_.back().move_offset();
+        const auto distance = static_cast<offset_t>(out_.size() - 1 - open);
+        if (!fits_signed(move_offset, MJN_MOVE_BITS) || !fits_signed(-distance, MJN_JUMP_BITS)) {
+            return false;
+        }
+        out_.back() = Bitcode::move_branch(jump.test_offset(), move_offset, 0);
+        return true;
+    }
+};
+
+/* S a,v ; S a+1,v ; S a+2,v  ->  SRUN a,v,3 */
+std::vector<Bitcode> merge_set_runs(std::span<const Bitcode> code) {
+    constexpr unsigned MAX_RUN = 255;
+
+    std::vector<Bitcode> out;
+    out.reserve(code.size());
+
+    std::size_t pc = 0;
+    while (pc < code.size()) {
+        const auto& first = code[pc];
+        unsigned run = 1;
+        if (first.opcode() == Opcode::S) {
+            while (run < MAX_RUN && pc + run < code.size()) {
+                const auto& next = code[pc + run];
+                if (next.opcode() != Opcode::S || next.data() != first.data() ||
+                    next.addr_offset() != first.addr_offset() + static_cast<offset_t>(run)) {
+                    break;
+                }
+                ++run;
+            }
+        }
+        out.push_back(run > 1 ? Bitcode::fill(first.addr_offset(), first.data(), run) : first);
+        pc += run;
+    }
+    return out;
+}
+
 /* Recomputes jump offsets after instructions were added or removed.  Every
  * branch comes from a matched bracket, so a stack recovers the pairing. */
 void relink_jumps(std::vector<Bitcode>& code) {
     std::vector<std::size_t> open_loops;
 
     for (std::size_t pc = 0; pc < code.size(); ++pc) {
-        if (code[pc].opcode() == Opcode::JE) {
+        switch (code[pc].opcode()) {
+        case Opcode::JE:
             open_loops.push_back(pc);
-        } else if (code[pc].opcode() == Opcode::JN) {
+            break;
+        case Opcode::JN:
+        case Opcode::DJN:
+        case Opcode::MJN: {
             const auto open = open_loops.back();
             open_loops.pop_back();
             const auto distance = static_cast<offset_t>(pc) - static_cast<offset_t>(open);
-            code[open] = Bitcode::branch(Opcode::JE, code[open].test_offset(), distance);
-            code[pc] = Bitcode::branch(Opcode::JN, code[pc].test_offset(), -distance);
+            code[open] = code[open].with_jump_offset(distance);
+            code[pc] = code[pc].with_jump_offset(-distance);
+            break;
+        }
+        default:
+            break;
         }
     }
 }
@@ -328,6 +501,10 @@ void Brainfunk::optimize(int level) {
     reset_state();
     auto code = lazy_move(bitcode_);
     if (level >= OPT_FOLD) code = Folder(code, memory_.size()).run();
+    if (level >= OPT_FUSE) {
+        code = Fuser(code, memory_.size()).run();
+        code = merge_set_runs(code);
+    }
     relink_jumps(code);
     bitcode_ = std::move(code);
 }

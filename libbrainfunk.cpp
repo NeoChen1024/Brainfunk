@@ -217,7 +217,7 @@ bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
     }
 
     for (std::size_t i = 0; i < pairs; ++i) {
-        bitcode_.push_back(Bitcode::mul(offset[i], 0, mul[i]));
+        bitcode_.push_back(Bitcode::mul(Opcode::MUL, offset[i], 0, mul[i]));
     }
 
     /* Insert S(0) to clear the cell */
@@ -320,7 +320,15 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
               "#define JE(test_offset, jump_offset)       while (memory[EA(test_offset)] != 0) {\n"
               "#define JN(test_offset, jump_offset)       }\n"
               "#define IO(addr_offset, operation)         brainfunk_io(EA(addr_offset), (operation))\n"
-              "#define H()                                return 0\n\n"
+              "#define H()                                return 0\n"
+              "#define MULC(addr_offset, src_offset, factor) do { \\\n"
+              "\tMUL(addr_offset, src_offset, factor); \\\n"
+              "\tmemory[EA(src_offset)] = 0; \\\n"
+              "} while (0)\n"
+              "#define DJN(test_offset, jump_offset)      --memory[EA(test_offset)]; }\n"
+              "#define MJN(test_offset, move_offset, jump_offset) M(move_offset); }\n"
+              "#define SRUN(addr_offset, data, count) \\\n"
+              "\tfor (int64_t i_ = 0; i_ < (count); ++i_) memory[EA((addr_offset) + i_)] = (uint8_t)(data)\n\n"
               "int main(void)\n"
               "{\n";
         // clang-format on
@@ -410,6 +418,20 @@ ExecutionStats Brainfunk::run_counted(std::istream& is, std::ostream& os) {
                 ++stats.memory_reads;
             }
             break;
+        case Opcode::MULC:
+            stats.memory_reads += 2;
+            stats.memory_writes += 2;
+            break;
+        case Opcode::DJN:
+            ++stats.memory_reads;
+            ++stats.memory_writes;
+            break;
+        case Opcode::MJN:
+            ++stats.memory_reads;
+            break;
+        case Opcode::SRUN:
+            stats.memory_writes += instruction.count();
+            break;
         case Opcode::X:
         case Opcode::M:
         case Opcode::H:
@@ -463,6 +485,12 @@ std::string Bitcode::to_string(BitcodeFormat format) const {
         break;
     case OperandLayout::Move:
         operand << move_offset();
+        break;
+    case OperandLayout::MoveBranch:
+        operand << test_offset() << ", " << move_offset() << ", " << jump_offset();
+        break;
+    case OperandLayout::Fill:
+        operand << addr_offset() << ", " << static_cast<unsigned>(data()) << ", " << count();
         break;
     }
 
@@ -542,6 +570,32 @@ bool Bitcode::execute(std::span<memory_t> memory,
     case Opcode::H:
         return false;   // halt
 
+    case Opcode::MULC: {
+        const memory_t source = memory[ea(src_offset())];
+        memory[ea(addr_offset())] += static_cast<memory_t>(source * data());
+        memory[ea(src_offset())] = 0;
+        break;
+    }
+
+    case Opcode::DJN:
+        if (--memory[ea(test_offset())] != 0) {
+            pc += static_cast<addr_t>(jump_offset());
+        }
+        break;
+
+    case Opcode::MJN:
+        base_ptr = ea(move_offset());
+        if (memory[ea(test_offset())] != 0) {
+            pc += static_cast<addr_t>(jump_offset());
+        }
+        break;
+
+    case Opcode::SRUN:
+        for (unsigned i = 0; i < count(); ++i) {
+            memory[ea(addr_offset() + static_cast<offset_t>(i))] = data();
+        }
+        break;
+
     default:
         throw BrainfunkException("Invalid opcode");
     }
@@ -589,8 +643,8 @@ Bitcode Bitcode::data_op(Opcode opcode, offset_t addr_offset, memory_t data) {
     return bitcode;
 }
 
-Bitcode Bitcode::mul(offset_t addr_offset, offset_t src_offset, memory_t factor) {
-    auto bitcode = data_op(Opcode::MUL, addr_offset, factor);
+Bitcode Bitcode::mul(Opcode opcode, offset_t addr_offset, offset_t src_offset, memory_t factor) {
+    auto bitcode = data_op(opcode, addr_offset, factor);
     bitcode.narrow_ = narrow_field(src_offset, SRC_OFFSET_BITS, "src_offset");
     return bitcode;
 }
@@ -612,5 +666,30 @@ Bitcode Bitcode::scan(offset_t test_offset, offset_t step) {
 Bitcode Bitcode::move(offset_t move_offset) {
     auto bitcode = none(Opcode::M);
     bitcode.wide_ = wide_field(move_offset, IN_MEMORY_WIDE_BITS, "move_offset");
+    return bitcode;
+}
+
+Bitcode Bitcode::move_branch(offset_t test_offset, offset_t move_offset, offset_t jump_offset) {
+    auto bitcode = none(Opcode::MJN);
+    bitcode.narrow_ = narrow_field(test_offset, TEST_OFFSET_BITS, "test_offset");
+    bitcode.short_ = narrow_field(move_offset, MJN_MOVE_BITS, "move_offset");
+    bitcode.wide_ = wide_field(jump_offset, MJN_JUMP_BITS, "jump_offset");
+    return bitcode;
+}
+
+Bitcode Bitcode::fill(offset_t addr_offset, memory_t data, unsigned count) {
+    if (count == 0 || count > 255) {
+        throw BrainfunkException("count out of range");
+    }
+    auto bitcode = data_op(Opcode::SRUN, addr_offset, data);
+    bitcode.narrow_ = static_cast<std::int8_t>(static_cast<std::uint8_t>(count));
+    return bitcode;
+}
+
+Bitcode Bitcode::with_jump_offset(offset_t jump_offset) const {
+    auto bitcode = *this;
+    bitcode.wide_ = wide_field(jump_offset,
+                               opcode_ == Opcode::MJN ? MJN_JUMP_BITS : IN_MEMORY_WIDE_BITS,
+                               "jump_offset");
     return bitcode;
 }

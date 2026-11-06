@@ -80,3 +80,25 @@ fact survives. This is what removes the `[-]` that often follows a loop.
 
 Two different offsets can name one cell when they differ by a multiple of the memory size.
 Cells are therefore keyed by their address modulo memory size.
+
+## Level 3: fused instructions
+
+The last pass merges common instruction pairs. Each rewrite only moves a memory access over
+instructions that do not touch that cell.
+
+| Input | Result |
+|---|---|
+| `MUL a,s,f ; ... ; S s,0` | `MULC a,s,f ; ...` |
+| `A t,255 ; ... ; JN t,j` | `... ; DJN t,j` |
+| `M d ; JN t,j` | `MJN t,d,j`, when `d` fits 8 bits and `j` fits 12 |
+| `S a,v ; S a+1,v ; S a+2,v` | `SRUN a,v,3` |
+
+`...` is any number of instructions in the same block that do not touch the cell in question.
+
+This is the only level that does not reduce the work a machine with a single memory port has to
+do, with one exception: `DJN` reads its cell once where `A` and `JN` read it twice. The other
+rewrites remove an instruction fetch and decode, while their memory accesses stay. `-m stat`
+reports both.
+
+`MULC` must run after folding. Fusing earlier would force the clear to happen even when folding
+can prove it is overwritten.

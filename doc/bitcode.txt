@@ -76,3 +76,33 @@ IO addr_offset, operation
 
 H
     Halt.
+
+
+Fused instructions
+------------------
+
+These only make one instruction out of a pair that is otherwise common.  They
+do nothing the instructions above cannot.
+
+MULC addr_offset, src_offset, factor
+    value = memory[EA(src_offset)]
+    memory[EA(addr_offset)] += value * factor
+    memory[EA(src_offset)] = 0
+    MUL followed by S src_offset, 0.  If both offsets name one cell, it ends at 0.
+
+DJN test_offset, jump_offset
+    memory[EA(test_offset)] -= 1
+    if memory[EA(test_offset)] != 0: pc = pc + 1 + sign_extend(jump_offset)
+    A test_offset, 255 followed by JN test_offset, jump_offset.
+
+MJN test_offset, move_offset, jump_offset
+    base_ptr = (base_ptr + sign_extend(move_offset)) mod MEMSIZE
+    if memory[EA(test_offset)] != 0: pc = pc + 1 + sign_extend(jump_offset)
+    M move_offset followed by JN test_offset, jump_offset.  EA() uses the moved
+    base_ptr.
+
+SRUN addr_offset, data, count
+    for i in 0 .. count-1:
+        memory[EA(addr_offset + i)] = data
+    S on consecutive cells, count is 1 to 255.  Takes a data-dependent number of
+    memory writes.

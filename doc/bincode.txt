@@ -18,8 +18,12 @@ JE   6   BRANCH
 JN   7   BRANCH
 IO   8   DATA
 H    9   NONE
+MULC 10  MUL
+DJN  11  BRANCH
+MJN  12  MOVE_BRANCH
+SRUN 13  FILL
 
-Values 10 to 15 are reserved.
+Values 14 and 15 are reserved.
 
 
 Formats
@@ -42,6 +46,13 @@ writes zero there.
  +------+----------+-------------+---------+
  |  op  | reserved |     move_offset       |  MOVE
  +------+----------+-------------+---------+
+ |  op  |  count   | addr_offset |  data   |  FILL
+ +------+----------+-------------+---------+
+
+  31  28 27      20 19      12 11          0
+ +------+----------+----------+-------------+
+ |  op  |test_offset|move_offset| jump_offset|  MOVE_BRANCH
+ +------+----------+----------+-------------+
 
 Field        Bits     Range
 op           [31:28]  0 to 15
@@ -52,12 +63,21 @@ data, factor [7:0]    0 to 255
 jump_offset  [19:0]   -524288 to 524287
 step         [19:0]   -524288 to 524287
 move_offset  [19:0]   -524288 to 524287
+count        [27:20]  1 to 255, unsigned
+
+MOVE_BRANCH only:
+move_offset  [19:12]  -128 to 127
+jump_offset  [11:0]   -2048 to 2047
 
 
 Width rationale
 ---------------
 
-[27:20] is always the second memory operand, and [19:8] the first.
+[27:20] is the second memory operand and [19:8] the first, except for count in
+FILL.
+
+MJN gives up jump range to fit move_offset.  Loops that move per iteration tend
+to be short, and a loop that does not fit stays M and JN.
 
 jump_offset matches a 20-bit program counter: with a wrapping pc it reaches
 every address of a 2^20-word code memory.

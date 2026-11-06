@@ -36,12 +36,15 @@ inline constexpr unsigned ADDR_OFFSET_BITS = 12;
 inline constexpr unsigned SRC_OFFSET_BITS  = 8;
 inline constexpr unsigned TEST_OFFSET_BITS = 8;
 inline constexpr unsigned LONG_OFFSET_BITS = 20;   // jump_offset, step, move_offset
+inline constexpr unsigned MJN_MOVE_BITS    = 8;
+inline constexpr unsigned MJN_JUMP_BITS    = 12;
 
 /* Levels for Brainfunk::optimize(); each one includes the previous ones. */
 inline constexpr int OPT_NONE      = 0;
 inline constexpr int OPT_LAZY_MOVE = 1;
 inline constexpr int OPT_FOLD      = 2;
-inline constexpr int OPT_MAX       = OPT_FOLD;
+inline constexpr int OPT_FUSE      = 3;
+inline constexpr int OPT_MAX       = OPT_FUSE;
 
 /* Bitcode format constants (exported for external use) */
 enum class BitcodeFormat : std::uint8_t { C, Plain };
@@ -61,6 +64,10 @@ enum class Opcode : std::uint8_t {
     JN,      // if mem[EA(test_offset)] != 0: pc += jump_offset
     IO,      // input or output at mem[EA(addr_offset)], selected by data
     H,       // halt
+    MULC,    // MUL, then mem[EA(src_offset)] = 0
+    DJN,     // mem[EA(test_offset)] -= 1, then JN
+    MJN,     // base_ptr += move_offset, then JN
+    SRUN,    // mem[EA(addr_offset + i)] = data, for i in 0 .. count-1
     Count    // sentinel - total number of opcodes
 };
 
@@ -70,7 +77,8 @@ inline constexpr std::string_view opcode_name(Opcode opcode) noexcept {
         std::string_view{"X"}, std::string_view{"A"}, std::string_view{"S"},
         std::string_view{"MUL"}, std::string_view{"F"}, std::string_view{"M"},
         std::string_view{"JE"}, std::string_view{"JN"}, std::string_view{"IO"},
-        std::string_view{"H"},
+        std::string_view{"H"}, std::string_view{"MULC"}, std::string_view{"DJN"},
+        std::string_view{"MJN"}, std::string_view{"SRUN"},
     };
     static_assert(names.size() == static_cast<std::size_t>(Opcode::Count));
     const auto index = static_cast<std::size_t>(opcode);
@@ -84,7 +92,9 @@ enum class OperandLayout : std::uint8_t {
     Mul,     // addr_offset, src_offset, factor
     Branch,  // test_offset, jump_offset
     Scan,    // test_offset, step
-    Move     // move_offset
+    Move,    // move_offset
+    MoveBranch, // test_offset, move_offset, jump_offset
+    Fill     // addr_offset, data, count
 };
 
 inline constexpr OperandLayout opcode_layout(Opcode opcode) noexcept {
@@ -98,7 +108,11 @@ inline constexpr OperandLayout opcode_layout(Opcode opcode) noexcept {
         OperandLayout::Branch, /* JE */
         OperandLayout::Branch, /* JN */
         OperandLayout::Data,   /* IO */
-        OperandLayout::None    /* H */
+        OperandLayout::None,   /* H */
+        OperandLayout::Mul,    /* MULC */
+        OperandLayout::Branch, /* DJN */
+        OperandLayout::MoveBranch, /* MJN */
+        OperandLayout::Fill    /* SRUN */
     };
     static_assert(layouts.size() == static_cast<std::size_t>(Opcode::Count));
     const auto index = static_cast<std::size_t>(opcode);
@@ -127,10 +141,17 @@ public:
     /* ---- construction, one factory per operand layout ---- */
     [[nodiscard]] static Bitcode none(Opcode opcode);
     [[nodiscard]] static Bitcode data_op(Opcode opcode, offset_t addr_offset, memory_t data);
-    [[nodiscard]] static Bitcode mul(offset_t addr_offset, offset_t src_offset, memory_t factor);
+    [[nodiscard]] static Bitcode mul(Opcode opcode, offset_t addr_offset, offset_t src_offset,
+                                     memory_t factor);
     [[nodiscard]] static Bitcode branch(Opcode opcode, offset_t test_offset, offset_t jump_offset);
     [[nodiscard]] static Bitcode scan(offset_t test_offset, offset_t step);
     [[nodiscard]] static Bitcode move(offset_t move_offset);
+    [[nodiscard]] static Bitcode move_branch(offset_t test_offset, offset_t move_offset,
+                                             offset_t jump_offset);
+    [[nodiscard]] static Bitcode fill(offset_t addr_offset, memory_t data, unsigned count);
+
+    /* The same branch, with a different target. */
+    [[nodiscard]] Bitcode with_jump_offset(offset_t jump_offset) const;
 
     /* ---- accessors: each one is valid only for the layouts that carry it ---- */
     [[nodiscard]] constexpr Opcode   opcode()      const noexcept { return opcode_; }
@@ -140,17 +161,25 @@ public:
     [[nodiscard]] constexpr offset_t test_offset() const noexcept { return narrow_; }
     [[nodiscard]] constexpr offset_t jump_offset() const noexcept { return wide_; }
     [[nodiscard]] constexpr offset_t step()        const noexcept { return wide_; }
-    [[nodiscard]] constexpr offset_t move_offset() const noexcept { return wide_; }
+    [[nodiscard]] constexpr offset_t move_offset() const noexcept {
+        return opcode_ == Opcode::MJN ? offset_t{short_} : offset_t{wide_};
+    }
+    [[nodiscard]] constexpr unsigned count() const noexcept {
+        return static_cast<std::uint8_t>(narrow_);
+    }
 
     /* Offset of the cell this instruction is about, for display and tracing. */
     [[nodiscard]] constexpr std::optional<offset_t> primary_offset() const noexcept {
         switch (opcode_layout(opcode_)) {
         case OperandLayout::Data:
         case OperandLayout::Mul:
+        case OperandLayout::Fill:
             return addr_offset();
         case OperandLayout::Branch:
         case OperandLayout::Scan:
             return test_offset();
+        case OperandLayout::MoveBranch:
+            return test_offset() + move_offset();   // tests after moving
         case OperandLayout::None:
         case OperandLayout::Move:
             break;
@@ -177,8 +206,8 @@ private:
 
     Opcode        opcode_ = Opcode::X;
     memory_t      data_   = 0;   // data, factor
-    std::int8_t   narrow_ = 0;   // src_offset, test_offset
-    std::int8_t   spare_  = 0;
+    std::int8_t   narrow_ = 0;   // src_offset, test_offset, count
+    std::int8_t   short_  = 0;   // move_offset of MJN
     std::int32_t  wide_   = 0;   // addr_offset, jump_offset, step, move_offset
 };
 

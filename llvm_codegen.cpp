@@ -1,6 +1,7 @@
 #include "libbrainfunk.hpp"
 
 #include <ostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -194,6 +195,81 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
         case Opcode::H:
             os << "  ret i32 0\n";
             break;
+
+        case Opcode::MULC: {
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "source", pc, instruction.src_offset(), memory_.size());
+            emit_cell_ptr(os, "destination", pc, instruction.addr_offset(), memory_.size());
+            os << "  %source.value." << pc << " = load i8, ptr %source.ptr." << pc << '\n'
+               << "  %destination.value." << pc << " = load i8, ptr %destination.ptr." << pc
+               << '\n'
+               << "  %product." << pc << " = mul i8 %source.value." << pc << ", "
+               << static_cast<unsigned>(instruction.data()) << '\n'
+               << "  %destination.updated." << pc << " = add i8 %destination.value." << pc
+               << ", %product." << pc << '\n'
+               << "  store i8 %destination.updated." << pc << ", ptr %destination.ptr." << pc
+               << '\n'
+               << "  store i8 0, ptr %source.ptr." << pc << '\n';
+            emit_next(os, pc);
+            break;
+        }
+
+        case Opcode::DJN: {
+            const auto target = jump_target({
+                .pc = pc,
+                .offset = instruction.jump_offset(),
+                .instruction_count = bitcode_.size(),
+            });
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "cell", pc, instruction.test_offset(), memory_.size());
+            os << "  %cell.value." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
+               << "  %cell.updated." << pc << " = add i8 %cell.value." << pc << ", 255\n"
+               << "  store i8 %cell.updated." << pc << ", ptr %cell.ptr." << pc << '\n'
+               << "  %condition." << pc << " = icmp ne i8 %cell.updated." << pc << ", 0\n"
+               << "  br i1 %condition." << pc << ", label %inst." << target
+               << ", label %inst." << pc + 1 << '\n';
+            break;
+        }
+
+        case Opcode::MJN: {
+            const auto target = jump_target({
+                .pc = pc,
+                .offset = instruction.jump_offset(),
+                .instruction_count = bitcode_.size(),
+            });
+            const auto normalized_move =
+                effective_address(0, instruction.move_offset(), memory_.size());
+            emit_load_base(os, pc);
+            os << "  %base.ptr.moved." << pc << " = add i64 %base.ptr." << pc << ", "
+               << normalized_move << '\n'
+               << "  %base.ptr.next." << pc << " = and i64 %base.ptr.moved." << pc << ", "
+               << memory_.size() - 1 << '\n'
+               << "  store i64 %base.ptr.next." << pc << ", ptr %base.ptr.addr\n"
+               << "  %test.sum." << pc << " = add i64 %base.ptr.next." << pc << ", "
+               << effective_address(0, instruction.test_offset(), memory_.size()) << '\n'
+               << "  %test.index." << pc << " = and i64 %test.sum." << pc << ", "
+               << memory_.size() - 1 << '\n'
+               << "  %test.ptr." << pc << " = getelementptr i8, ptr %tape, i64 %test.index." << pc
+               << '\n'
+               << "  %test.value." << pc << " = load i8, ptr %test.ptr." << pc << '\n'
+               << "  %condition." << pc << " = icmp ne i8 %test.value." << pc << ", 0\n"
+               << "  br i1 %condition." << pc << ", label %inst." << target
+               << ", label %inst." << pc + 1 << '\n';
+            break;
+        }
+
+        case Opcode::SRUN: {
+            emit_load_base(os, pc);
+            for (unsigned i = 0; i < instruction.count(); ++i) {
+                const auto name = "cell" + std::to_string(i);
+                emit_cell_ptr(os, name, pc, instruction.addr_offset() + static_cast<offset_t>(i),
+                              memory_.size());
+                os << "  store i8 " << static_cast<unsigned>(instruction.data()) << ", ptr %"
+                   << name << ".ptr." << pc << '\n';
+            }
+            emit_next(os, pc);
+            break;
+        }
 
         case Opcode::Count:
             throw BrainfunkException("Invalid opcode in LLVM IR emitter");
