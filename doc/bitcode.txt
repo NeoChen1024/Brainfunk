@@ -1,12 +1,78 @@
-MNEMONIC	Operand		Description
----------------|---------------|--------------------------------------------------------------------------------
-X		None		Invalid instruction / placeholder
-A		IMMEDIATE	Add operation
-S		IMMEDIATE	Set to a fixed integer
-MUL		DUAL		Multiply
-F		OFFSET		Find 0
-M		OFFSET		Move Data Pointer (Forward and Reverse)
-JE		OFFSET		Jump if equal to zero
-JN		OFFSET		Jump if not zero
-IO		IMMEDIATE	IO
-H		None		Halt
+Brainfunk bitcode: instruction set reference
+============================================
+
+doc/bincode.txt gives the binary encoding of these instructions.
+
+
+Machine state
+-------------
+
+memory[MEMSIZE]   8-bit cells, all zero at reset.  MEMSIZE is a power of two.
+base_ptr          Index into memory, zero at reset.
+pc                Index into the program, zero at reset.
+
+Only M and F change base_ptr.  No other instruction moves it.
+
+All cell arithmetic is modulo 256.
+
+
+Effective address
+-----------------
+
+EA(offset) = (base_ptr + sign_extend(offset)) mod MEMSIZE
+
+Every memory access goes through EA(); there is no access to a cell other than
+by adding a signed offset to base_ptr.
+
+
+Three kinds of offset
+---------------------
+
+addr_offset, src_offset, test_offset
+                  Select a cell relative to base_ptr, through EA().
+move_offset, step Added to base_ptr, modulo MEMSIZE.
+jump_offset       Added to pc, relative to the NEXT instruction: a taken jump
+                  continues at pc + 1 + jump_offset.
+
+
+Instructions
+------------
+
+Mnemonic and operands are the text format accepted by bit2bin.  Instructions
+without a stated effect on pc continue at pc + 1.
+
+X
+    Invalid instruction.  Execution stops with an error.
+
+A addr_offset, data
+    memory[EA(addr_offset)] += data
+
+S addr_offset, data
+    memory[EA(addr_offset)] = data
+
+MUL addr_offset, src_offset, factor
+    memory[EA(addr_offset)] += memory[EA(src_offset)] * factor
+    The source is read before the destination is written.
+
+F test_offset, step
+    while memory[EA(test_offset)] != 0:
+        base_ptr = (base_ptr + sign_extend(step)) mod MEMSIZE
+    Takes a data-dependent number of iterations and never ends if the condition
+    never becomes false.  EA() is recomputed from the new base_ptr each time.
+
+M move_offset
+    base_ptr = (base_ptr + sign_extend(move_offset)) mod MEMSIZE
+
+JE test_offset, jump_offset
+    if memory[EA(test_offset)] == 0: pc = pc + 1 + sign_extend(jump_offset)
+
+JN test_offset, jump_offset
+    if memory[EA(test_offset)] != 0: pc = pc + 1 + sign_extend(jump_offset)
+
+IO addr_offset, operation
+    operation 0: memory[EA(addr_offset)] = next input byte, or 0 at end of input
+    operation 1: output memory[EA(addr_offset)]
+    Other values are invalid and rejected by bit2bin.
+
+H
+    Halt.

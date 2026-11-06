@@ -2,6 +2,7 @@
 #include "ctre.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <iostream>
 #include <sstream>
@@ -18,8 +19,8 @@
 // ------------------------------------------------------------------
 
 Brainfunk::Brainfunk(std::size_t memsize) {
-    if (memsize == 0) {
-        throw BrainfunkException("Memory size must be greater than zero");
+    if (!std::has_single_bit(memsize)) {
+        throw BrainfunkException("Memory size must be a power of two");
     }
 
     base_ptr_ = 0;
@@ -98,7 +99,7 @@ void Brainfunk::translate(std::string_view code) {
             if (try_parse_set_zero_loop_(code))    continue;
 
             /* Fall through – ordinary loop */
-            bitcode_.emplace_back(Opcode::X);               // placeholder
+            bitcode_.push_back(Bitcode::none(Opcode::X));   // placeholder
             stack.push_back(bitcode_.size() - 1);
             code.remove_prefix(1);
             continue;
@@ -112,9 +113,9 @@ void Brainfunk::translate(std::string_view code) {
             stack.pop_back();
 
             auto pc = static_cast<offset_t>(bitcode_.size());
-            bitcode_.emplace_back(Opcode::JN, last_pc - pc);
+            bitcode_.push_back(Bitcode::branch(Opcode::JN, 0, last_pc - pc));
             bitcode_[static_cast<std::size_t>(last_pc)] =
-                Bitcode(Opcode::JE, pc - last_pc);
+                Bitcode::branch(Opcode::JE, 0, pc - last_pc);
 
             code.remove_prefix(1);
             continue;
@@ -123,28 +124,26 @@ void Brainfunk::translate(std::string_view code) {
         /* ---- simple instructions ---- */
         if (code.front() == '+' || code.front() == '-') {
             auto [net, len] = leading_run(code, "+-");
-            bitcode_.emplace_back(Opcode::A,
-                                  static_cast<memory_t>(net));
+            bitcode_.push_back(Bitcode::data_op(Opcode::A, 0, static_cast<memory_t>(net)));
             code.remove_prefix(len);
             continue;
         }
 
         if (code.front() == '>' || code.front() == '<') {
             auto [net, len] = leading_run(code, "><");
-            bitcode_.emplace_back(Opcode::M,
-                                  static_cast<offset_t>(net));
+            bitcode_.push_back(Bitcode::move(static_cast<offset_t>(net)));
             code.remove_prefix(len);
             continue;
         }
 
         if (code.front() == '.') {
-            bitcode_.emplace_back(Opcode::IO, IO_OUT);
+            bitcode_.push_back(Bitcode::data_op(Opcode::IO, 0, IO_OUT));
             code.remove_prefix(1);
             continue;
         }
 
         if (code.front() == ',') {
-            bitcode_.emplace_back(Opcode::IO, IO_IN);
+            bitcode_.push_back(Bitcode::data_op(Opcode::IO, 0, IO_IN));
             code.remove_prefix(1);
             continue;
         }
@@ -153,7 +152,7 @@ void Brainfunk::translate(std::string_view code) {
         code.remove_prefix(1);
     }
 
-    bitcode_.emplace_back(Opcode::H);
+    bitcode_.push_back(Bitcode::none(Opcode::H));
 
     if (!stack.empty()) {
         throw BrainfunkException("Unmatched opening bracket");
@@ -217,11 +216,11 @@ bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
     }
 
     for (std::size_t i = 0; i < pairs; ++i) {
-        bitcode_.emplace_back(Opcode::MUL, mul[i], offset[i]);
+        bitcode_.push_back(Bitcode::mul(offset[i], 0, mul[i]));
     }
 
     /* Insert S(0) to clear the cell */
-    bitcode_.emplace_back(Opcode::S, memory_t{0});
+    bitcode_.push_back(Bitcode::data_op(Opcode::S, 0, memory_t{0}));
 
     code.remove_prefix(m.size());
     return true;
@@ -238,7 +237,7 @@ bool Brainfunk::try_parse_scan_loop_(std::string_view& code) {
     if (!m) return false;
 
     auto net = count_net(m.to_view(), "><");
-    bitcode_.emplace_back(Opcode::F, static_cast<offset_t>(net));
+    bitcode_.push_back(Bitcode::scan(0, static_cast<offset_t>(net)));
     code.remove_prefix(m.size());
     return true;
 }
@@ -261,7 +260,7 @@ bool Brainfunk::try_parse_set_zero_loop_(std::string_view& code) {
      * net must be odd for the net effect to be set-to-zero. */
     if (net % 2 != 1 && net % 2 != -1) return false;
 
-    bitcode_.emplace_back(Opcode::S, memory_t{0});
+    bitcode_.push_back(Bitcode::data_op(Opcode::S, 0, memory_t{0}));
     code.remove_prefix(m.size());
     return true;
 }
@@ -282,8 +281,6 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
                 return instruction.opcode() == opcode;
             });
         };
-        const bool needs_wrap = has_opcode(Opcode::M) || has_opcode(Opcode::MUL) ||
-                                has_opcode(Opcode::F);
         const bool needs_io = has_opcode(Opcode::IO);
         const bool needs_memory = std::ranges::any_of(bitcode_, [](const Bitcode& instruction) {
             return instruction.opcode() != Opcode::X && instruction.opcode() != Opcode::H;
@@ -299,37 +296,30 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
                   "static size_t base_ptr;\n";
         }
         os << '\n';
-        if (needs_wrap) {
-            os << "static size_t wrap_offset(size_t address, int64_t offset)\n"
-              "{\n"
-              "\tif (offset >= 0)\n"
-              "\t\treturn (address + (uint64_t)offset % MEMSIZE) % MEMSIZE;\n"
-              "\tconst uint64_t backward = (uint64_t)(-(offset + 1)) + 1;\n"
-              "\treturn (address + MEMSIZE - backward % MEMSIZE) % MEMSIZE;\n"
-              "}\n\n";
-        }
         if (needs_io) {
-            os << "static void brainfunk_io(uint8_t arg)\n"
+            os << "static void brainfunk_io(size_t address, uint8_t arg)\n"
               "{\n"
               "\tif (arg == 0) {\n"
               "\t\tconst int input = getchar();\n"
-              "\t\tmemory[base_ptr] = input == EOF ? 0 : (uint8_t)input;\n"
+              "\t\tmemory[address] = input == EOF ? 0 : (uint8_t)input;\n"
               "\t} else {\n"
-              "\t\tputchar(memory[base_ptr]);\n"
+              "\t\tputchar(memory[address]);\n"
               "\t\tfflush(stdout);\n"
               "\t}\n"
               "}\n\n";
         }
-        os << "#define X()                 ((void)0)\n"
-              "#define A(value)             (memory[base_ptr] += (uint8_t)(value))\n"
-              "#define S(value)             (memory[base_ptr] = (uint8_t)(value))\n"
-              "#define MUL(offset, factor)  (memory[wrap_offset(base_ptr, (offset))] += (uint8_t)(memory[base_ptr] * (factor)))\n"
-              "#define F(offset)            while (memory[base_ptr] != 0) base_ptr = wrap_offset(base_ptr, (offset))\n"
-              "#define M(offset)            (base_ptr = wrap_offset(base_ptr, (offset)))\n"
-              "#define JE(offset)           while (memory[base_ptr] != 0) {\n"
-              "#define JN(offset)           }\n"
-              "#define IO(operation)        brainfunk_io(operation)\n"
-              "#define H()                  return 0\n\n"
+        os << "#define EA(offset) ((base_ptr + (size_t)(int64_t)(offset)) & (MEMSIZE - 1u))\n\n"
+              "#define X()                                ((void)0)\n"
+              "#define A(addr_offset, data)               (memory[EA(addr_offset)] += (uint8_t)(data))\n"
+              "#define S(addr_offset, data)               (memory[EA(addr_offset)] = (uint8_t)(data))\n"
+              "#define MUL(addr_offset, src_offset, factor) \\\n"
+              "\t(memory[EA(addr_offset)] += (uint8_t)(memory[EA(src_offset)] * (factor)))\n"
+              "#define F(test_offset, step)               while (memory[EA(test_offset)] != 0) base_ptr = EA(step)\n"
+              "#define M(move_offset)                     (base_ptr = EA(move_offset))\n"
+              "#define JE(test_offset, jump_offset)       while (memory[EA(test_offset)] != 0) {\n"
+              "#define JN(test_offset, jump_offset)       }\n"
+              "#define IO(addr_offset, operation)         brainfunk_io(EA(addr_offset), (operation))\n"
+              "#define H()                                return 0\n\n"
               "int main(void)\n"
               "{\n";
         // clang-format on
@@ -381,19 +371,26 @@ bool Brainfunk::step(std::istream& is, std::ostream& os) {
 std::string Bitcode::to_string(BitcodeFormat format) const {
     std::ostringstream operand;
 
-    /* Build the operand string */
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, memory_t>) {
-            operand << static_cast<unsigned>(arg);
-        } else if constexpr (std::is_same_v<T, offset_t>) {
-            operand << arg;
-        } else if constexpr (std::is_same_v<T, DualOperand>) {
-            operand << arg.offset << ", " << static_cast<unsigned>(arg.mul);
-        } else {
-            operand << "";   // std::monostate – no operand
-        }
-    }, operand_);
+    switch (opcode_layout(opcode_)) {
+    case OperandLayout::None:
+        break;
+    case OperandLayout::Data:
+        operand << addr_offset() << ", " << static_cast<unsigned>(data());
+        break;
+    case OperandLayout::Mul:
+        operand << addr_offset() << ", " << src_offset() << ", "
+                << static_cast<unsigned>(data());
+        break;
+    case OperandLayout::Branch:
+        operand << test_offset() << ", " << jump_offset();
+        break;
+    case OperandLayout::Scan:
+        operand << test_offset() << ", " << step();
+        break;
+    case OperandLayout::Move:
+        operand << move_offset();
+        break;
+    }
 
     /* Format output */
     if (format == BitcodeFormat::C) {
@@ -412,7 +409,10 @@ bool Bitcode::execute(std::span<memory_t> memory,
                       std::istream& is,
                       std::ostream& os) const {
 
-    auto size = memory.size();
+    const auto size = memory.size();
+    const auto ea = [&](offset_t offset) {
+        return effective_address(base_ptr, offset, size);
+    };
 
     switch (opcode_) {
 
@@ -420,56 +420,50 @@ bool Bitcode::execute(std::span<memory_t> memory,
         throw BrainfunkException("Empty instruction");
 
     case Opcode::A:
-        memory[base_ptr] += std::get<memory_t>(operand_);
+        memory[ea(addr_offset())] += data();
         break;
 
     case Opcode::S:
-        memory[base_ptr] = std::get<memory_t>(operand_);
+        memory[ea(addr_offset())] = data();
         break;
 
-    case Opcode::MUL: {
-        auto d = std::get<DualOperand>(operand_);
-        memory[wrap_offset(base_ptr, d.offset, size)] +=
-            static_cast<memory_t>(memory[base_ptr] * d.mul);
+    case Opcode::MUL:
+        memory[ea(addr_offset())] +=
+            static_cast<memory_t>(memory[ea(src_offset())] * data());
         break;
-    }
 
-    case Opcode::F: {
-        auto off = std::get<offset_t>(operand_);
-        while (memory[base_ptr] != 0) {
-            base_ptr = wrap_offset(base_ptr, off, size);
+    case Opcode::F:
+        while (memory[ea(test_offset())] != 0) {
+            base_ptr = ea(step());
         }
         break;
-    }
 
     case Opcode::M:
-        base_ptr = wrap_offset(base_ptr, std::get<offset_t>(operand_), size);
+        base_ptr = ea(move_offset());
         break;
 
     case Opcode::JE:
-        if (memory[base_ptr] == 0) {
-            pc += static_cast<addr_t>(std::get<offset_t>(operand_));
+        if (memory[ea(test_offset())] == 0) {
+            pc += static_cast<addr_t>(jump_offset());
         }
         break;
 
     case Opcode::JN:
-        if (memory[base_ptr] != 0) {
-            pc += static_cast<addr_t>(std::get<offset_t>(operand_));
+        if (memory[ea(test_offset())] != 0) {
+            pc += static_cast<addr_t>(jump_offset());
         }
         break;
 
-    case Opcode::IO: {
-        auto which = std::get<memory_t>(operand_);
-        if (which == IO_IN) {
+    case Opcode::IO:
+        if (data() == IO_IN) {
             memory_t io_input = 0;
             is >> std::noskipws >> io_input;
             if (is.eof()) io_input = 0;
-            memory[base_ptr] = io_input;
+            memory[ea(addr_offset())] = io_input;
         } else {
-            os << static_cast<char>(memory[base_ptr]) << std::flush;
+            os << static_cast<char>(memory[ea(addr_offset())]) << std::flush;
         }
         break;
-    }
 
     case Opcode::H:
         return false;   // halt
@@ -480,4 +474,69 @@ bool Bitcode::execute(std::span<memory_t> memory,
 
     ++pc;
     return true;
+}
+
+// ------------------------------------------------------------------
+//  factories  -  every field is range-checked against what it encodes to
+// ------------------------------------------------------------------
+
+namespace {
+
+std::int8_t narrow_field(offset_t value, unsigned bits, const char* name) {
+    if (!fits_signed(value, bits)) {
+        throw BrainfunkException(std::string(name) + " out of range");
+    }
+    return static_cast<std::int8_t>(value);
+}
+
+std::int32_t wide_field(offset_t value, unsigned bits, const char* name) {
+    if (!fits_signed(value, bits)) {
+        throw BrainfunkException(std::string(name) + " out of range");
+    }
+    return static_cast<std::int32_t>(value);
+}
+
+/* Moves and jumps may exceed their 20-bit binary field in a program that is only
+ * interpreted; bit2bin is what rejects those. */
+constexpr unsigned IN_MEMORY_WIDE_BITS = 32;
+
+} // anonymous namespace
+
+Bitcode Bitcode::none(Opcode opcode) {
+    Bitcode bitcode;
+    bitcode.opcode_ = opcode;
+    return bitcode;
+}
+
+Bitcode Bitcode::data_op(Opcode opcode, offset_t addr_offset, memory_t data) {
+    auto bitcode = none(opcode);
+    bitcode.data_ = data;
+    bitcode.wide_ = wide_field(addr_offset, ADDR_OFFSET_BITS, "addr_offset");
+    return bitcode;
+}
+
+Bitcode Bitcode::mul(offset_t addr_offset, offset_t src_offset, memory_t factor) {
+    auto bitcode = data_op(Opcode::MUL, addr_offset, factor);
+    bitcode.narrow_ = narrow_field(src_offset, SRC_OFFSET_BITS, "src_offset");
+    return bitcode;
+}
+
+Bitcode Bitcode::branch(Opcode opcode, offset_t test_offset, offset_t jump_offset) {
+    auto bitcode = none(opcode);
+    bitcode.narrow_ = narrow_field(test_offset, TEST_OFFSET_BITS, "test_offset");
+    bitcode.wide_ = wide_field(jump_offset, IN_MEMORY_WIDE_BITS, "jump_offset");
+    return bitcode;
+}
+
+Bitcode Bitcode::scan(offset_t test_offset, offset_t step) {
+    auto bitcode = none(Opcode::F);
+    bitcode.narrow_ = narrow_field(test_offset, TEST_OFFSET_BITS, "test_offset");
+    bitcode.wide_ = wide_field(step, IN_MEMORY_WIDE_BITS, "step");
+    return bitcode;
+}
+
+Bitcode Bitcode::move(offset_t move_offset) {
+    auto bitcode = none(Opcode::M);
+    bitcode.wide_ = wide_field(move_offset, IN_MEMORY_WIDE_BITS, "move_offset");
+    return bitcode;
 }

@@ -46,9 +46,9 @@ int main() {
 
     check(dump("[-]").find("S\t0") != std::string::npos,
           "odd decrement loop becomes set-zero");
-    check(dump("[>]").find("F\t1") != std::string::npos,
+    check(dump("[>]").find("F\t0, 1") != std::string::npos,
           "scan loop becomes find-zero");
-    check(dump("[->++<]").find("MUL\t1, 2") != std::string::npos,
+    check(dump("[->++<]").find("MUL\t1, 0, 2") != std::string::npos,
           "multiply-offset loop is optimized");
 
     check(dump("[->+<+>-<]").find("MUL") == std::string::npos,
@@ -74,6 +74,16 @@ int main() {
     check(llvm_ir.find("call i32 %read_byte") != std::string::npos &&
               llvm_ir.find("call void %write_byte") != std::string::npos,
           "LLVM IR uses runtime I/O callbacks");
+
+    {
+        bool rejected_size = false;
+        try {
+            Brainfunk brainfunk(10);
+        } catch (const BrainfunkException&) {
+            rejected_size = true;
+        }
+        check(rejected_size, "memory size that is not a power of two is rejected");
+    }
 
     bool rejected = false;
     try {

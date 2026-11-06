@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 /* ================================================================
@@ -31,6 +30,12 @@ inline constexpr std::size_t MEMSIZE = 1 << 16;   // Default memory size
 inline constexpr memory_t IO_IN  = 0;
 inline constexpr memory_t IO_OUT = 1;
 
+/* Instruction field widths; doc/bincode.txt is the normative layout. */
+inline constexpr unsigned ADDR_OFFSET_BITS = 12;
+inline constexpr unsigned SRC_OFFSET_BITS  = 8;
+inline constexpr unsigned TEST_OFFSET_BITS = 8;
+inline constexpr unsigned LONG_OFFSET_BITS = 20;   // jump_offset, step, move_offset
+
 /* Bitcode format constants (exported for external use) */
 enum class BitcodeFormat : std::uint8_t { C, Plain };
 
@@ -39,17 +44,17 @@ enum class BitcodeFormat : std::uint8_t { C, Plain };
  * ================================================================ */
 
 enum class Opcode : std::uint8_t {
-    X,       // (none)     empty / invalid
-    A,       // (imm)      add
-    S,       // (imm)      set
-    MUL,     // (dual)     multiply-add
-    F,       // (offset)   scan-forward
-    M,       // (offset)   move pointer
-    JE,      // (offset)   jump-if-equal-zero
-    JN,      // (offset)   jump-if-not-zero
-    IO,      // (imm)      input / output
-    H,       // (none)     halt
-    Count    // sentinel – total number of opcodes
+    X,       // invalid / placeholder
+    A,       // mem[EA(addr_offset)] += data
+    S,       // mem[EA(addr_offset)]  = data
+    MUL,     // mem[EA(addr_offset)] += mem[EA(src_offset)] * data
+    F,       // while mem[EA(test_offset)] != 0: base_ptr += step
+    M,       // base_ptr += move_offset
+    JE,      // if mem[EA(test_offset)] == 0: pc += jump_offset
+    JN,      // if mem[EA(test_offset)] != 0: pc += jump_offset
+    IO,      // input or output at mem[EA(addr_offset)], selected by data
+    H,       // halt
+    Count    // sentinel - total number of opcodes
 };
 
 /* Friendly names – must match Opcode ordering */
@@ -65,36 +70,33 @@ inline constexpr std::string_view opcode_name(Opcode opcode) noexcept {
     return (index < names.size()) ? names[index] : std::string_view{"???"};
 }
 
-/* Operand type classifier:
- *    N – none, O – offset, M – dual (mul + offset), I – immediate */
-inline constexpr char opcode_operand_type(Opcode opcode) noexcept {
-    constexpr std::array types = {
-        'N', /* X */
-        'I', /* A */
-        'I', /* S */
-        'M', /* MUL */
-        'O', /* F */
-        'O', /* M */
-        'O', /* JE */
-        'O', /* JN */
-        'I', /* IO */
-        'N'  /* H */
-    };
-    static_assert(types.size() == static_cast<std::size_t>(Opcode::Count));
-    const auto index = static_cast<std::size_t>(opcode);
-    return (index < types.size()) ? types[index] : '?';
-}
-
-/* ================================================================
- * Helper: operand storage
- * ================================================================ */
-
-struct DualOperand {
-    memory_t mul;      // multiplication factor (mod 256)
-    offset_t offset;   // pointer offset
+/* Which operands an opcode carries, and therefore its text and binary layout. */
+enum class OperandLayout : std::uint8_t {
+    None,    // (no operand)
+    Data,    // addr_offset, data
+    Mul,     // addr_offset, src_offset, factor
+    Branch,  // test_offset, jump_offset
+    Scan,    // test_offset, step
+    Move     // move_offset
 };
 
-using Operand = std::variant<std::monostate, memory_t, offset_t, DualOperand>;
+inline constexpr OperandLayout opcode_layout(Opcode opcode) noexcept {
+    constexpr std::array layouts = {
+        OperandLayout::None,   /* X */
+        OperandLayout::Data,   /* A */
+        OperandLayout::Data,   /* S */
+        OperandLayout::Mul,    /* MUL */
+        OperandLayout::Scan,   /* F */
+        OperandLayout::Move,   /* M */
+        OperandLayout::Branch, /* JE */
+        OperandLayout::Branch, /* JN */
+        OperandLayout::Data,   /* IO */
+        OperandLayout::None    /* H */
+    };
+    static_assert(layouts.size() == static_cast<std::size_t>(Opcode::Count));
+    const auto index = static_cast<std::size_t>(opcode);
+    return (index < layouts.size()) ? layouts[index] : OperandLayout::None;
+}
 
 /* ================================================================
  * Exception
@@ -109,26 +111,29 @@ public:
  * Bitcode – single intermediate instruction
  * ================================================================ */
 
+/* Flat 8-byte record, so a cache line holds eight instructions and an operand
+ * is a plain load.  Not the binary encoding: that is produced by bit2bin. */
 class Bitcode {
 public:
-    /* ---- constructors ---- */
-    Bitcode() noexcept
-        : opcode_(Opcode::X), operand_(std::monostate{}) {}
+    constexpr Bitcode() noexcept = default;
 
-    explicit Bitcode(Opcode op)           // no operand
-        : opcode_(op), operand_(std::monostate{}) {}
+    /* ---- construction, one factory per operand layout ---- */
+    [[nodiscard]] static Bitcode none(Opcode opcode);
+    [[nodiscard]] static Bitcode data_op(Opcode opcode, offset_t addr_offset, memory_t data);
+    [[nodiscard]] static Bitcode mul(offset_t addr_offset, offset_t src_offset, memory_t factor);
+    [[nodiscard]] static Bitcode branch(Opcode opcode, offset_t test_offset, offset_t jump_offset);
+    [[nodiscard]] static Bitcode scan(offset_t test_offset, offset_t step);
+    [[nodiscard]] static Bitcode move(offset_t move_offset);
 
-    Bitcode(Opcode op, memory_t imm)      // immediate operand
-        : opcode_(op), operand_(imm) {}
-
-    Bitcode(Opcode op, offset_t off)      // offset operand
-        : opcode_(op), operand_(off) {}
-
-    Bitcode(Opcode op, memory_t mul, offset_t off)  // dual operand
-        : opcode_(op), operand_(DualOperand{.mul = mul, .offset = off}) {}
-
-    /* ---- accessors ---- */
-    [[nodiscard]] Opcode opcode() const noexcept { return opcode_; }
+    /* ---- accessors: each one is valid only for the layouts that carry it ---- */
+    [[nodiscard]] constexpr Opcode   opcode()      const noexcept { return opcode_; }
+    [[nodiscard]] constexpr memory_t data()        const noexcept { return data_; }
+    [[nodiscard]] constexpr offset_t addr_offset() const noexcept { return wide_; }
+    [[nodiscard]] constexpr offset_t src_offset()  const noexcept { return narrow_; }
+    [[nodiscard]] constexpr offset_t test_offset() const noexcept { return narrow_; }
+    [[nodiscard]] constexpr offset_t jump_offset() const noexcept { return wide_; }
+    [[nodiscard]] constexpr offset_t step()        const noexcept { return wide_; }
+    [[nodiscard]] constexpr offset_t move_offset() const noexcept { return wide_; }
 
     /* ---- formatting ---- */
     [[nodiscard]] std::string to_string(
@@ -147,9 +152,14 @@ public:
 private:
     friend class Brainfunk;
 
-    Opcode   opcode_;
-    Operand  operand_;
+    Opcode        opcode_ = Opcode::X;
+    memory_t      data_   = 0;   // data, factor
+    std::int8_t   narrow_ = 0;   // src_offset, test_offset
+    std::int8_t   spare_  = 0;
+    std::int32_t  wide_   = 0;   // addr_offset, jump_offset, step, move_offset
 };
+
+static_assert(sizeof(Bitcode) == 8);
 
 /* ================================================================
  * Brainfunk – the main interpreter / compiler
@@ -159,6 +169,8 @@ enum class Format { BIT, C, LLVM_IR };
 
 class Brainfunk {
 public:
+    /* `memsize` must be a power of two: addresses wrap by masking, as they do
+     * in hardware. */
     explicit Brainfunk(std::size_t memsize = MEMSIZE);
 
     Brainfunk(const Brainfunk&)            = delete;
@@ -253,9 +265,15 @@ struct LeadingRun {
 }
 
 /* True when `value` fits in a two's-complement field of `bits` bits. */
-[[nodiscard]] constexpr bool fits_signed(std::ptrdiff_t value, unsigned bits) noexcept {
-    const std::ptrdiff_t limit = std::ptrdiff_t{1} << (bits - 1);
+[[nodiscard]] constexpr bool fits_signed(std::int64_t value, unsigned bits) noexcept {
+    const std::int64_t limit = std::int64_t{1} << (bits - 1);
     return value >= -limit && value < limit;
+}
+
+/* Effective address; `size` is a power of two. */
+[[nodiscard]] constexpr addr_t effective_address(addr_t base_ptr, offset_t offset,
+                                                 addr_t size) noexcept {
+    return (base_ptr + static_cast<addr_t>(offset)) & (size - 1);
 }
 
 /* Modular-wrapping address arithmetic. */

@@ -1,34 +1,66 @@
-MNEMONIC	Operand		Description
----------------|---------------|--------------------------------------------------------------------------------
-X	(0)	None		Invalid instruction / placeholder
-A	(1)	IMMEDIATE	Add operation
-S	(2)	IMMEDIATE	Set to a fixed integer
-MUL	(3)	DUAL		Multiply
-F	(4)	OFFSET		Find 0
-M	(5)	OFFSET		Move Data Pointer (Forward and Reverse)
-JE	(6)	OFFSET		Jump if equal to zero (Relative Address)
-JN	(7)	OFFSET		Jump if not zero (Relative Address)
-IO	(8)	IMMEDIATE	IO
-H	(9)	None		Halt
+Brainfunk bincode: 32-bit instruction encoding
+==============================================
 
-24bit Instruction Format:
+doc/bitcode.txt defines what each instruction does.
 
-NONE:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|										|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+bit2bin prints one word per line as eight lowercase hexadecimal digits.
 
-OFFSET:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|+/-|			  O   F   F   S   E   T					|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+Opcodes
+-------
 
-DUAL:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|+/-|		 ADDRESS OFFSET			|	  D   A   T   A		|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+X    0   NONE
+A    1   DATA
+S    2   DATA
+MUL  3   MUL
+F    4   SCAN
+M    5   MOVE
+JE   6   BRANCH
+JN   7   BRANCH
+IO   8   DATA
+H    9   NONE
 
-IMMEDIATE:
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-|     O   P	|						|	  D   A   T   A		|
-+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+Values 10 to 15 are reserved.
+
+
+Formats
+-------
+
+Offsets are two's complement.  Reserved fields must be zero; bit2bin always
+writes zero there.
+
+  31  28 27      20 19          8 7       0
+ +------+----------+-------------+---------+
+ |  op  | reserved                         |  NONE
+ +------+----------+-------------+---------+
+ |  op  | reserved | addr_offset |  data   |  DATA
+ +------+----------+-------------+---------+
+ |  op  |src_offset| addr_offset | factor  |  MUL
+ +------+----------+-------------+---------+
+ |  op  |test_offset|      jump_offset     |  BRANCH
+ +------+----------+-------------+---------+
+ |  op  |test_offset|         step         |  SCAN
+ +------+----------+-------------+---------+
+ |  op  | reserved |     move_offset       |  MOVE
+ +------+----------+-------------+---------+
+
+Field        Bits     Range
+op           [31:28]  0 to 15
+src_offset   [27:20]  -128 to 127
+test_offset  [27:20]  -128 to 127
+addr_offset  [19:8]   -2048 to 2047
+data, factor [7:0]    0 to 255
+jump_offset  [19:0]   -524288 to 524287
+step         [19:0]   -524288 to 524287
+move_offset  [19:0]   -524288 to 524287
+
+
+Width rationale
+---------------
+
+[27:20] is always the second memory operand, and [19:8] the first.
+
+jump_offset matches a 20-bit program counter: with a wrapping pc it reaches
+every address of a 2^20-word code memory.
+
+step and move_offset share the format of jump_offset to keep decoding uniform.
+Only their low log2(MEMSIZE) bits have any effect, because base_ptr wraps.

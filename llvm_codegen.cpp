@@ -1,6 +1,7 @@
 #include "libbrainfunk.hpp"
 
 #include <ostream>
+#include <string_view>
 
 namespace {
 
@@ -30,10 +31,20 @@ void emit_instruction_header(std::ostream& os, addr_t pc, Opcode opcode) {
     os << "\ninst." << pc << ": ; " << opcode_name(opcode) << '\n';
 }
 
-void emit_current_cell(std::ostream& os, addr_t pc) {
-    os << "  %base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
-          "  %cell.ptr." << pc
-       << " = getelementptr i8, ptr %tape, i64 %base.ptr." << pc << '\n';
+void emit_load_base(std::ostream& os, addr_t pc) {
+    os << "  %base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n";
+}
+
+/* Defines %<name>.ptr.<pc> as &tape[EA(offset)]; %base.ptr.<pc> must be loaded. */
+void emit_cell_ptr(std::ostream& os, std::string_view name, addr_t pc, offset_t offset,
+                   addr_t tape_size) {
+    const auto normalized = effective_address(0, offset, tape_size);
+    os << "  %" << name << ".sum." << pc << " = add i64 %base.ptr." << pc << ", " << normalized
+       << '\n'
+       << "  %" << name << ".index." << pc << " = and i64 %" << name << ".sum." << pc << ", "
+       << tape_size - 1 << '\n'
+       << "  %" << name << ".ptr." << pc << " = getelementptr i8, ptr %tape, i64 %" << name
+       << ".index." << pc << '\n';
 }
 
 void emit_next(std::ostream& os, addr_t pc) {
@@ -66,48 +77,42 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
 
     for (addr_t pc = 0; pc < bitcode_.size(); ++pc) {
         const auto& instruction = bitcode_[pc];
-        emit_instruction_header(os, pc, instruction.opcode_);
+        emit_instruction_header(os, pc, instruction.opcode());
 
-        switch (instruction.opcode_) {
+        switch (instruction.opcode()) {
         case Opcode::X:
             os << "  ret i32 2\n";
             break;
 
         case Opcode::A: {
-            emit_current_cell(os, pc);
-            const auto value = std::get<memory_t>(instruction.operand_);
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "cell", pc, instruction.addr_offset(), memory_.size());
             os << "  %cell.value." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
                << "  %cell.updated." << pc << " = add i8 %cell.value." << pc << ", "
-               << static_cast<unsigned>(value) << '\n'
+               << static_cast<unsigned>(instruction.data()) << '\n'
                << "  store i8 %cell.updated." << pc << ", ptr %cell.ptr." << pc << '\n';
             emit_next(os, pc);
             break;
         }
 
         case Opcode::S: {
-            emit_current_cell(os, pc);
-            const auto value = std::get<memory_t>(instruction.operand_);
-            os << "  store i8 " << static_cast<unsigned>(value) << ", ptr %cell.ptr." << pc
-               << '\n';
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "cell", pc, instruction.addr_offset(), memory_.size());
+            os << "  store i8 " << static_cast<unsigned>(instruction.data()) << ", ptr %cell.ptr."
+               << pc << '\n';
             emit_next(os, pc);
             break;
         }
 
         case Opcode::MUL: {
-            const auto operand = std::get<DualOperand>(instruction.operand_);
-            const auto normalized_offset = wrap_offset(0, operand.offset, memory_.size());
-            emit_current_cell(os, pc);
-            os << "  %source.value." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
-               << "  %destination.unwrapped." << pc << " = add i64 %base.ptr." << pc << ", "
-               << normalized_offset << '\n'
-               << "  %destination.index." << pc << " = urem i64 %destination.unwrapped." << pc
-               << ", %tape_size\n"
-               << "  %destination.ptr." << pc
-               << " = getelementptr i8, ptr %tape, i64 %destination.index." << pc << '\n'
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "source", pc, instruction.src_offset(), memory_.size());
+            emit_cell_ptr(os, "destination", pc, instruction.addr_offset(), memory_.size());
+            os << "  %source.value." << pc << " = load i8, ptr %source.ptr." << pc << '\n'
                << "  %destination.value." << pc << " = load i8, ptr %destination.ptr." << pc
                << '\n'
                << "  %product." << pc << " = mul i8 %source.value." << pc << ", "
-               << static_cast<unsigned>(operand.mul) << '\n'
+               << static_cast<unsigned>(instruction.data()) << '\n'
                << "  %destination.updated." << pc << " = add i8 %destination.value." << pc
                << ", %product." << pc << '\n'
                << "  store i8 %destination.updated." << pc << ", ptr %destination.ptr." << pc
@@ -117,35 +122,33 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
         }
 
         case Opcode::F: {
-            const auto offset = std::get<offset_t>(instruction.operand_);
-            const auto normalized_offset = wrap_offset(0, offset, memory_.size());
+            const auto normalized_step = effective_address(0, instruction.step(), memory_.size());
             os << "  br label %scan.test." << pc << "\n\n"
-               << "scan.test." << pc << ":\n"
-               << "  %scan.base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
-               << "  %scan.cell.ptr." << pc
-               << " = getelementptr i8, ptr %tape, i64 %scan.base.ptr." << pc << '\n'
-               << "  %scan.value." << pc << " = load i8, ptr %scan.cell.ptr." << pc << '\n'
+               << "scan.test." << pc << ":\n";
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "scan", pc, instruction.test_offset(), memory_.size());
+            os << "  %scan.value." << pc << " = load i8, ptr %scan.ptr." << pc << '\n'
                << "  %scan.done." << pc << " = icmp eq i8 %scan.value." << pc << ", 0\n"
                << "  br i1 %scan.done." << pc << ", label %inst." << pc + 1
                << ", label %scan.move." << pc << "\n\n"
                << "scan.move." << pc << ":\n"
-               << "  %scan.unwrapped." << pc << " = add i64 %scan.base.ptr." << pc << ", "
-               << normalized_offset << '\n'
-               << "  %scan.next." << pc << " = urem i64 %scan.unwrapped." << pc
-               << ", %tape_size\n"
+               << "  %scan.moved." << pc << " = add i64 %base.ptr." << pc << ", " << normalized_step
+               << '\n'
+               << "  %scan.next." << pc << " = and i64 %scan.moved." << pc << ", "
+               << memory_.size() - 1 << '\n'
                << "  store i64 %scan.next." << pc << ", ptr %base.ptr.addr\n"
                << "  br label %scan.test." << pc << '\n';
             break;
         }
 
         case Opcode::M: {
-            const auto offset = std::get<offset_t>(instruction.operand_);
-            const auto normalized_offset = wrap_offset(0, offset, memory_.size());
-            os << "  %base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
-               << "  %base.ptr.unwrapped." << pc << " = add i64 %base.ptr." << pc << ", "
-               << normalized_offset << '\n'
-               << "  %base.ptr.next." << pc << " = urem i64 %base.ptr.unwrapped." << pc
-               << ", %tape_size\n"
+            const auto normalized_move =
+                effective_address(0, instruction.move_offset(), memory_.size());
+            emit_load_base(os, pc);
+            os << "  %base.ptr.moved." << pc << " = add i64 %base.ptr." << pc << ", "
+               << normalized_move << '\n'
+               << "  %base.ptr.next." << pc << " = and i64 %base.ptr.moved." << pc << ", "
+               << memory_.size() - 1 << '\n'
                << "  store i64 %base.ptr.next." << pc << ", ptr %base.ptr.addr\n";
             emit_next(os, pc);
             break;
@@ -153,16 +156,16 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
 
         case Opcode::JE:
         case Opcode::JN: {
-            const auto offset = std::get<offset_t>(instruction.operand_);
             const auto target = jump_target({
                 .pc = pc,
-                .offset = offset,
+                .offset = instruction.jump_offset(),
                 .instruction_count = bitcode_.size(),
             });
-            emit_current_cell(os, pc);
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "cell", pc, instruction.test_offset(), memory_.size());
             os << "  %cell.value." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
                << "  %condition." << pc << " = icmp "
-               << (instruction.opcode_ == Opcode::JE ? "eq" : "ne")
+               << (instruction.opcode() == Opcode::JE ? "eq" : "ne")
                << " i8 %cell.value." << pc << ", 0\n"
                << "  br i1 %condition." << pc << ", label %inst." << target
                << ", label %inst." << pc + 1 << '\n';
@@ -170,9 +173,9 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
         }
 
         case Opcode::IO: {
-            const auto operation = std::get<memory_t>(instruction.operand_);
-            emit_current_cell(os, pc);
-            if (operation == IO_IN) {
+            emit_load_base(os, pc);
+            emit_cell_ptr(os, "cell", pc, instruction.addr_offset(), memory_.size());
+            if (instruction.data() == IO_IN) {
                 os << "  %input." << pc << " = call i32 %read_byte(ptr %io_context)\n"
                    << "  %input.eof." << pc << " = icmp eq i32 %input." << pc << ", -1\n"
                    << "  %input.value." << pc << " = select i1 %input.eof." << pc

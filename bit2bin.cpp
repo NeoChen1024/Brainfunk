@@ -1,252 +1,245 @@
+/* bit2bin -- assemble bitcode text into 32-bit bincode, one hex word per line.
+ * doc/bincode.txt is the normative description of the output. */
+#include "ctre.hpp"
 #include "libbrainfunk.hpp"
+
+#include <array>
 #include <charconv>
-#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
 
-using std::fprintf;
-using std::string;
-
 namespace {
+
+constexpr unsigned OPCODE_SHIFT = 28;
+constexpr unsigned NARROW_SHIFT = 20;
+constexpr unsigned ADDR_SHIFT   = 8;
 
 std::optional<Opcode> parse_opcode(std::string_view name)
 {
-    for (std::size_t i = 0; i < static_cast<std::size_t>(Opcode::Count); ++i) {
-        const auto opcode = static_cast<Opcode>(i);
-        if (opcode_name(opcode) == name)
-            return opcode;
-    }
-    return std::nullopt;
-}
-
-struct ParsedLine {
-	addr_t address = 0;
-	string op;
-	string arg;
-};
-
-std::string_view trim(std::string_view text)
-{
-	while(!text.empty() && std::isspace(static_cast<unsigned char>(text.front())))
-		text.remove_prefix(1);
-	while(!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
-		text.remove_suffix(1);
-	return text;
-}
-
-bool parse_addr(std::string_view text, addr_t &value)
-{
-	text = trim(text);
-	if(text.empty())
-		return false;
-
-	unsigned long long parsed = 0;
-	auto *first = text.data();
-	auto *last = text.data() + text.size();
-	auto result = std::from_chars(first, last, parsed, 10);
-	if(result.ec != std::errc{} || result.ptr != last)
-		return false;
-	if(parsed > std::numeric_limits<addr_t>::max())
-		return false;
-
-	value = static_cast<addr_t>(parsed);
-	return true;
-}
-
-bool parse_byte(std::string_view text, memory_t &value)
-{
-	text = trim(text);
-	if(text.empty())
-		return false;
-
-	unsigned int parsed = 0;
-	auto *first = text.data();
-	auto *last = text.data() + text.size();
-	auto result = std::from_chars(first, last, parsed, 10);
-	if(result.ec != std::errc{} || result.ptr != last || parsed > 0xFF)
-		return false;
-
-	value = static_cast<memory_t>(parsed);
-	return true;
-}
-
-bool parse_offset(std::string_view text, offset_t &value)
-{
-	text = trim(text);
-	if(text.empty())
-		return false;
-
-	long long parsed = 0;
-	auto *first = text.data();
-	auto *last = text.data() + text.size();
-	auto result = std::from_chars(first, last, parsed, 10);
-	if(result.ec != std::errc{} || result.ptr != last)
-		return false;
-	if(parsed < std::numeric_limits<offset_t>::min() ||
-	   parsed > std::numeric_limits<offset_t>::max())
-		return false;
-
-	value = static_cast<offset_t>(parsed);
-	return true;
-}
-
-template <unsigned Bits>
-    requires (Bits > 0 && Bits < 32)
-bool fits_signed_bits(offset_t value)
-{
-    const offset_t min = -(offset_t{1} << (Bits - 1));
-    const offset_t max = (offset_t{1} << (Bits - 1)) - 1;
-    return value >= min && value <= max;
-}
-
-template <unsigned Bits>
-    requires (Bits > 0 && Bits < 32)
-std::uint32_t encode_signed(offset_t value)
-{
-    const std::uint32_t mask = (std::uint32_t{1} << Bits) - 1;
-	return static_cast<std::uint32_t>(value) & mask;
-}
-
-bool parse_line(std::string_view line, ParsedLine &parsed, std::size_t line_no)
-{
-	line = trim(line);
-	if(line.empty())
-		return false;
-
-	auto colon = line.find(':');
-	if(colon == std::string_view::npos) {
-		fprintf(stderr, "Error: missing ':' on line %zu\n", line_no);
-		return false;
+	for (std::size_t i = 0; i < static_cast<std::size_t>(Opcode::Count); ++i) {
+		const auto opcode = static_cast<Opcode>(i);
+		if (opcode_name(opcode) == name)
+			return opcode;
 	}
-	if(!parse_addr(line.substr(0, colon), parsed.address)) {
-		fprintf(stderr, "Error: invalid address on line %zu\n", line_no);
-		return false;
+	return std::nullopt;
+}
+
+std::optional<std::int64_t> parse_number(std::string_view text)
+{
+	std::int64_t value = 0;
+	const auto *last = text.data() + text.size();
+	const auto result = std::from_chars(text.data(), last, value, 10);
+	if (result.ec != std::errc{} || result.ptr != last)
+		return std::nullopt;
+	return value;
+}
+
+/* Splits "12, -3, 255" into at most three decimal operands. */
+template <std::size_t Count>
+std::optional<std::array<std::int64_t, Count>> parse_operands(std::string_view text)
+{
+	std::array<std::string_view, 3> fields{};
+	std::size_t found = 0;
+
+	if (Count == 0 && ctre::match<"">(text)) {
+		found = 0;
+	} else if (auto one = ctre::match<"(-?[0-9]++)">(text)) {
+		fields[0] = one.get<1>().to_view();
+		found = 1;
+	} else if (auto two = ctre::match<"(-?[0-9]++)\\s*+,\\s*+(-?[0-9]++)">(text)) {
+		fields[0] = two.get<1>().to_view();
+		fields[1] = two.get<2>().to_view();
+		found = 2;
+	} else if (auto three = ctre::match<"(-?[0-9]++)\\s*+,\\s*+(-?[0-9]++)\\s*+,\\s*+(-?[0-9]++)">(text)) {
+		fields[0] = three.get<1>().to_view();
+		fields[1] = three.get<2>().to_view();
+		fields[2] = three.get<3>().to_view();
+		found = 3;
+	} else {
+		return std::nullopt;
 	}
 
-	auto rest = trim(line.substr(colon + 1));
-	if(rest.empty()) {
-		fprintf(stderr, "Error: missing opcode on line %zu\n", line_no);
-		return false;
+	if (found != Count)
+		return std::nullopt;
+
+	std::array<std::int64_t, Count> values{};
+	for (std::size_t i = 0; i < Count; ++i) {
+		const auto value = parse_number(fields[i]);
+		if (!value)
+			return std::nullopt;
+		values[i] = *value;
 	}
-
-	auto op_end = std::size_t{0};
-	while(op_end < rest.size() &&
-	      !std::isspace(static_cast<unsigned char>(rest[op_end])))
-		++op_end;
-
-	parsed.op = string(rest.substr(0, op_end));
-	parsed.arg = string(trim(rest.substr(op_end)));
-	return true;
+	return values;
 }
 
-bool emit(addr_t address, const string &op, std::string_view arg, FILE *fd)
+/* Two's-complement field of `bits` bits, left unshifted. */
+std::uint32_t signed_field(std::int64_t value, unsigned bits)
 {
-	std::uint32_t inst = 0;
+	return static_cast<std::uint32_t>(value) & ((std::uint32_t{1} << bits) - 1);
+}
 
-    const auto opcode = parse_opcode(op);
-    if(!opcode) {
-		fprintf(stderr, "Error: unknown opcode %s at %zu\n", op.c_str(), address);
-		return false;
-	}
+bool fits_byte(std::int64_t value)
+{
+	return value >= 0 && value <= 0xFF;
+}
 
-    inst |= static_cast<std::uint32_t>(*opcode) << 20;
+bool report_range(std::string_view name, std::int64_t value, unsigned bits, addr_t address)
+{
+	std::fprintf(stderr, "Error: %.*s %lld at %zu does not fit in %u bits\n",
+	             static_cast<int>(name.size()), name.data(),
+	             static_cast<long long>(value), address, bits);
+	return false;
+}
 
-	// None
-	if(op == "X" || op == "H")
-	{
-		if(!trim(arg).empty()) {
-			fprintf(stderr, "Error: unexpected operand for %s at %zu\n", op.c_str(), address);
-			return false;
+bool check_signed(std::string_view name, std::int64_t value, unsigned bits, addr_t address)
+{
+	return fits_signed(value, bits) || report_range(name, value, bits, address);
+}
+
+bool check_byte(std::string_view name, std::int64_t value, addr_t address)
+{
+	return fits_byte(value) || report_range(name, value, 8, address);
+}
+
+bool report_operands(Opcode opcode, addr_t address)
+{
+	const auto name = opcode_name(opcode);
+	std::fprintf(stderr, "Error: invalid operands for %.*s at %zu\n",
+	             static_cast<int>(name.size()), name.data(), address);
+	return false;
+}
+
+/* Encodes one instruction.  Bits a layout leaves reserved stay zero. */
+std::optional<std::uint32_t> encode(Opcode opcode, std::string_view operands, addr_t address)
+{
+	std::uint32_t word = static_cast<std::uint32_t>(opcode) << OPCODE_SHIFT;
+
+	switch (opcode_layout(opcode)) {
+	case OperandLayout::None:
+		if (!parse_operands<0>(operands)) {
+			report_operands(opcode, address);
+			return std::nullopt;
 		}
-	}
-	// Imm
-	else if(op == "A" || op == "S" || op == "IO")
-	{
-		memory_t imm = 0;
-		if(!parse_byte(arg, imm)) {
-			fprintf(stderr, "Error: invalid immediate for %s at %zu\n", op.c_str(), address);
-			return false;
-		}
+		return word;
 
-		inst |= imm;
-	}
-	// Dual
-	else if(op == "MUL")
-	{
-		auto comma = arg.find(',');
-		if(comma == std::string_view::npos) {
-			fprintf(stderr, "Error: invalid dual operand for MUL at %zu\n", address);
-			return false;
+	case OperandLayout::Data: {
+		const auto values = parse_operands<2>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
 		}
-
-		offset_t offset = 0;
-		memory_t mul = 0;
-		if(!parse_offset(arg.substr(0, comma), offset) ||
-		   !parse_byte(arg.substr(comma + 1), mul)) {
-			fprintf(stderr, "Error: invalid dual operand for MUL at %zu\n", address);
-			return false;
+		const auto [addr_offset, data] = *values;
+		if (!check_signed("addr_offset", addr_offset, ADDR_OFFSET_BITS, address) ||
+		    !check_byte("data", data, address))
+			return std::nullopt;
+		if (opcode == Opcode::IO && data != IO_IN && data != IO_OUT) {
+			report_operands(opcode, address);
+			return std::nullopt;
 		}
-
-		inst |= mul;
-        if(!fits_signed_bits<12>(offset)) {
-			fprintf(stderr, "Error: offset %zd at %zu does not fit in 12 bits\n",
-			        offset, address);
-			return false;
-		}
-        inst |= encode_signed<12>(offset) << 8;
-	}
-	// Offset
-	else if(op == "F" || op == "M" || op == "JE" || op == "JN")
-	{
-		offset_t offset = 0;
-		if(!parse_offset(arg, offset)) {
-			fprintf(stderr, "Error: invalid offset for %s at %zu\n", op.c_str(), address);
-			return false;
-		}
-
-        if(!fits_signed_bits<20>(offset)) {
-			fprintf(stderr, "Error: offset %zd at %zu does not fit in 20 bits\n",
-			        offset, address);
-			return false;
-		}
-        inst |= encode_signed<20>(offset);
+		return word | signed_field(addr_offset, ADDR_OFFSET_BITS) << ADDR_SHIFT |
+		       static_cast<std::uint32_t>(data);
 	}
 
-	fprintf(fd, "%06x\n", inst);
-	return true;
+	case OperandLayout::Mul: {
+		const auto values = parse_operands<3>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		const auto [addr_offset, src_offset, factor] = *values;
+		if (!check_signed("addr_offset", addr_offset, ADDR_OFFSET_BITS, address) ||
+		    !check_signed("src_offset", src_offset, SRC_OFFSET_BITS, address) ||
+		    !check_byte("factor", factor, address))
+			return std::nullopt;
+		return word | signed_field(src_offset, SRC_OFFSET_BITS) << NARROW_SHIFT |
+		       signed_field(addr_offset, ADDR_OFFSET_BITS) << ADDR_SHIFT |
+		       static_cast<std::uint32_t>(factor);
+	}
+
+	case OperandLayout::Branch:
+	case OperandLayout::Scan: {
+		const auto values = parse_operands<2>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		const auto [test_offset, wide] = *values;
+		const std::string_view wide_name =
+			opcode_layout(opcode) == OperandLayout::Scan ? "step" : "jump_offset";
+		if (!check_signed("test_offset", test_offset, TEST_OFFSET_BITS, address) ||
+		    !check_signed(wide_name, wide, LONG_OFFSET_BITS, address))
+			return std::nullopt;
+		return word | signed_field(test_offset, TEST_OFFSET_BITS) << NARROW_SHIFT |
+		       signed_field(wide, LONG_OFFSET_BITS);
+	}
+
+	case OperandLayout::Move: {
+		const auto values = parse_operands<1>(operands);
+		if (!values) {
+			report_operands(opcode, address);
+			return std::nullopt;
+		}
+		const auto [move_offset] = *values;
+		if (!check_signed("move_offset", move_offset, LONG_OFFSET_BITS, address))
+			return std::nullopt;
+		return word | signed_field(move_offset, LONG_OFFSET_BITS);
+	}
+	}
+	return std::nullopt;
 }
 
 } // namespace
 
 int main()
 {
-	size_t inst_ctr = 0;
+	std::size_t inst_ctr = 0;
 	int exit_status = 0;
 	std::string line;
 	std::size_t line_no = 0;
 
-	while(std::getline(std::cin, line))
-	{
+	while (std::getline(std::cin, line)) {
 		++line_no;
-		if(trim(line).empty())
+		if (ctre::match<"\\s*+">(line))
 			continue;
 
-		ParsedLine parsed;
-		if(!parse_line(line, parsed, line_no)) {
+		/* "<address>: <mnemonic> <operands>" */
+		const auto parsed =
+			ctre::match<"\\s*+([0-9]++)\\s*+:\\s*+([A-Z]++)\\s*+(.*?)\\s*+">(line);
+		if (!parsed) {
+			std::fprintf(stderr, "Error: malformed instruction on line %zu\n", line_no);
 			exit_status = 1;
 			continue;
 		}
-		if(emit(parsed.address, parsed.op, parsed.arg, stdout)) {
+
+		const auto address_value = parse_number(parsed.get<1>().to_view());
+		if (!address_value) {
+			std::fprintf(stderr, "Error: invalid address on line %zu\n", line_no);
+			exit_status = 1;
+			continue;
+		}
+		const auto address = static_cast<addr_t>(*address_value);
+
+		const auto name = parsed.get<2>().to_view();
+		const auto opcode = parse_opcode(name);
+		if (!opcode) {
+			std::fprintf(stderr, "Error: unknown opcode %.*s at %zu\n",
+			             static_cast<int>(name.size()), name.data(), address);
+			exit_status = 1;
+			continue;
+		}
+
+		if (const auto word = encode(*opcode, parsed.get<3>().to_view(), address)) {
+			std::printf("%08x\n", *word);
 			inst_ctr++;
 		} else {
 			exit_status = 1;
 		}
 	}
 
-	fprintf(stderr, "Assembled %zu instruction(s)\n", inst_ctr);
+	std::fprintf(stderr, "Assembled %zu instruction(s)\n", inst_ctr);
 	return exit_status;
 }

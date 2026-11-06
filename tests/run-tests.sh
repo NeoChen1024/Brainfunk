@@ -109,10 +109,39 @@ fi
 ./brainfunk -m bit -s '++>+++[<+>-].' | ./bit2bin >"$tmpdir/program.bin"
 test "$(wc -l <"$tmpdir/program.bin")" -gt 0
 
-if printf '0: M 524288\n' | ./bit2bin >/dev/null 2>"$tmpdir/oversized.err"; then
-    echo "bit2bin accepted an out-of-range offset" >&2
-    exit 1
-fi
+check_encoding()
+{
+    actual="$(printf '0: %s\n' "$1" | ./bit2bin 2>/dev/null)"
+    if [ "$actual" != "$2" ]; then
+        echo "bit2bin: '$1' encoded as '$actual', expected '$2'" >&2
+        exit 1
+    fi
+}
+
+check_encoding 'X' 00000000
+check_encoding 'A 0, 5' 10000005
+check_encoding 'A -1, 5' 100fff05
+check_encoding 'S 2047, 255' 2007ffff
+check_encoding 'MUL 3, 2, 3' 30200303
+check_encoding 'MUL -2048, -128, 255' 380800ff
+check_encoding 'F -1, 1' 4ff00001
+check_encoding 'M -1' 500fffff
+check_encoding 'JE 1, -2' 601ffffe
+check_encoding 'JN 127, 524287' 77f7ffff
+check_encoding 'IO 0, 1' 80000001
+check_encoding 'H' 90000000
+
+for rejected in \
+    'A 2048, 1' 'A -2049, 1' 'A 0, 256' 'A 0, -1' 'A 5' 'H 1' 'IO 0, 2' \
+    'MUL 1, 2' 'MUL 2048, 0, 1' 'MUL 1, 128, 1' 'MUL 1, -129, 1' 'MUL 1, 0, 256' \
+    'F 128, 1' 'F 0, 524288' 'M 524288' 'M -524289' \
+    'JE 128, 0' 'JN -129, 0' 'JE 0, 524288' 'NOPE 1'
+do
+    if printf '0: %s\n' "$rejected" | ./bit2bin >/dev/null 2>&1; then
+        echo "bit2bin accepted invalid instruction: $rejected" >&2
+        exit 1
+    fi
+done
 
 awk 'BEGIN { printf "+[-"; for (i = 0; i < 3000; ++i) printf ">"; printf "+";
             for (i = 0; i < 3000; ++i) printf "<"; printf "]" }' >"$tmpdir/far-mul.bf"

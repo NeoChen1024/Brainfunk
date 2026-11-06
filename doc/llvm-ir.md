@@ -51,8 +51,9 @@ The generated function returns:
 - `1`: null tape or unexpected tape size
 - `2`: invalid placeholder instruction was reached
 
-The tape size must equal the size used when the Brainfunk program was translated. The
-provided wrapper uses the default 65,536-byte tape.
+The tape size must equal the size used when the Brainfunk program was translated and must
+be a power of two, because addresses wrap by masking. The provided wrapper uses the default
+65,536-byte tape.
 
 ## Portability profile
 
