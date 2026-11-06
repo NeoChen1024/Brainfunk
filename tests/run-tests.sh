@@ -22,7 +22,7 @@ if command -v "$CLANG" >/dev/null 2>&1 &&
     have_llvm=true
 fi
 
-OPT_LEVELS="0 1"
+OPT_LEVELS="0 1 2"
 
 # Every optimization level, through every backend, must match the unoptimized
 # interpreter, and must still assemble.

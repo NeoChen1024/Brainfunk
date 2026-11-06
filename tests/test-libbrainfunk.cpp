@@ -134,7 +134,8 @@ private:
             case 8: {
                 /* Shapes the translator lowers to S, F and MUL. */
                 constexpr std::array shapes = {"[-]", "[>]", "[<]", "[>>]", "[->+<]", "[>++<-]",
-                                               "[-<+>>++<]", "[->+<+>-<]", "[->>+<<]", "[+]"};
+                                               "[-<+>>++<]", "[->+<+>-<]", "[->>+<<]", "[+]",
+                                               "[-]++", ">[-]+++<", "[.]", ",[-]"};
                 code += shapes[next(shapes.size())];
                 break;
             }
@@ -268,11 +269,89 @@ int main() {
         check(first.str() == second.str(), "lazy move is idempotent");
     }
 
+    /* ---- fold ---- */
+    const auto folded = [](std::string_view code) { return dump(code, Format::BIT, OPT_FOLD); };
+    const auto contains = [](const std::string& text, std::string_view part) {
+        return text.find(part) != std::string::npos;
+    };
+    {
+        const auto listing = folded(",+>+<+.");
+        check(contains(listing, "A\t0, 2") && contains(listing, "A\t1, 1"),
+              "adds to one cell merge across other cells");
+    }
+    check(contains(folded(",[-]+++."), "S\t0, 3"), "set then add becomes one set");
+    check(!contains(folded(",[-]++[-]."), "S\t0, 2"), "overwritten set is dropped");
+    check(!contains(folded(",[-]+,."), "S\t0, 1"), "write overwritten by input is dropped");
+    {
+        const auto listing = folded(",>[-]++[->+++<]");
+        check(!contains(listing, "MUL"), "multiply from a known cell folds away");
+        check(contains(listing, "A\t2, 6"), "folded multiply adds the product");
+    }
+    check(!contains(folded(",[.][.]").substr(folded(",[.][.]").find("JN")), "JE"),
+          "loop right after an identical test never runs");
+    check(!contains(folded(",[>][-]"), "S\t"), "cell is known zero after a scan");
+    check(!contains(folded(",[>][>]").substr(folded(",[>][>]").find("F\t")+1), "F\t"),
+          "scan from a known-zero cell is dropped");
+    {
+        const auto listing = folded(",[.][-]+.");
+        check(contains(listing, "S\t0, 1"), "cell is known zero after a loop");
+        check(!contains(listing, "S\t0, 0"), "known-zero cell needs no clear");
+    }
+    {
+        /* Offsets 0 and 16 name one cell on a 16-cell tape. */
+        std::string aliased = "[-]+";
+        aliased.append(16, '>');
+        aliased += "+.";
+        aliased.append(16, '<');
+        aliased += '.';
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            check(execute(aliased, level, 16, {}, 100).output == std::string(2, '\x02'),
+                  "offsets that alias on a small tape are one cell");
+        }
+        std::string aliased_set = "+";
+        aliased_set.append(16, '>');
+        aliased_set += "[-]";
+        aliased_set.append(16, '<');
+        aliased_set += "++.";
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            check(execute(aliased_set, level, 16, {}, 100).output == std::string(1, '\x02'),
+                  "set through an alias overrides the other offset");
+        }
+        std::string aliased_mul = ",[-]+";
+        aliased_mul.append(16, '>');
+        aliased_mul += "++";
+        aliased_mul.append(16, '<');
+        aliased_mul += "[->+<]>.";
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            check(execute(aliased_mul, level, 16, "x", 100).output == std::string(1, '\x03'),
+                  "known value is tracked through an alias");
+        }
+    }
+
+    {
+        const auto agrees = [](std::string_view code, std::string_view in, std::string_view want) {
+            for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+                const auto outcome = execute(code, level, MEMSIZE, in, 100000);
+                if (!outcome.halted || outcome.output != want) return false;
+            }
+            return true;
+        };
+        check(agrees(",>[-]+++<[->++<]>.", "\x05", "\x0d"),
+              "multiply adds to a pending set of its destination");
+        check(agrees(",>[-]<[->+<]>[-].", "\x05", std::string_view("\0", 1)),
+              "multiply invalidates what is known about its destination");
+
+        /* Offset overflow is the only way a known value survives an M. */
+        std::string far = std::string(3000, '>') + "+" + std::string(3000, '<') + "[-]" +
+                          std::string(3000, '>') + "[.-]";
+        check(agrees(far, {}, "\x01"), "known values follow base_ptr across M");
+    }
+
     /* ---- differential: every level against the unoptimized program ---- */
     constexpr addr_t step_limit = 20000;
     constexpr std::string_view input = "Az\xff\x01?";
     int halted_programs = 0;
-    for (std::uint32_t seed = 1; seed <= 4000; ++seed) {
+    for (std::uint32_t seed = 1; seed <= 8000; ++seed) {
         ProgramGenerator generator(seed);
         const auto code = generator.program();
         const std::size_t memory_size = seed % 2 == 0 ? std::size_t{16} : MEMSIZE;

@@ -40,7 +40,8 @@ inline constexpr unsigned LONG_OFFSET_BITS = 20;   // jump_offset, step, move_of
 /* Levels for Brainfunk::optimize(); each one includes the previous ones. */
 inline constexpr int OPT_NONE      = 0;
 inline constexpr int OPT_LAZY_MOVE = 1;
-inline constexpr int OPT_MAX       = OPT_LAZY_MOVE;
+inline constexpr int OPT_FOLD      = 2;
+inline constexpr int OPT_MAX       = OPT_FOLD;
 
 /* Bitcode format constants (exported for external use) */
 enum class BitcodeFormat : std::uint8_t { C, Plain };
