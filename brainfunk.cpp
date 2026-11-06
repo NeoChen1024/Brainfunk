@@ -30,12 +30,28 @@ static void readcode(string& code, const std::string& filename) {
 }
 
 // ------------------------------------------------------------------
+// print_stats  -  one "name<TAB>static<TAB>dynamic" row per opcode, then totals
+// ------------------------------------------------------------------
+
+static void print_stats(std::ostream& os, const ExecutionStats& stats) {
+    os << "opcode\tstatic\tdynamic\n";
+    for (std::size_t i = 0; i < stats.static_count.size(); ++i) {
+        os << opcode_name(static_cast<Opcode>(i)) << '\t' << stats.static_count[i] << '\t'
+           << stats.dynamic_count[i] << '\n';
+    }
+    os << "total\t" << stats.static_total() << '\t' << stats.dynamic_total() << '\n'
+       << "scan_iterations\t" << stats.scan_iterations << '\n'
+       << "memory_reads\t" << stats.memory_reads << '\n'
+       << "memory_writes\t" << stats.memory_writes << '\n';
+}
+
+// ------------------------------------------------------------------
 // helpmsg
 // ------------------------------------------------------------------
 
 [[noreturn]] static void helpmsg(char** argv, int status = 0) {
     cerr << "Usage: " << argv[0]
-         << " [-h] [-m bf|bit|bfc|llvm] [-O level] [-s code string] [-f file] [-o out]\n"
+         << " [-h] [-m bf|bit|bfc|llvm|stat] [-O level] [-s code string] [-f file] [-o out]\n"
          << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n";
     std::exit(status);
 }
@@ -111,6 +127,10 @@ int main(int argc, char** argv) {
 
         if (mode == "bf") {
             bf.run();
+        } else if (mode == "stat") {
+            /* The program keeps stdout, so the report goes to -o or stderr. */
+            const auto stats = bf.run_counted();
+            print_stats(output_owner ? *output : cerr, stats);
         } else if (mode == "bit") {
             bf.dump(*output, Format::BIT);
         } else if (mode == "bfc") {

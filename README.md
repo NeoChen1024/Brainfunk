@@ -35,6 +35,15 @@ highest level; `visualbrainfunk` defaults to `-O0`, which is easier to follow wh
 
 `llvm`: lower optimized bitcode to portable textual LLVM IR
 
+`stat`: run the program and report per-opcode static and dynamic instruction counts, scan
+iterations, and memory reads and writes
+
+`tests/stat-compare.sh` compares those numbers across optimization levels:
+
+```shell
+sh tests/stat-compare.sh test/mandel.b
+```
+
 # Usage
 
 ```

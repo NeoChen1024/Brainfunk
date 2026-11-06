@@ -184,6 +184,23 @@ private:
 static_assert(sizeof(Bitcode) == 8);
 
 /* ================================================================
+ * Execution statistics
+ * ================================================================ */
+
+struct ExecutionStats {
+    using OpcodeCounts = std::array<std::uint64_t, static_cast<std::size_t>(Opcode::Count)>;
+
+    OpcodeCounts  static_count{};      // instructions in the program, per opcode
+    OpcodeCounts  dynamic_count{};     // instructions executed, per opcode
+    std::uint64_t scan_iterations = 0; // pointer steps taken inside F
+    std::uint64_t memory_reads    = 0;
+    std::uint64_t memory_writes   = 0;
+
+    [[nodiscard]] std::uint64_t static_total() const noexcept;
+    [[nodiscard]] std::uint64_t dynamic_total() const noexcept;
+};
+
+/* ================================================================
  * Brainfunk – the main interpreter / compiler
  * ================================================================ */
 
@@ -209,6 +226,11 @@ public:
 
     /* Execute the translated program */
     void run(std::istream& is = std::cin, std::ostream& os = std::cout);
+
+    /* Execute the program from reset while counting what it does.  Much slower
+     * than run(). */
+    [[nodiscard]] ExecutionStats run_counted(std::istream& is = std::cin,
+                                             std::ostream& os = std::cout);
 
     /* Execute exactly one bitcode instruction. Returns false on halt. */
     [[nodiscard]] bool step(std::istream& is = std::cin, std::ostream& os = std::cout);

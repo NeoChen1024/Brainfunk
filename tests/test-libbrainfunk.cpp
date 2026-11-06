@@ -92,6 +92,16 @@ Outcome execute(std::string_view code, int level, std::size_t memory_size, std::
     return outcome;
 }
 
+ExecutionStats count(std::string_view code, int level, std::size_t memory_size,
+                     std::string_view input) {
+    Brainfunk brainfunk(memory_size);
+    brainfunk.translate(code);
+    brainfunk.optimize(level);
+    std::istringstream in{std::string(input)};
+    std::ostringstream out;
+    return brainfunk.run_counted(in, out);
+}
+
 /* Deterministic, so that a failure reproduces. */
 class ProgramGenerator {
 public:
@@ -198,6 +208,24 @@ int main() {
     }
     check(rejected, "unmatched bracket is rejected");
 
+    /* ---- statistics ---- */
+    {
+        const auto stats = count("++[->+<]>.", OPT_NONE, MEMSIZE, {});
+        const auto dynamic = [&](Opcode opcode) {
+            return stats.dynamic_count[static_cast<std::size_t>(opcode)];
+        };
+        check(dynamic(Opcode::A) == 1, "stats count A");
+        check(dynamic(Opcode::MUL) == 1, "stats count MUL");
+        check(dynamic(Opcode::IO) == 1, "stats count IO");
+        check(stats.dynamic_total() == stats.static_total(), "straight-line code runs once");
+        /* A: 1R1W, MUL: 2R1W, S: 1W, IO out: 1R */
+        check(stats.memory_reads == 4, "stats count memory reads");
+        check(stats.memory_writes == 3, "stats count memory writes");
+
+        const auto scan = count("+>+>+<<[>]", OPT_NONE, MEMSIZE, {});
+        check(scan.scan_iterations == 3, "stats count scan iterations");
+    }
+
     /* ---- lazy move ---- */
     check(dump("+.", Format::BIT, OPT_LAZY_MOVE).find("\tM\t") == std::string::npos,
           "a program without pointer motion emits no M");
@@ -251,6 +279,23 @@ int main() {
         const auto reference = execute(code, OPT_NONE, memory_size, input, step_limit);
         if (!reference.halted) continue;   // cannot compare a truncated run
         ++halted_programs;
+
+        /* Lazy moves only remove M: everything else runs exactly as often. */
+        const auto before = count(code, OPT_NONE, memory_size, input);
+        const auto after = count(code, OPT_LAZY_MOVE, memory_size, input);
+        for (std::size_t i = 0; i < before.dynamic_count.size(); ++i) {
+            if (static_cast<Opcode>(i) == Opcode::M) {
+                check(after.dynamic_count[i] <= before.dynamic_count[i], "lazy move adds no M");
+            } else {
+                check(after.dynamic_count[i] == before.dynamic_count[i],
+                      "lazy move only changes how often M runs");
+            }
+        }
+        check(after.memory_reads == before.memory_reads &&
+                  after.memory_writes == before.memory_writes &&
+                  after.scan_iterations == before.scan_iterations,
+              "lazy move leaves memory traffic unchanged");
+
         for (int level = OPT_NONE + 1; level <= OPT_MAX; ++level) {
             /* Optimized code never takes more steps than the original. */
             const auto optimized = execute(code, level, memory_size, input, step_limit);

@@ -206,6 +206,14 @@ awk 'BEGIN { printf "+[-"; for (i = 0; i < 3000; ++i) printf ">"; printf "+";
             for (i = 0; i < 3000; ++i) printf "<"; printf "]" }' >"$tmpdir/far-mul.bf"
 ./brainfunk -m bit -f "$tmpdir/far-mul.bf" | ./bit2bin >/dev/null
 
+./brainfunk -m stat -s '++[->+<]>.' >/dev/null 2>"$tmpdir/stat.out"
+grep -q '^MUL	1	1$' "$tmpdir/stat.out"
+grep -q '^memory_reads	4$' "$tmpdir/stat.out"
+./brainfunk -m stat -s '+' -o "$tmpdir/stat-file.out"
+grep -q '^total	' "$tmpdir/stat-file.out"
+sh tests/stat-compare.sh "$tmpdir/hello.bf" >"$tmpdir/compare.out"
+grep -q 'hello.bf' "$tmpdir/compare.out"
+
 for invalid_level in 9 x 12 ''; do
     if ./brainfunk -O"$invalid_level" -s '+' >/dev/null 2>&1; then
         echo "brainfunk accepted optimization level '$invalid_level'" >&2
