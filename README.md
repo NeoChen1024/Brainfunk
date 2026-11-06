@@ -84,7 +84,9 @@ target selection and optimization only when the emitted IR is compiled. See
 
 # CPU core
 
-The ultimate Brainfuck CPU
+The ultimate Brainfuck CPU. The circuit implements an earlier 24-bit instruction format; see
+[doc/bincode.txt](doc/bincode.txt) for the current one.
+
 ![CPU core](https://github.com/NeoChen1024/Brainfunk/raw/master/CPU/CPU.png)
 
 # Credits

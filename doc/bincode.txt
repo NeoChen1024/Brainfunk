@@ -84,3 +84,12 @@ every address of a 2^20-word code memory.
 
 step and move_offset share the format of jump_offset to keep decoding uniform.
 Only their low log2(MEMSIZE) bits have any effect, because base_ptr wraps.
+
+
+Implementations
+---------------
+
+bit2bin and the C++ interpreter implement this format.
+
+CPU/Brainfunk.circ still implements the earlier 24-bit format, and cannot load
+this output.
