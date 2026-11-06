@@ -191,16 +191,6 @@ public:
     [[nodiscard]] std::string to_string(
         BitcodeFormat format = BitcodeFormat::Plain) const;
 
-    /* ---- execution ---- */
-    /* Returns false when halt instruction is reached. */
-    [[nodiscard]] bool execute(
-        std::span<memory_t>       memory,
-        addr_t&                  pc,
-        addr_t&                  base_ptr,
-        std::istream&            is = std::cin,
-        std::ostream&            os = std::cout
-    ) const;
-
 private:
     friend class Brainfunk;
 
@@ -287,6 +277,9 @@ private:
     std::vector<Bitcode>           bitcode_;
 
     void dump_llvm_ir(std::ostream& os) const;
+
+    template <bool SingleStep>
+    [[nodiscard]] bool interpret_(std::istream& is, std::ostream& os);
 
     /* ---- internal helpers for translate() ---- */
 

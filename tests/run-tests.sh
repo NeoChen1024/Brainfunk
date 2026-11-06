@@ -129,9 +129,16 @@ for mnemonic in MULC DJN MJN SRUN; do
     grep -q "$mnemonic" "$tmpdir/fused.O3.c"
 done
 
+repeat() { awk -v n="$2" -v c="$1" 'BEGIN { for (i = 0; i < n; ++i) printf "%s", c }'; }
+
+# A very long multiply-shaped loop must not exhaust the stack while being matched.
+{ printf '[-'; repeat '>+' 200000; repeat '<' 200000; printf ']'; } >"$tmpdir/long-pairs-1.bf"
+./brainfunk -m bit -f "$tmpdir/long-pairs-1.bf" >/dev/null
+{ printf '['; repeat '>+' 200000; repeat '<' 200000; printf -- '-]'; } >"$tmpdir/long-pairs-2.bf"
+./brainfunk -m bit -f "$tmpdir/long-pairs-2.bf" >/dev/null
+
 # Offsets that overflow each field force an early flush.  No real program in the
 # corpus reaches these, so they are only covered here.
-repeat() { awk -v n="$2" -v c="$1" 'BEGIN { for (i = 0; i < n; ++i) printf "%s", c }'; }
 { printf '+'; repeat '>' 2047; printf '+'; repeat '>' 1; printf '+.'; repeat '<' 2048; printf '.'; } \
     >"$tmpdir/overflow-addr.bf"
 check_codegen overflow-addr "$tmpdir/overflow-addr.bf" "$tmpdir/empty.input"

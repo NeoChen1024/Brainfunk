@@ -3,8 +3,8 @@
 
 #include <algorithm>
 #include <bit>
-#include <cassert>
 #include <iostream>
+#include <iterator>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -163,57 +163,55 @@ void Brainfunk::translate(std::string_view code) {
 // ------------------------------------------------------------------
 //  try_parse_mul_offset_loop_
 //
-//  Pattern: [ -? ( [><]+ [+-]+ )+ [><]+ ]   (mode 1: starts with '-')
+//  Pattern: [ - ( [><]+ [+-]+ )+ [><]+ ]     (mode 1: starts with '-')
 //           [ ( [><]+ [+-]+ )+ [><]+ - ]     (mode 2: ends   with '-')
 //
 //  When a match is found we emit one MUL instruction per
 //  (offset, mul) pair, followed by an S(0) to clear the cell.
+//
+//  The pairs are matched one at a time.  A single regex for the whole loop would
+//  recurse once per pair inside CTRE and overflow the stack on a long enough loop.
+//  The character classes never overlap, so each token can be possessive.
 // ------------------------------------------------------------------
 
 bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
+    auto rest = code.substr(1);    // after '['
 
-    // clang-format off
-    auto m = ctre::starts_with<
-        "^\\[(\\-([\\<\\>]+[\\+\\-]+)+[\\<\\>]+|([\\<\\>]+[\\+\\-]+)+[\\<\\>]+\\-)\\]"
-    >(code);
-    // clang-format on
-
-    if (!m) return false;
-
-    std::string_view body = m.to_view();
-
-    /* Must return to the original cell */
-    if (count_net(body, "><") != 0) return false;
-
-    /* Strip brackets */
-    int mode;
-    if (body[1] == '-') {          // mode 1:  [- ...]
-        body.remove_prefix(2);
-        mode = 1;
-    } else {                       // mode 2:  [ ... -]
-        body.remove_prefix(1);
-        mode = 2;
-    }
+    const bool decrements_first = rest.starts_with('-');
+    if (decrements_first) rest.remove_prefix(1);
 
     std::vector<memory_t> mul;
     std::vector<offset_t> offset;
+    std::string_view last_pair;
 
-    while (auto p = ctre::starts_with<"^[\\>\\<]+[\\+\\-]+">(body)) {
-        count_mul_offset(p.to_view(), mul, offset,
-                         offset.empty() ? 0 : offset.back());
-        body.remove_prefix(p.size());
+    while (auto pair = ctre::starts_with<"[\\>\\<]++[\\+\\-]++">(rest)) {
+        last_pair = pair.to_view();
+        count_mul_offset(last_pair, mul, offset, offset.empty() ? 0 : offset.back());
+        rest.remove_prefix(last_pair.size());
     }
+    if (offset.empty()) return false;
 
-    /* In mode 2 the last pair is a fake – we omit it */
-    auto pairs = (mode == 2) ? offset.size() - 1 : offset.size();
-
-    assert(pairs > 0);
+    std::size_t pairs = offset.size();
+    if (decrements_first) {
+        /* The moves back to the induction cell are not a pair: no +- follows. */
+        const auto tail = ctre::starts_with<"[\\>\\<]++\\]">(rest);
+        if (!tail) return false;
+        if (offset.back() + count_net(tail.to_view(), "><") != 0) return false;
+        rest.remove_prefix(tail.size());
+    } else {
+        /* The last pair is really the moves back, then the decrement. */
+        if (pairs < 2 || !rest.starts_with(']')) return false;
+        if (!ctre::match<"[\\>\\<]++\\-">(last_pair)) return false;
+        if (offset.back() != 0) return false;
+        rest.remove_prefix(1);
+        --pairs;
+    }
 
     /* A pair that writes the induction cell itself changes how many times the
      * loop runs, so it cannot be a multiply.  An offset that does not fit the
      * instruction's 12-bit field must stay an ordinary loop as well. */
     for (std::size_t i = 0; i < pairs; ++i) {
-        if (offset[i] == 0 || !fits_signed(offset[i], 12)) return false;
+        if (offset[i] == 0 || !fits_signed(offset[i], ADDR_OFFSET_BITS)) return false;
     }
 
     for (std::size_t i = 0; i < pairs; ++i) {
@@ -223,7 +221,7 @@ bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
     /* Insert S(0) to clear the cell */
     bitcode_.push_back(Bitcode::data_op(Opcode::S, 0, memory_t{0}));
 
-    code.remove_prefix(m.size());
+    code.remove_prefix(code.size() - rest.size());
     return true;
 }
 
@@ -234,7 +232,7 @@ bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
 // ------------------------------------------------------------------
 
 bool Brainfunk::try_parse_scan_loop_(std::string_view& code) {
-    auto m = ctre::starts_with<"^\\[[\\>\\<]+\\]">(code);
+    auto m = ctre::starts_with<"^\\[[\\>\\<]++\\]">(code);
     if (!m) return false;
 
     auto net = count_net(m.to_view(), "><");
@@ -250,7 +248,7 @@ bool Brainfunk::try_parse_scan_loop_(std::string_view& code) {
 // ------------------------------------------------------------------
 
 bool Brainfunk::try_parse_set_zero_loop_(std::string_view& code) {
-    auto m = ctre::starts_with<"^\\[[\\+\\-]+\\]">(code);
+    auto m = ctre::starts_with<"^\\[[\\+\\-]++\\]">(code);
     if (!m) return false;
 
     auto net = count_net(m.to_view(), "+-");
@@ -353,9 +351,7 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
 
 void Brainfunk::run(std::istream& is, std::ostream& os) {
     reset_state();
-    while (step(is, os)) {
-        /* nothing — step() handles everything */
-    }
+    (void)interpret_<false>(is, os);
 }
 
 // ------------------------------------------------------------------
@@ -450,11 +446,174 @@ ExecutionStats Brainfunk::run_counted(std::istream& is, std::ostream& os) {
 // ------------------------------------------------------------------
 
 bool Brainfunk::step(std::istream& is, std::ostream& os) {
-    if (bitcode_.empty() || pc_ >= bitcode_.size()) return false;
-
-    auto mem_span = std::span(memory_);
-    return bitcode_[pc_].execute(mem_span, pc_, base_ptr_, is, os);
+    return interpret_<true>(is, os);
 }
+
+// ------------------------------------------------------------------
+//  interpret_  -  the interpreter loop
+//
+//  One body serves run() and step(), so that they cannot disagree.  Machine
+//  state lives in locals while running, and operands are read straight from the
+//  flat instruction record.
+//
+//  GCC and Clang get computed goto: each instruction has its own indirect jump,
+//  which the branch predictor can learn separately.  On mandel.b under GCC this
+//  takes half the time of a switch.
+// ------------------------------------------------------------------
+
+#if defined(__GNUC__) || defined(__clang__)
+#define BRAINFUNK_COMPUTED_GOTO 1
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#else
+#define BRAINFUNK_COMPUTED_GOTO 0
+#endif
+
+template <bool SingleStep>
+bool Brainfunk::interpret_(std::istream& is, std::ostream& os) {
+    if (pc_ >= bitcode_.size()) return false;
+
+    const Bitcode* const code = bitcode_.data();
+    const Bitcode* next = code + pc_;
+    const Bitcode* instruction = nullptr;
+    addr_t base_ptr = base_ptr_;
+    memory_t* const memory = memory_.data();
+    const addr_t mask = memory_.size() - 1;
+
+    const auto ea = [&](std::int32_t offset) {
+        return (base_ptr + static_cast<addr_t>(static_cast<offset_t>(offset))) & mask;
+    };
+    const auto save_state = [&](const Bitcode* pc) {
+        pc_ = static_cast<addr_t>(pc - code);
+        base_ptr_ = base_ptr;
+    };
+
+#if BRAINFUNK_COMPUTED_GOTO
+    /* Same order as Opcode */
+    static const void* const handlers[] = {
+        &&op_X, &&op_A, &&op_S, &&op_MUL, &&op_F, &&op_M, &&op_JE, &&op_JN,
+        &&op_IO, &&op_H, &&op_MULC, &&op_DJN, &&op_MJN, &&op_SRUN,
+    };
+    static_assert(std::size(handlers) == static_cast<std::size_t>(Opcode::Count));
+#define VM_CASE(name) op_##name
+#define VM_DISPATCH()                                                          \
+    do {                                                                       \
+        instruction = next++;                                                  \
+        goto* handlers[static_cast<std::size_t>(instruction->opcode_)];        \
+    } while (0)
+#else
+#define VM_CASE(name) case Opcode::name
+#define VM_DISPATCH() goto dispatch
+#endif
+
+#define VM_NEXT()                                                              \
+    do {                                                                       \
+        if constexpr (SingleStep) {                                            \
+            save_state(next);                                                  \
+            return true;                                                       \
+        } else {                                                               \
+            VM_DISPATCH();                                                     \
+        }                                                                      \
+    } while (0)
+
+#if BRAINFUNK_COMPUTED_GOTO
+    VM_DISPATCH();
+#else
+[[maybe_unused]] dispatch:
+    instruction = next++;
+    switch (instruction->opcode_) {
+#endif
+
+    VM_CASE(A):
+        memory[ea(instruction->wide_)] += instruction->data_;
+        VM_NEXT();
+
+    VM_CASE(S):
+        memory[ea(instruction->wide_)] = instruction->data_;
+        VM_NEXT();
+
+    VM_CASE(MUL):
+        memory[ea(instruction->wide_)] +=
+            static_cast<memory_t>(memory[ea(instruction->narrow_)] * instruction->data_);
+        VM_NEXT();
+
+    VM_CASE(MULC): {
+        const memory_t source = memory[ea(instruction->narrow_)];
+        memory[ea(instruction->wide_)] += static_cast<memory_t>(source * instruction->data_);
+        memory[ea(instruction->narrow_)] = 0;
+        VM_NEXT();
+    }
+
+    VM_CASE(F):
+        while (memory[ea(instruction->narrow_)] != 0) {
+            base_ptr = ea(instruction->wide_);
+        }
+        VM_NEXT();
+
+    VM_CASE(M):
+        base_ptr = ea(instruction->wide_);
+        VM_NEXT();
+
+    VM_CASE(JE):
+        if (memory[ea(instruction->narrow_)] == 0) next += instruction->wide_;
+        VM_NEXT();
+
+    VM_CASE(JN):
+        if (memory[ea(instruction->narrow_)] != 0) next += instruction->wide_;
+        VM_NEXT();
+
+    VM_CASE(DJN):
+        if (--memory[ea(instruction->narrow_)] != 0) next += instruction->wide_;
+        VM_NEXT();
+
+    VM_CASE(MJN):
+        base_ptr = ea(instruction->short_);
+        if (memory[ea(instruction->narrow_)] != 0) next += instruction->wide_;
+        VM_NEXT();
+
+    VM_CASE(SRUN): {
+        const auto count = static_cast<std::uint8_t>(instruction->narrow_);
+        for (unsigned i = 0; i < count; ++i) {
+            memory[ea(instruction->wide_ + static_cast<std::int32_t>(i))] = instruction->data_;
+        }
+        VM_NEXT();
+    }
+
+    VM_CASE(IO):
+        if (instruction->data_ == IO_IN) {
+            memory_t input = 0;
+            is >> std::noskipws >> input;
+            if (is.eof()) input = 0;
+            memory[ea(instruction->wide_)] = input;
+        } else {
+            os << static_cast<char>(memory[ea(instruction->wide_)]) << std::flush;
+        }
+        VM_NEXT();
+
+    VM_CASE(H):
+        save_state(instruction);   // pc stays on H
+        return false;
+
+    VM_CASE(X):
+        save_state(instruction);
+        throw BrainfunkException("Empty instruction");
+
+#if !BRAINFUNK_COMPUTED_GOTO
+    case Opcode::Count:
+        break;
+    }
+    throw BrainfunkException("Invalid opcode");
+#endif
+}
+
+#undef VM_CASE
+#undef VM_DISPATCH
+#undef VM_NEXT
+
+#if BRAINFUNK_COMPUTED_GOTO
+#pragma GCC diagnostic pop
+#endif
+#undef BRAINFUNK_COMPUTED_GOTO
 
 /* ================================================================
  *             Bitcode implementation
@@ -499,109 +658,6 @@ std::string Bitcode::to_string(BitcodeFormat format) const {
         return std::string(opcode_name(opcode_)) + "(" + operand.str() + ");";
     }
     return std::string(opcode_name(opcode_)) + "\t" + operand.str();
-}
-
-// ------------------------------------------------------------------
-//  execute  –  runs one instruction, returns false on halt
-// ------------------------------------------------------------------
-
-bool Bitcode::execute(std::span<memory_t> memory,
-                      addr_t& pc,
-                      addr_t& base_ptr,
-                      std::istream& is,
-                      std::ostream& os) const {
-
-    const auto size = memory.size();
-    const auto ea = [&](offset_t offset) {
-        return effective_address(base_ptr, offset, size);
-    };
-
-    switch (opcode_) {
-
-    case Opcode::X:
-        throw BrainfunkException("Empty instruction");
-
-    case Opcode::A:
-        memory[ea(addr_offset())] += data();
-        break;
-
-    case Opcode::S:
-        memory[ea(addr_offset())] = data();
-        break;
-
-    case Opcode::MUL:
-        memory[ea(addr_offset())] +=
-            static_cast<memory_t>(memory[ea(src_offset())] * data());
-        break;
-
-    case Opcode::F:
-        while (memory[ea(test_offset())] != 0) {
-            base_ptr = ea(step());
-        }
-        break;
-
-    case Opcode::M:
-        base_ptr = ea(move_offset());
-        break;
-
-    case Opcode::JE:
-        if (memory[ea(test_offset())] == 0) {
-            pc += static_cast<addr_t>(jump_offset());
-        }
-        break;
-
-    case Opcode::JN:
-        if (memory[ea(test_offset())] != 0) {
-            pc += static_cast<addr_t>(jump_offset());
-        }
-        break;
-
-    case Opcode::IO:
-        if (data() == IO_IN) {
-            memory_t io_input = 0;
-            is >> std::noskipws >> io_input;
-            if (is.eof()) io_input = 0;
-            memory[ea(addr_offset())] = io_input;
-        } else {
-            os << static_cast<char>(memory[ea(addr_offset())]) << std::flush;
-        }
-        break;
-
-    case Opcode::H:
-        return false;   // halt
-
-    case Opcode::MULC: {
-        const memory_t source = memory[ea(src_offset())];
-        memory[ea(addr_offset())] += static_cast<memory_t>(source * data());
-        memory[ea(src_offset())] = 0;
-        break;
-    }
-
-    case Opcode::DJN:
-        if (--memory[ea(test_offset())] != 0) {
-            pc += static_cast<addr_t>(jump_offset());
-        }
-        break;
-
-    case Opcode::MJN:
-        base_ptr = ea(move_offset());
-        if (memory[ea(test_offset())] != 0) {
-            pc += static_cast<addr_t>(jump_offset());
-        }
-        break;
-
-    case Opcode::SRUN:
-        for (unsigned i = 0; i < count(); ++i) {
-            memory[ea(addr_offset() + static_cast<offset_t>(i))] = data();
-        }
-        break;
-
-    default:
-        throw BrainfunkException("Invalid opcode");
-    }
-
-    ++pc;
-    return true;
 }
 
 // ------------------------------------------------------------------
