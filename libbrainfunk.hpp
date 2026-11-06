@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,11 @@ inline constexpr unsigned ADDR_OFFSET_BITS = 12;
 inline constexpr unsigned SRC_OFFSET_BITS  = 8;
 inline constexpr unsigned TEST_OFFSET_BITS = 8;
 inline constexpr unsigned LONG_OFFSET_BITS = 20;   // jump_offset, step, move_offset
+
+/* Levels for Brainfunk::optimize(); each one includes the previous ones. */
+inline constexpr int OPT_NONE      = 0;
+inline constexpr int OPT_LAZY_MOVE = 1;
+inline constexpr int OPT_MAX       = OPT_LAZY_MOVE;
 
 /* Bitcode format constants (exported for external use) */
 enum class BitcodeFormat : std::uint8_t { C, Plain };
@@ -135,6 +141,22 @@ public:
     [[nodiscard]] constexpr offset_t step()        const noexcept { return wide_; }
     [[nodiscard]] constexpr offset_t move_offset() const noexcept { return wide_; }
 
+    /* Offset of the cell this instruction is about, for display and tracing. */
+    [[nodiscard]] constexpr std::optional<offset_t> primary_offset() const noexcept {
+        switch (opcode_layout(opcode_)) {
+        case OperandLayout::Data:
+        case OperandLayout::Mul:
+            return addr_offset();
+        case OperandLayout::Branch:
+        case OperandLayout::Scan:
+            return test_offset();
+        case OperandLayout::None:
+        case OperandLayout::Move:
+            break;
+        }
+        return std::nullopt;
+    }
+
     /* ---- formatting ---- */
     [[nodiscard]] std::string to_string(
         BitcodeFormat format = BitcodeFormat::Plain) const;
@@ -180,6 +202,10 @@ public:
 
     /* Translate Brainfuck source code into internal bitcode */
     void translate(std::string_view code);
+
+    /* Rewrite the translated program; see doc/optimizer.md.  Output, final memory
+     * and final base_ptr stay the same at every level. */
+    void optimize(int level);
 
     /* Execute the translated program */
     void run(std::istream& is = std::cin, std::ostream& os = std::cout);
@@ -268,6 +294,14 @@ struct LeadingRun {
 [[nodiscard]] constexpr bool fits_signed(std::int64_t value, unsigned bits) noexcept {
     const std::int64_t limit = std::int64_t{1} << (bits - 1);
     return value >= -limit && value < limit;
+}
+
+/* Parses the argument of a -O option. */
+[[nodiscard]] constexpr std::optional<int> parse_opt_level(std::string_view text) noexcept {
+    if (text.size() != 1 || text[0] < '0' || text[0] > '9') return std::nullopt;
+    const int level = text[0] - '0';
+    if (level > OPT_MAX) return std::nullopt;
+    return level;
 }
 
 /* Effective address; `size` is a power of two. */

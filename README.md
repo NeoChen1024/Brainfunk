@@ -14,10 +14,16 @@ make test
 - C++20 interpreter and reusable execution library
 - RLE optimizations for `+-` and `><`
 - Common loop optimizations: set-to-zero, multiply-with-offset, and find-zero
+- Lazy pointer moves: base-relative operands remove most `M` instructions; see [doc/optimizer.md](doc/optimizer.md)
 - C99 code generation with the same 8-bit cells and wrapping tape semantics as the interpreter
 - Portable textual LLVM IR generation without linking against LLVM libraries
 - ncurses TUI with pause, single-step, speed control, program I/O, and resize support
 - `bf`, a small direct interpreter retained as a comparison implementation
+
+# Optimization levels
+
+`-O0` runs the translated bitcode as is. `-O1` adds lazy moves. `brainfunk` defaults to the
+highest level; `visualbrainfunk` defaults to `-O0`, which is easier to follow while stepping.
 
 # Modes
 

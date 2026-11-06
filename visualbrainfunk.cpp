@@ -180,6 +180,8 @@ public:
     }
 
     /* Load Brainfuck source from a file or string */
+    void set_opt_level(int level) { opt_level_ = level; }
+
     void load_file(const std::string& path) {
         std::ifstream input(path);
         if (!input.is_open()) {
@@ -193,11 +195,13 @@ public:
                 code += c;
         }
         bf_.translate(code);
+        bf_.optimize(opt_level_);
         cache_code_();
     }
 
     void load_code(const std::string& code_str) {
         bf_.translate(code_str);
+        bf_.optimize(opt_level_);
         cache_code_();
     }
 
@@ -280,6 +284,7 @@ public:
 
 private:
     std::chrono::milliseconds delay_;
+    int opt_level_ = OPT_NONE;
     Brainfunk  bf_;
     bool       ncurses_inited_ = false;
     bool       quit_requested_ = false;
@@ -469,6 +474,15 @@ private:
         }
     }
 
+    /* Cell the instruction at pc addresses, if it addresses one. */
+    [[nodiscard]] std::optional<addr_t> current_effective_address_() const {
+        const auto bc = bf_.bitcode();
+        if (bf_.pc() >= bc.size()) return std::nullopt;
+        const auto offset = bc[bf_.pc()].primary_offset();
+        if (!offset) return std::nullopt;
+        return effective_address(bf_.base_ptr(), *offset, bf_.memory().size());
+    }
+
     /* ---------- MEM window ---------- */
     void print_mem_() {
         werase(mem_win_);
@@ -479,17 +493,14 @@ private:
         if (cells % 2 == 0) --cells;
         const int half = cells / 2;
 
+        const auto ea = current_effective_address_();
         for (int offset = -half; offset <= half; ++offset) {
             const auto addr = wrap_offset(base_ptr, offset, memsize);
-            if (offset == 0) {
-                wattron(mem_win_, highlight_attr_());
-                wprintw(mem_win_, " %02x |",
-                        static_cast<unsigned>(mem[addr]));
-                wattroff(mem_win_, highlight_attr_());
-            } else {
-                wprintw(mem_win_, " %02x |",
-                        static_cast<unsigned>(mem[addr]));
-            }
+            chtype attr = offset == 0 ? highlight_attr_() : A_NORMAL;
+            if (ea && *ea == addr) attr |= A_UNDERLINE;
+            wattron(mem_win_, attr);
+            wprintw(mem_win_, " %02x |", static_cast<unsigned>(mem[addr]));
+            wattroff(mem_win_, attr);
         }
         mvwprintw(mem_win_, getmaxy(mem_win_) - 1, 0, " Memory  (base_ptr = %zu)", base_ptr);
     }
@@ -542,7 +553,10 @@ private:
                       static_cast<unsigned>(mem[base_ptr]),
                       static_cast<int>(mem[base_ptr]));
         }
-        mvwprintw(reg_win_, std::min(6, getmaxy(reg_win_) - 1), 0, " [%s]",
+        if (const auto ea = current_effective_address_()) {
+            mvwprintw(reg_win_, 5, 0, " EA   = %zu", *ea);
+        }
+        mvwprintw(reg_win_, std::min(7, getmaxy(reg_win_) - 1), 0, " [%s]",
                   paused ? "PAUSED" : "RUNNING");
     }
 
@@ -578,10 +592,11 @@ private:
 [[noreturn]] static void helpmsg(char** argv, int status = 0) {
     std::cerr
         << "Usage: " << argv[0]
-        << " [-h] [-f file] [-s code] [-t msec]\n"
+        << " [-h] [-f file] [-s code] [-t msec] [-O level]\n"
         << "  -f file    Read Brainfuck source from file\n"
         << "  -s code    Inline Brainfuck code\n"
         << "  -t msec    Initial delay per step in milliseconds (default 100)\n"
+        << "  -O level   Optimization level, 0 to " << OPT_MAX << " (default 0)\n"
         << "  -h         Show this help\n"
         << "\n"
         << "TUI Controls:\n"
@@ -598,10 +613,20 @@ int main(int argc, char** argv) {
     std::string code_str;
     auto delay = std::chrono::milliseconds{100};
     bool valid = false;
+    int opt_level = OPT_NONE;
 
     int opt;
-    while ((opt = ::getopt(argc, argv, "hf:s:t:")) != -1) {
+    while ((opt = ::getopt(argc, argv, "hf:s:t:O:")) != -1) {
         switch (opt) {
+        case 'O': {
+            const auto level = parse_opt_level(optarg);
+            if (!level) {
+                std::cerr << "Invalid optimization level: " << optarg << '\n';
+                return 1;
+            }
+            opt_level = *level;
+            break;
+        }
         case 'f':
             filename = optarg;
             valid = true;
@@ -639,6 +664,7 @@ int main(int argc, char** argv) {
 
     try {
         VisualBrainfunk vbf(delay);
+        vbf.set_opt_level(opt_level);
 
         if (!filename.empty()) {
             vbf.load_file(filename);

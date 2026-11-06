@@ -1,9 +1,12 @@
 #include "libbrainfunk.hpp"
 
+#include <array>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -26,13 +29,114 @@ std::string run(std::string_view code, std::string_view input = {},
     return out.str();
 }
 
-std::string dump(std::string_view code, Format format = Format::BIT) {
+std::string dump(std::string_view code, Format format = Format::BIT, int level = OPT_NONE) {
     Brainfunk brainfunk;
     brainfunk.translate(code);
+    brainfunk.optimize(level);
     std::ostringstream out;
     brainfunk.dump(out, format);
     return out.str();
 }
+
+/* Everything an optimization level must preserve. */
+struct Outcome {
+    bool halted = false;
+    std::string output;
+    std::vector<memory_t> memory;
+    addr_t base_ptr = 0;
+    addr_t steps = 0;
+
+    bool operator==(const Outcome& other) const {
+        return halted == other.halted && output == other.output && memory == other.memory &&
+               base_ptr == other.base_ptr;
+    }
+};
+
+bool scan_never_ends(const Brainfunk& brainfunk) {
+    const auto& instruction = brainfunk.bitcode()[brainfunk.pc()];
+    if (instruction.opcode() != Opcode::F) return false;
+
+    const auto memory = brainfunk.memory();
+    auto base_ptr = brainfunk.base_ptr();
+    for (std::size_t i = 0; i <= memory.size(); ++i) {
+        if (memory[effective_address(base_ptr, instruction.test_offset(), memory.size())] == 0) {
+            return false;
+        }
+        base_ptr = effective_address(base_ptr, instruction.step(), memory.size());
+    }
+    return true;
+}
+
+Outcome execute(std::string_view code, int level, std::size_t memory_size, std::string_view input,
+                addr_t step_limit) {
+    Brainfunk brainfunk(memory_size);
+    brainfunk.translate(code);
+    brainfunk.optimize(level);
+
+    std::istringstream in{std::string(input)};
+    std::ostringstream out;
+    Outcome outcome;
+    while (outcome.steps < step_limit) {
+        /* F runs to completion inside one step, so the limit alone cannot stop it. */
+        if (scan_never_ends(brainfunk)) break;
+        ++outcome.steps;
+        if (!brainfunk.step(in, out)) {
+            outcome.halted = true;
+            break;
+        }
+    }
+    outcome.output = out.str();
+    const auto memory = brainfunk.memory();
+    outcome.memory.assign(memory.begin(), memory.end());
+    outcome.base_ptr = brainfunk.base_ptr();
+    return outcome;
+}
+
+/* Deterministic, so that a failure reproduces. */
+class ProgramGenerator {
+public:
+    explicit ProgramGenerator(std::uint32_t seed) : state_(seed) {}
+
+    std::string program() {
+        std::string code;
+        block(code, 0);
+        return code;
+    }
+
+private:
+    std::uint32_t state_;
+
+    std::uint32_t next(std::uint32_t bound) {
+        state_ = state_ * 1664525u + 1013904223u;
+        return (state_ >> 8) % bound;
+    }
+
+    void block(std::string& code, int depth) {
+        const auto pieces = 1 + next(8);
+        for (std::uint32_t piece = 0; piece < pieces; ++piece) {
+            switch (next(depth < 3 ? 11 : 9)) {
+            case 0: case 1: code.append(1 + next(4), '+'); break;
+            case 2:         code.append(1 + next(3), '-'); break;
+            case 3: case 4: code.append(1 + next(4), '>'); break;
+            case 5:         code.append(1 + next(4), '<'); break;
+            case 6:         code += '.'; break;
+            case 7:         code += ','; break;
+            case 8: {
+                /* Shapes the translator lowers to S, F and MUL. */
+                constexpr std::array shapes = {"[-]", "[>]", "[<]", "[>>]", "[->+<]", "[>++<-]",
+                                               "[-<+>>++<]", "[->+<+>-<]", "[->>+<<]", "[+]"};
+                code += shapes[next(shapes.size())];
+                break;
+            }
+            default:
+                code += '[';
+                block(code, depth + 1);
+                code += ']';
+                break;
+            }
+        }
+    }
+};
 
 } // namespace
 
@@ -93,6 +197,72 @@ int main() {
         rejected = true;
     }
     check(rejected, "unmatched bracket is rejected");
+
+    /* ---- lazy move ---- */
+    check(dump("+.", Format::BIT, OPT_LAZY_MOVE).find("\tM\t") == std::string::npos,
+          "a program without pointer motion emits no M");
+    {
+        const auto listing = dump(">>+<<.", Format::BIT, OPT_LAZY_MOVE);
+        check(listing.find("A\t2, 1") != std::string::npos,
+              "pending motion becomes addr_offset");
+        check(listing.find("\tM\t") == std::string::npos, "balanced motion emits no M");
+    }
+    check(dump(">>[->+<]", Format::BIT, OPT_LAZY_MOVE).find("MUL\t3, 2, 1") != std::string::npos,
+          "pending motion reaches both MUL operands");
+    {
+        const auto listing = dump(">>[>+<-]<<", Format::BIT, OPT_LAZY_MOVE);
+        check(listing.find("\tM\t") == std::string::npos, "multiply loop needs no flush");
+    }
+    {
+        const auto listing = dump(">>[.>+<-.]<<", Format::BIT, OPT_LAZY_MOVE);
+        check(listing.find("JE\t2,") != std::string::npos &&
+                  listing.find("JN\t2,") != std::string::npos,
+              "branches test through test_offset");
+        check(listing.find("\tM\t") == std::string::npos, "balanced loop needs no M");
+    }
+    {
+        const auto listing = dump(">>[.>]", Format::BIT, OPT_LAZY_MOVE);
+        check(listing.find("M\t1") != std::string::npos,
+              "loop with net motion keeps M on its back edge");
+    }
+    check(dump(">>[>]", Format::BIT, OPT_LAZY_MOVE).find("F\t2, 1") != std::string::npos,
+          "scan tests through test_offset");
+
+    for (const auto* code : {"+[>+]", ">>[.>]<<.", "+>+[[-]>]", ">,[>,]<[.<]"}) {
+        Brainfunk once;
+        once.translate(code);
+        once.optimize(OPT_LAZY_MOVE);
+        std::ostringstream first;
+        once.dump(first);
+        once.optimize(OPT_LAZY_MOVE);
+        std::ostringstream second;
+        once.dump(second);
+        check(first.str() == second.str(), "lazy move is idempotent");
+    }
+
+    /* ---- differential: every level against the unoptimized program ---- */
+    constexpr addr_t step_limit = 20000;
+    constexpr std::string_view input = "Az\xff\x01?";
+    int halted_programs = 0;
+    for (std::uint32_t seed = 1; seed <= 4000; ++seed) {
+        ProgramGenerator generator(seed);
+        const auto code = generator.program();
+        const std::size_t memory_size = seed % 2 == 0 ? std::size_t{16} : MEMSIZE;
+        const auto reference = execute(code, OPT_NONE, memory_size, input, step_limit);
+        if (!reference.halted) continue;   // cannot compare a truncated run
+        ++halted_programs;
+        for (int level = OPT_NONE + 1; level <= OPT_MAX; ++level) {
+            /* Optimized code never takes more steps than the original. */
+            const auto optimized = execute(code, level, memory_size, input, step_limit);
+            if (!(optimized == reference)) {
+                std::cerr << "FAIL: level " << level << " differs on seed " << seed << ": " << code
+                          << '\n';
+                ++failures;
+            }
+            check(optimized.steps <= reference.steps, "optimized code takes no extra steps");
+        }
+    }
+    check(halted_programs > 1000, "differential test exercised enough programs");
 
     return failures == 0 ? 0 : 1;
 }

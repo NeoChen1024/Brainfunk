@@ -35,7 +35,8 @@ static void readcode(string& code, const std::string& filename) {
 
 [[noreturn]] static void helpmsg(char** argv, int status = 0) {
     cerr << "Usage: " << argv[0]
-         << " [-h] [-m bf|bit|bfc|llvm] [-s code string] [-f file] [-o out]\n";
+         << " [-h] [-m bf|bit|bfc|llvm] [-O level] [-s code string] [-f file] [-o out]\n"
+         << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n";
     std::exit(status);
 }
 
@@ -46,6 +47,7 @@ static void readcode(string& code, const std::string& filename) {
 int main(int argc, char** argv) {
     string code;
     string mode = "bf";
+    int opt_level = OPT_MAX;
 
     /* Manage output stream – use RAII to avoid leaks */
     std::unique_ptr<std::ostream> output_owner;
@@ -54,7 +56,7 @@ int main(int argc, char** argv) {
     bool valid = false;
 
     int opt;
-    while ((opt = ::getopt(argc, argv, "hm:s:f:o:")) != -1) {
+    while ((opt = ::getopt(argc, argv, "hm:O:s:f:o:")) != -1) {
         switch (opt) {
         case 'f':
             readcode(code, optarg);
@@ -70,6 +72,15 @@ int main(int argc, char** argv) {
         case 'm':
             mode = optarg;
             break;
+        case 'O': {
+            const auto level = parse_opt_level(optarg);
+            if (!level) {
+                cerr << "Invalid optimization level: " << optarg << '\n';
+                return 1;
+            }
+            opt_level = *level;
+            break;
+        }
         case 'o':
             if (std::string_view{optarg} == "-") {
                 output = &cout;
@@ -96,6 +107,7 @@ int main(int argc, char** argv) {
     try {
         Brainfunk bf(MEMSIZE);
         bf.translate(code);
+        bf.optimize(opt_level);
 
         if (mode == "bf") {
             bf.run();
