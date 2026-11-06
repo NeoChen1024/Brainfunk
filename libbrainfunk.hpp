@@ -139,7 +139,7 @@ public:
     [[nodiscard]] bool execute(
         std::span<memory_t>       memory,
         addr_t&                  pc,
-        addr_t&                  ptr,
+        addr_t&                  base_ptr,
         std::istream&            is = std::cin,
         std::ostream&            os = std::cout
     ) const;
@@ -175,7 +175,7 @@ public:
     /* Execute exactly one bitcode instruction. Returns false on halt. */
     [[nodiscard]] bool step(std::istream& is = std::cin, std::ostream& os = std::cout);
 
-    /* Reset execution state (memory + pc + ptr) without clearing bitcode */
+    /* Reset execution state (memory + pc + base_ptr) without clearing bitcode */
     void reset_state();
 
     /* Reset everything */
@@ -183,7 +183,7 @@ public:
 
     /* ---- const accessors for TUI ---- */
     [[nodiscard]] addr_t                       pc()      const noexcept { return pc_; }
-    [[nodiscard]] addr_t                       ptr()     const noexcept { return ptr_; }
+    [[nodiscard]] addr_t                       base_ptr()     const noexcept { return base_ptr_; }
     [[nodiscard]] std::span<const memory_t> memory() const noexcept { return memory_; }
     [[nodiscard]] std::span<const Bitcode> bitcode() const noexcept { return bitcode_; }
 
@@ -191,7 +191,7 @@ public:
     void dump(std::ostream& os, Format format = Format::BIT) const;
 
 private:
-    addr_t                         ptr_ = 0;
+    addr_t                         base_ptr_ = 0;
     addr_t                         pc_  = 0;
     std::vector<memory_t>          memory_;
     std::vector<Bitcode>           bitcode_;

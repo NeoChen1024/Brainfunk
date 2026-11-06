@@ -31,9 +31,9 @@ void emit_instruction_header(std::ostream& os, addr_t pc, Opcode opcode) {
 }
 
 void emit_current_cell(std::ostream& os, addr_t pc) {
-    os << "  %data.ptr." << pc << " = load i64, ptr %data.ptr.addr\n"
+    os << "  %base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
           "  %cell.ptr." << pc
-       << " = getelementptr i8, ptr %tape, i64 %data.ptr." << pc << '\n';
+       << " = getelementptr i8, ptr %tape, i64 %base.ptr." << pc << '\n';
 }
 
 void emit_next(std::ostream& os, addr_t pc) {
@@ -52,7 +52,7 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
           "define i32 @brainfunk_program(ptr %tape, i64 %tape_size, "
           "ptr %io_context, ptr %read_byte, ptr %write_byte) {\n"
           "entry:\n"
-          "  %data.ptr.addr = alloca i64\n"
+          "  %base.ptr.addr = alloca i64\n"
           "  %tape.not_null = icmp ne ptr %tape, null\n"
           "  %tape.size.valid = icmp eq i64 %tape_size, "
        << memory_.size() << "\n"
@@ -61,7 +61,7 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
           "invalid.arguments:\n"
           "  ret i32 1\n\n"
           "initialize:\n"
-          "  store i64 0, ptr %data.ptr.addr\n"
+          "  store i64 0, ptr %base.ptr.addr\n"
           "  br label %inst.0\n";
 
     for (addr_t pc = 0; pc < bitcode_.size(); ++pc) {
@@ -98,7 +98,7 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
             const auto normalized_offset = wrap_offset(0, operand.offset, memory_.size());
             emit_current_cell(os, pc);
             os << "  %source.value." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
-               << "  %destination.unwrapped." << pc << " = add i64 %data.ptr." << pc << ", "
+               << "  %destination.unwrapped." << pc << " = add i64 %base.ptr." << pc << ", "
                << normalized_offset << '\n'
                << "  %destination.index." << pc << " = urem i64 %destination.unwrapped." << pc
                << ", %tape_size\n"
@@ -121,19 +121,19 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
             const auto normalized_offset = wrap_offset(0, offset, memory_.size());
             os << "  br label %scan.test." << pc << "\n\n"
                << "scan.test." << pc << ":\n"
-               << "  %scan.data.ptr." << pc << " = load i64, ptr %data.ptr.addr\n"
+               << "  %scan.base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
                << "  %scan.cell.ptr." << pc
-               << " = getelementptr i8, ptr %tape, i64 %scan.data.ptr." << pc << '\n'
+               << " = getelementptr i8, ptr %tape, i64 %scan.base.ptr." << pc << '\n'
                << "  %scan.value." << pc << " = load i8, ptr %scan.cell.ptr." << pc << '\n'
                << "  %scan.done." << pc << " = icmp eq i8 %scan.value." << pc << ", 0\n"
                << "  br i1 %scan.done." << pc << ", label %inst." << pc + 1
                << ", label %scan.move." << pc << "\n\n"
                << "scan.move." << pc << ":\n"
-               << "  %scan.unwrapped." << pc << " = add i64 %scan.data.ptr." << pc << ", "
+               << "  %scan.unwrapped." << pc << " = add i64 %scan.base.ptr." << pc << ", "
                << normalized_offset << '\n'
                << "  %scan.next." << pc << " = urem i64 %scan.unwrapped." << pc
                << ", %tape_size\n"
-               << "  store i64 %scan.next." << pc << ", ptr %data.ptr.addr\n"
+               << "  store i64 %scan.next." << pc << ", ptr %base.ptr.addr\n"
                << "  br label %scan.test." << pc << '\n';
             break;
         }
@@ -141,12 +141,12 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
         case Opcode::M: {
             const auto offset = std::get<offset_t>(instruction.operand_);
             const auto normalized_offset = wrap_offset(0, offset, memory_.size());
-            os << "  %data.ptr." << pc << " = load i64, ptr %data.ptr.addr\n"
-               << "  %data.ptr.unwrapped." << pc << " = add i64 %data.ptr." << pc << ", "
+            os << "  %base.ptr." << pc << " = load i64, ptr %base.ptr.addr\n"
+               << "  %base.ptr.unwrapped." << pc << " = add i64 %base.ptr." << pc << ", "
                << normalized_offset << '\n'
-               << "  %data.ptr.next." << pc << " = urem i64 %data.ptr.unwrapped." << pc
+               << "  %base.ptr.next." << pc << " = urem i64 %base.ptr.unwrapped." << pc
                << ", %tape_size\n"
-               << "  store i64 %data.ptr.next." << pc << ", ptr %data.ptr.addr\n";
+               << "  store i64 %base.ptr.next." << pc << ", ptr %base.ptr.addr\n";
             emit_next(os, pc);
             break;
         }

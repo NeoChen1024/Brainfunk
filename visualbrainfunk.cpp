@@ -474,13 +474,13 @@ private:
         werase(mem_win_);
         const auto mem = bf_.memory();
         const auto memsize = mem.size();
-        const auto ptr = bf_.ptr();
+        const auto base_ptr = bf_.base_ptr();
         int cells = std::max(1, getmaxx(mem_win_) / 6);
         if (cells % 2 == 0) --cells;
         const int half = cells / 2;
 
         for (int offset = -half; offset <= half; ++offset) {
-            const auto addr = wrap_offset(ptr, offset, memsize);
+            const auto addr = wrap_offset(base_ptr, offset, memsize);
             if (offset == 0) {
                 wattron(mem_win_, highlight_attr_());
                 wprintw(mem_win_, " %02x |",
@@ -491,7 +491,7 @@ private:
                         static_cast<unsigned>(mem[addr]));
             }
         }
-        mvwprintw(mem_win_, getmaxy(mem_win_) - 1, 0, " Memory  (ptr = %zu)", ptr);
+        mvwprintw(mem_win_, getmaxy(mem_win_) - 1, 0, " Memory  (base_ptr = %zu)", base_ptr);
     }
 
     /* ---------- CODE window ---------- */
@@ -533,14 +533,14 @@ private:
         werase(reg_win_);
         mvwprintw(reg_win_, 0, 0, " Registers");
         mvwprintw(reg_win_, 2, 0, " PC  = %zu", bf_.pc());
-        mvwprintw(reg_win_, 3, 0, " PTR = %zu", bf_.ptr());
+        mvwprintw(reg_win_, 3, 0, " BASE = %zu", bf_.base_ptr());
 
         const auto mem = bf_.memory();
-        auto ptr = bf_.ptr();
-        if (ptr < mem.size()) {
-            mvwprintw(reg_win_, 4, 0, " *PTR= 0x%02x (%d)",
-                      static_cast<unsigned>(mem[ptr]),
-                      static_cast<int>(mem[ptr]));
+        auto base_ptr = bf_.base_ptr();
+        if (base_ptr < mem.size()) {
+            mvwprintw(reg_win_, 4, 0, " *BASE= 0x%02x (%d)",
+                      static_cast<unsigned>(mem[base_ptr]),
+                      static_cast<int>(mem[base_ptr]));
         }
         mvwprintw(reg_win_, std::min(6, getmaxy(reg_win_) - 1), 0, " [%s]",
                   paused ? "PAUSED" : "RUNNING");

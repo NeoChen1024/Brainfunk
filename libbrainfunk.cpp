@@ -22,7 +22,7 @@ Brainfunk::Brainfunk(std::size_t memsize) {
         throw BrainfunkException("Memory size must be greater than zero");
     }
 
-    ptr_ = 0;
+    base_ptr_ = 0;
     memory_.resize(memsize, memory_t{0});
 }
 
@@ -33,7 +33,7 @@ void Brainfunk::clear() {
 
 void Brainfunk::reset_state() {
     std::ranges::fill(memory_, memory_t{0});
-    ptr_ = 0;
+    base_ptr_ = 0;
     pc_  = 0;
 }
 
@@ -296,7 +296,7 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
               "#define MEMSIZE " << memory_.size() << "u\n";
         if (needs_memory) {
             os << "static uint8_t memory[MEMSIZE];\n"
-                  "static size_t ptr;\n";
+                  "static size_t base_ptr;\n";
         }
         os << '\n';
         if (needs_wrap) {
@@ -313,20 +313,20 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
               "{\n"
               "\tif (arg == 0) {\n"
               "\t\tconst int input = getchar();\n"
-              "\t\tmemory[ptr] = input == EOF ? 0 : (uint8_t)input;\n"
+              "\t\tmemory[base_ptr] = input == EOF ? 0 : (uint8_t)input;\n"
               "\t} else {\n"
-              "\t\tputchar(memory[ptr]);\n"
+              "\t\tputchar(memory[base_ptr]);\n"
               "\t\tfflush(stdout);\n"
               "\t}\n"
               "}\n\n";
         }
         os << "#define X()                 ((void)0)\n"
-              "#define A(value)             (memory[ptr] += (uint8_t)(value))\n"
-              "#define S(value)             (memory[ptr] = (uint8_t)(value))\n"
-              "#define MUL(offset, factor)  (memory[wrap_offset(ptr, (offset))] += (uint8_t)(memory[ptr] * (factor)))\n"
-              "#define F(offset)            while (memory[ptr] != 0) ptr = wrap_offset(ptr, (offset))\n"
-              "#define M(offset)            (ptr = wrap_offset(ptr, (offset)))\n"
-              "#define JE(offset)           while (memory[ptr] != 0) {\n"
+              "#define A(value)             (memory[base_ptr] += (uint8_t)(value))\n"
+              "#define S(value)             (memory[base_ptr] = (uint8_t)(value))\n"
+              "#define MUL(offset, factor)  (memory[wrap_offset(base_ptr, (offset))] += (uint8_t)(memory[base_ptr] * (factor)))\n"
+              "#define F(offset)            while (memory[base_ptr] != 0) base_ptr = wrap_offset(base_ptr, (offset))\n"
+              "#define M(offset)            (base_ptr = wrap_offset(base_ptr, (offset)))\n"
+              "#define JE(offset)           while (memory[base_ptr] != 0) {\n"
               "#define JN(offset)           }\n"
               "#define IO(operation)        brainfunk_io(operation)\n"
               "#define H()                  return 0\n\n"
@@ -367,7 +367,7 @@ bool Brainfunk::step(std::istream& is, std::ostream& os) {
     if (bitcode_.empty() || pc_ >= bitcode_.size()) return false;
 
     auto mem_span = std::span(memory_);
-    return bitcode_[pc_].execute(mem_span, pc_, ptr_, is, os);
+    return bitcode_[pc_].execute(mem_span, pc_, base_ptr_, is, os);
 }
 
 /* ================================================================
@@ -408,7 +408,7 @@ std::string Bitcode::to_string(BitcodeFormat format) const {
 
 bool Bitcode::execute(std::span<memory_t> memory,
                       addr_t& pc,
-                      addr_t& ptr,
+                      addr_t& base_ptr,
                       std::istream& is,
                       std::ostream& os) const {
 
@@ -420,40 +420,40 @@ bool Bitcode::execute(std::span<memory_t> memory,
         throw BrainfunkException("Empty instruction");
 
     case Opcode::A:
-        memory[ptr] += std::get<memory_t>(operand_);
+        memory[base_ptr] += std::get<memory_t>(operand_);
         break;
 
     case Opcode::S:
-        memory[ptr] = std::get<memory_t>(operand_);
+        memory[base_ptr] = std::get<memory_t>(operand_);
         break;
 
     case Opcode::MUL: {
         auto d = std::get<DualOperand>(operand_);
-        memory[wrap_offset(ptr, d.offset, size)] +=
-            static_cast<memory_t>(memory[ptr] * d.mul);
+        memory[wrap_offset(base_ptr, d.offset, size)] +=
+            static_cast<memory_t>(memory[base_ptr] * d.mul);
         break;
     }
 
     case Opcode::F: {
         auto off = std::get<offset_t>(operand_);
-        while (memory[ptr] != 0) {
-            ptr = wrap_offset(ptr, off, size);
+        while (memory[base_ptr] != 0) {
+            base_ptr = wrap_offset(base_ptr, off, size);
         }
         break;
     }
 
     case Opcode::M:
-        ptr = wrap_offset(ptr, std::get<offset_t>(operand_), size);
+        base_ptr = wrap_offset(base_ptr, std::get<offset_t>(operand_), size);
         break;
 
     case Opcode::JE:
-        if (memory[ptr] == 0) {
+        if (memory[base_ptr] == 0) {
             pc += static_cast<addr_t>(std::get<offset_t>(operand_));
         }
         break;
 
     case Opcode::JN:
-        if (memory[ptr] != 0) {
+        if (memory[base_ptr] != 0) {
             pc += static_cast<addr_t>(std::get<offset_t>(operand_));
         }
         break;
@@ -464,9 +464,9 @@ bool Bitcode::execute(std::span<memory_t> memory,
             memory_t io_input = 0;
             is >> std::noskipws >> io_input;
             if (is.eof()) io_input = 0;
-            memory[ptr] = io_input;
+            memory[base_ptr] = io_input;
         } else {
-            os << static_cast<char>(memory[ptr]) << std::flush;
+            os << static_cast<char>(memory[base_ptr]) << std::flush;
         }
         break;
     }
