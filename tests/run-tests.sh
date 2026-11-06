@@ -114,6 +114,10 @@ if printf '0: M 524288\n' | ./bit2bin >/dev/null 2>"$tmpdir/oversized.err"; then
     exit 1
 fi
 
+awk 'BEGIN { printf "+[-"; for (i = 0; i < 3000; ++i) printf ">"; printf "+";
+            for (i = 0; i < 3000; ++i) printf "<"; printf "]" }' >"$tmpdir/far-mul.bf"
+./brainfunk -m bit -f "$tmpdir/far-mul.bf" | ./bit2bin >/dev/null
+
 if ./visualbrainfunk -s '+' -t invalid >/dev/null 2>&1; then
     echo "visualbrainfunk accepted an invalid delay" >&2
     exit 1

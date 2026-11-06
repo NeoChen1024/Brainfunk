@@ -252,6 +252,12 @@ struct LeadingRun {
     return {.net = ctr, .length = i};
 }
 
+/* True when `value` fits in a two's-complement field of `bits` bits. */
+[[nodiscard]] constexpr bool fits_signed(std::ptrdiff_t value, unsigned bits) noexcept {
+    const std::ptrdiff_t limit = std::ptrdiff_t{1} << (bits - 1);
+    return value >= -limit && value < limit;
+}
+
 /* Modular-wrapping address arithmetic. */
 [[nodiscard]] constexpr addr_t wrap_addr(addr_t address,
                                           addr_t size) noexcept {

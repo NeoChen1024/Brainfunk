@@ -51,6 +51,20 @@ int main() {
     check(dump("[->++<]").find("MUL\t1, 2") != std::string::npos,
           "multiply-offset loop is optimized");
 
+    check(dump("[->+<+>-<]").find("MUL") == std::string::npos,
+          "loop that writes its own induction cell is not a multiply");
+    check(run("++++[->++<->+++<]>.") == std::string(1, '\x0a'),
+          "loop that writes its own induction cell keeps its iteration count");
+    {
+        std::string far_loop = "[-";
+        far_loop.append(3000, '>');
+        far_loop += '+';
+        far_loop.append(3000, '<');
+        far_loop += ']';
+        check(dump(far_loop).find("MUL") == std::string::npos,
+              "multiply offset beyond 12 bits stays an ordinary loop");
+    }
+
     const auto llvm_ir = dump(",.[>]", Format::LLVM_IR);
     check(llvm_ir.find("define i32 @brainfunk_program") != std::string::npos,
           "LLVM mode emits the portable runtime entry point");

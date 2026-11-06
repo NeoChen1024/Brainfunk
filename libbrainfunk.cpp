@@ -208,6 +208,14 @@ bool Brainfunk::try_parse_mul_offset_loop_(std::string_view& code) {
     auto pairs = (mode == 2) ? offset.size() - 1 : offset.size();
 
     assert(pairs > 0);
+
+    /* A pair that writes the induction cell itself changes how many times the
+     * loop runs, so it cannot be a multiply.  An offset that does not fit the
+     * instruction's 12-bit field must stay an ordinary loop as well. */
+    for (std::size_t i = 0; i < pairs; ++i) {
+        if (offset[i] == 0 || !fits_signed(offset[i], 12)) return false;
+    }
+
     for (std::size_t i = 0; i < pairs; ++i) {
         bitcode_.emplace_back(Opcode::MUL, mul[i], offset[i]);
     }
