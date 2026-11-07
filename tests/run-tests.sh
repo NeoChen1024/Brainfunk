@@ -7,7 +7,7 @@ CLANG="${CLANG:-clang}"
 LLVM_AS="${LLVM_AS:-llvm-as}"
 LLVM_OPT="${LLVM_OPT:-opt}"
 
-"$CXX" -std=c++20 -O2 -Wall -Wextra -pedantic -I. \
+"$CXX" -std=c++20 -O2 -Wall -Wextra -pedantic -I. -Itests \
     tests/test-libbrainfunk.cpp libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp \
     -o tests/test-libbrainfunk
 ./tests/test-libbrainfunk
@@ -40,7 +40,14 @@ check_codegen()
         ./brainfunk -O"$level" -f "$source" >"$base.interpreted" <"$input"
         cmp "$tmpdir/$name.reference" "$base.interpreted"
 
-        ./brainfunk -O"$level" -m bit -f "$source" | ./bit2bin >/dev/null 2>&1
+        ./brainfunk -O"$level" -m bit -f "$source" >"$base.bit"
+        ./bit2bin <"$base.bit" >"$base.hex" 2>/dev/null
+
+        # The image must decode back to the same program, and run the same.
+        ./brainfunk -b "$base.hex" -m bit -o "$base.image.bit"
+        cmp "$base.bit" "$base.image.bit"
+        ./brainfunk -b "$base.hex" >"$base.image.out" <"$input"
+        cmp "$tmpdir/$name.reference" "$base.image.out"
 
         ./brainfunk -O"$level" -m bfc -f "$source" >"$base.c"
         "$CC" -std=c99 -O2 -Wall -Wextra -Werror -pedantic \
@@ -244,6 +251,12 @@ grep -q '^memory_reads	4$' "$tmpdir/stat.out"
 grep -q '^total	' "$tmpdir/stat-file.out"
 sh tests/stat-compare.sh "$tmpdir/hello.bf" >"$tmpdir/compare.out"
 grep -q 'hello.bf' "$tmpdir/compare.out"
+
+printf '10000005\ne0000000\n90000000\n' >"$tmpdir/trap.hex"
+if ./brainfunk -b "$tmpdir/trap.hex" >/dev/null 2>&1; then
+    echo "brainfunk ran past an illegal word" >&2
+    exit 1
+fi
 
 for invalid_level in 9 x 12 ''; do
     if ./brainfunk -O"$invalid_level" -s '+' >/dev/null 2>&1; then

@@ -20,6 +20,16 @@ make test
 - ncurses TUI with pause, single-step, speed control, program I/O, and resize support
 - `bf`, a small direct interpreter retained as a comparison implementation
 
+# Program images
+
+`bit2bin` assembles bitcode into a program image, one hexadecimal word per line, which
+`$readmemh` can load. `brainfunk -b` runs an image directly:
+
+```shell
+./brainfunk -m bit -f program.b | ./bit2bin > program.hex
+./brainfunk -b program.hex
+```
+
 # Optimization levels
 
 `-O0` runs the translated bitcode as is. `-O1` adds lazy moves. `-O2` adds block-local

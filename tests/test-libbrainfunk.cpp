@@ -1,6 +1,8 @@
 #include "libbrainfunk.hpp"
+#include "program_generator.hpp"
 
 #include <array>
+#include <initializer_list>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -52,21 +54,6 @@ struct Outcome {
     }
 };
 
-bool scan_never_ends(const Brainfunk& brainfunk) {
-    const auto& instruction = brainfunk.bitcode()[brainfunk.pc()];
-    if (instruction.opcode() != Opcode::F) return false;
-
-    const auto memory = brainfunk.memory();
-    auto base_ptr = brainfunk.base_ptr();
-    for (std::size_t i = 0; i <= memory.size(); ++i) {
-        if (memory[effective_address(base_ptr, instruction.test_offset(), memory.size())] == 0) {
-            return false;
-        }
-        base_ptr = effective_address(base_ptr, instruction.step(), memory.size());
-    }
-    return true;
-}
-
 Outcome execute(std::string_view code, int level, std::size_t memory_size, std::string_view input,
                 addr_t step_limit) {
     Brainfunk brainfunk(memory_size);
@@ -101,53 +88,6 @@ ExecutionStats count(std::string_view code, int level, std::size_t memory_size,
     std::ostringstream out;
     return brainfunk.run_counted(in, out);
 }
-
-/* Deterministic, so that a failure reproduces. */
-class ProgramGenerator {
-public:
-    explicit ProgramGenerator(std::uint32_t seed) : state_(seed) {}
-
-    std::string program() {
-        std::string code;
-        block(code, 0);
-        return code;
-    }
-
-private:
-    std::uint32_t state_;
-
-    std::uint32_t next(std::uint32_t bound) {
-        state_ = state_ * 1664525u + 1013904223u;
-        return (state_ >> 8) % bound;
-    }
-
-    void block(std::string& code, int depth) {
-        const auto pieces = 1 + next(8);
-        for (std::uint32_t piece = 0; piece < pieces; ++piece) {
-            switch (next(depth < 3 ? 11 : 9)) {
-            case 0: case 1: code.append(1 + next(4), '+'); break;
-            case 2:         code.append(1 + next(3), '-'); break;
-            case 3: case 4: code.append(1 + next(4), '>'); break;
-            case 5:         code.append(1 + next(4), '<'); break;
-            case 6:         code += '.'; break;
-            case 7:         code += ','; break;
-            case 8: {
-                /* Shapes the translator lowers to S, F and MUL. */
-                constexpr std::array shapes = {"[-]", "[>]", "[<]", "[>>]", "[->+<]", "[>++<-]",
-                                               "[-<+>>++<]", "[->+<+>-<]", "[->>+<<]", "[+]",
-                                               "[-]++", ">[-]+++<", "[.]", ",[-]"};
-                code += shapes[next(shapes.size())];
-                break;
-            }
-            default:
-                code += '[';
-                block(code, depth + 1);
-                code += ']';
-                break;
-            }
-        }
-    }
-};
 
 } // namespace
 
@@ -408,6 +348,75 @@ int main() {
             check(execute(long_run, level, MEMSIZE, input, 100000).output == std::string(1, '\0'),
                   "long run executes correctly");
         }
+    }
+
+    /* ---- program images ---- */
+    {
+        const auto image = [](std::initializer_list<std::uint32_t> words) {
+            Brainfunk brainfunk;
+            brainfunk.load_bincode(std::vector<std::uint32_t>(words));
+            return brainfunk;
+        };
+        const auto rejected = [](std::initializer_list<std::uint32_t> words) {
+            try {
+                Brainfunk brainfunk;
+                brainfunk.load_bincode(std::vector<std::uint32_t>(words));
+            } catch (const BrainfunkException&) {
+                return true;
+            }
+            return false;
+        };
+        const auto decoded = [](std::uint32_t word) { return Bitcode::decode(word).to_string(); };
+
+        check(decoded(0x100FFF05) == "A\t-1, 5", "decode A");
+        check(decoded(0x2007FFFF) == "S\t2047, 255", "decode S");
+        check(decoded(0x380800FF) == "MUL\t-2048, -128, 255", "decode MUL");
+        check(decoded(0x4FF00001) == "F\t-1, 1", "decode F");
+        check(decoded(0x500FFFFF) == "M\t-1", "decode M");
+        check(decoded(0x601FFFFE) == "JE\t1, -2", "decode JE");
+        check(decoded(0x77F7FFFF) == "JN\t127, 524287", "decode JN");
+        check(decoded(0x80000001) == "IO\t0, 1", "decode IO");
+        check(decoded(0x90000000) == "H\t", "decode H");
+        check(decoded(0xA0200303) == "MULC\t3, 2, 3", "decode MULC");
+        check(decoded(0xB01FFFFE) == "DJN\t1, -2", "decode DJN");
+        check(decoded(0xC01FEFFD) == "MJN\t1, -2, -3", "decode MJN");
+        check(decoded(0xD0300507) == "SRUN\t5, 7, 3", "decode SRUN");
+
+        for (const std::uint32_t word : {
+                 0x00000001u,   // X with a non-zero field
+                 0x10100000u,   // A with a reserved bit
+                 0x50100000u,   // M with a reserved bit
+                 0x80000002u,   // undefined IO operation
+                 0x90000001u,   // H with a non-zero field
+                 0xD0000000u,   // SRUN of nothing
+                 0xE0000000u,   // reserved opcode
+                 0xF0000000u,   // reserved opcode
+             }) {
+            check(Bitcode::decode(word).opcode() == Opcode::X, "illegal word decodes to X");
+        }
+
+        check(rejected({}), "empty image is rejected");
+        check(rejected({0x10000001}), "image that falls off its end is rejected");
+        check(rejected({0x60000001, 0x90000000}), "forward jump out of the image is rejected");
+        check(rejected({0x700FFFFE, 0x90000000}), "backward jump out of the image is rejected");
+
+        auto trap_image = image({0x10000005, 0xE0000000, 0x90000000});
+        std::istringstream in;
+        std::ostringstream out;
+        check(trap_image.step(in, out), "instruction before the trap runs");
+        bool trapped = false;
+        try {
+            (void)trap_image.step(in, out);
+        } catch (const BrainfunkException&) {
+            trapped = true;
+        }
+        check(trapped, "illegal word traps when executed");
+        check(trap_image.pc() == 1, "pc stays on the illegal word");
+        check(trap_image.memory()[0] == 5, "a trap leaves memory alone");
+
+        auto halt_image = image({0x90000000});
+        check(!halt_image.step(in, out) && !halt_image.step(in, out), "halt is sticky");
+        check(halt_image.pc() == 0, "pc stays on H");
     }
 
     /* ---- differential: every level against the unoptimized program ---- */

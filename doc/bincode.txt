@@ -29,8 +29,8 @@ Values 14 and 15 are reserved.
 Formats
 -------
 
-Offsets are two's complement.  Reserved fields must be zero; bit2bin always
-writes zero there.
+Offsets are two's complement.  Reserved fields must be zero; a word with a
+non-zero reserved field is illegal, see doc/bitcode.txt.
 
   31  28 27      20 19          8 7       0
  +------+----------+-------------+---------+
@@ -89,7 +89,9 @@ Only their low log2(MEMSIZE) bits have any effect, because base_ptr wraps.
 Implementations
 ---------------
 
-bit2bin and the C++ interpreter implement this format.
+bit2bin, the C++ interpreter (brainfunk -b) and rtl/ implement this format.
+rtl/ does not implement the fused instructions yet and traps on them; run it on
+code from -O2 or lower.
 
 CPU/Brainfunk.circ still implements the earlier 24-bit format, and cannot load
 this output.

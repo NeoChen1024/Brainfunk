@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 /* ================================================================
@@ -748,4 +749,92 @@ Bitcode Bitcode::with_jump_offset(offset_t jump_offset) const {
                                opcode_ == Opcode::MJN ? MJN_JUMP_BITS : IN_MEMORY_WIDE_BITS,
                                "jump_offset");
     return bitcode;
+}
+
+// ------------------------------------------------------------------
+//  decode  -  one bincode word
+// ------------------------------------------------------------------
+
+namespace {
+
+[[nodiscard]] constexpr offset_t sign_extend(std::uint32_t value, unsigned bits) noexcept {
+    const std::uint32_t sign = std::uint32_t{1} << (bits - 1);
+    const std::uint32_t field = value & ((sign << 1) - 1);
+    return static_cast<offset_t>(static_cast<std::int64_t>(field ^ sign) -
+                                 static_cast<std::int64_t>(sign));
+}
+
+} // anonymous namespace
+
+Bitcode Bitcode::decode(std::uint32_t word) {
+    const auto illegal = none(Opcode::X);
+
+    const auto op = word >> 28;
+    if (op >= static_cast<std::uint32_t>(Opcode::Count)) return illegal;
+    const auto opcode = static_cast<Opcode>(op);
+
+    const auto top_byte = (word >> 20) & 0xFFu;
+    const auto low_byte = static_cast<memory_t>(word & 0xFFu);
+    const auto narrow = sign_extend(word >> 20, 8);
+    const auto addr = sign_extend(word >> 8, ADDR_OFFSET_BITS);
+    const auto wide = sign_extend(word, LONG_OFFSET_BITS);
+
+    switch (opcode_layout(opcode)) {
+    case OperandLayout::None:
+        return (word & 0x0FFFFFFFu) == 0 ? none(opcode) : illegal;
+    case OperandLayout::Data:
+        if (top_byte != 0) return illegal;
+        if (opcode == Opcode::IO && low_byte != IO_IN && low_byte != IO_OUT) return illegal;
+        return data_op(opcode, addr, low_byte);
+    case OperandLayout::Mul:
+        return mul(opcode, addr, narrow, low_byte);
+    case OperandLayout::Branch:
+        return branch(opcode, narrow, wide);
+    case OperandLayout::Scan:
+        return scan(narrow, wide);
+    case OperandLayout::Move:
+        return top_byte == 0 ? move(wide) : illegal;
+    case OperandLayout::MoveBranch:
+        return move_branch(narrow, sign_extend(word >> 12, MJN_MOVE_BITS),
+                           sign_extend(word, MJN_JUMP_BITS));
+    case OperandLayout::Fill:
+        return top_byte == 0 ? illegal : fill(addr, low_byte, top_byte);
+    }
+    return illegal;
+}
+
+// ------------------------------------------------------------------
+//  load_bincode
+// ------------------------------------------------------------------
+
+void Brainfunk::load_bincode(std::span<const std::uint32_t> words) {
+    std::vector<Bitcode> code;
+    code.reserve(words.size());
+    for (const auto word : words) code.push_back(Bitcode::decode(word));
+
+    if (code.empty() ||
+        (code.back().opcode() != Opcode::H && code.back().opcode() != Opcode::X)) {
+        throw BrainfunkException("Program image must end in H or an illegal word");
+    }
+
+    const auto size = static_cast<offset_t>(code.size());
+    for (offset_t pc = 0; pc < size; ++pc) {
+        switch (code[static_cast<std::size_t>(pc)].opcode()) {
+        case Opcode::JE:
+        case Opcode::JN:
+        case Opcode::DJN:
+        case Opcode::MJN: {
+            const auto target = pc + 1 + code[static_cast<std::size_t>(pc)].jump_offset();
+            if (target < 0 || target >= size) {
+                throw BrainfunkException("Jump leaves the program image");
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    bitcode_ = std::move(code);
+    reset_state();
 }

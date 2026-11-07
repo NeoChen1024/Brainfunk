@@ -42,7 +42,7 @@ Mnemonic and operands are the text format accepted by bit2bin.  Instructions
 without a stated effect on pc continue at pc + 1.
 
 X
-    Invalid instruction.  Execution stops with an error.
+    Illegal instruction; see Illegal instructions below.
 
 A addr_offset, data
     memory[EA(addr_offset)] += data
@@ -72,10 +72,25 @@ JN test_offset, jump_offset
 IO addr_offset, operation
     operation 0: memory[EA(addr_offset)] = next input byte, or 0 at end of input
     operation 1: output memory[EA(addr_offset)]
-    Other values are invalid and rejected by bit2bin.
+    Other values are illegal.
 
 H
-    Halt.
+    Halt.  Sticky: the machine stays halted with pc on the H instruction.
+
+
+Illegal instructions
+--------------------
+
+A word that doc/bincode.txt does not define is illegal: opcode X, a reserved
+opcode, a non-zero reserved field, an IO operation other than 0 or 1, or a
+SRUN count of 0.
+
+Executing one traps: nothing changes, and the machine stays stopped with pc on
+that word.  Fetching one does not, so an image may hold illegal words that are
+never reached.
+
+An image must end in H or an illegal word, and no jump may leave it.  Behaviour
+of any other image is undefined.
 
 
 Fused instructions

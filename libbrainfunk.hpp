@@ -150,6 +150,10 @@ public:
                                              offset_t jump_offset);
     [[nodiscard]] static Bitcode fill(offset_t addr_offset, memory_t data, unsigned count);
 
+    /* Decodes a bincode word; doc/bincode.txt defines which words are legal.  An
+     * illegal word decodes to X, so that it traps if it is ever executed. */
+    [[nodiscard]] static Bitcode decode(std::uint32_t word);
+
     /* The same branch, with a different target. */
     [[nodiscard]] Bitcode with_jump_offset(offset_t jump_offset) const;
 
@@ -239,6 +243,10 @@ public:
 
     /* Translate Brainfuck source code into internal bitcode */
     void translate(std::string_view code);
+
+    /* Load a program image as produced by bit2bin.  The image must end in H or an
+     * illegal word, and no jump may leave it. */
+    void load_bincode(std::span<const std::uint32_t> words);
 
     /* Rewrite the translated program; see doc/optimizer.md.  Output, final memory
      * and final base_ptr stay the same at every level. */
