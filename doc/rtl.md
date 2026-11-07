@@ -231,8 +231,9 @@ write-back.
 
 **The loader** is tested on its own with the controller and SDRAM model, `tb/loader_tb.sv`: images
 that copy from the line being filled, overlapping themselves, across lines, and from up to 65535 words
-back, and `LostKng.b`, must end up in SDRAM word for word; one image after another must not reuse
-what was read for the first; a corrupt one must be refused. `tb/uart_tb.sv` covers the board top.
+back, and `LostKng.b`, must end up in SDRAM word for word, packed or not; one image after another
+must not reuse what was read for the first; a corrupt one must be refused, and so must one with a
+right CRC and a header this loader cannot take. `tb/uart_tb.sv` covers the board top.
 
 **Formal** checks the core against abstract memories: two tape cells and one instruction word,
 at addresses the solver picks, behave like real memory with its latency, and every other read
@@ -326,7 +327,8 @@ The loader writes each line to SDRAM as soon as it is whole, and a copy reads it
 there, so a copy can reach as far back as its 16-bit distance, 65535 words, and the loader needs two
 lines of buffer instead of a window: the line being filled, which a copy may read from too, and the
 last line read back. A copied word takes 6 cycles, and a line read about 20 more, against 840 cycles
-for each byte at 2 Mbaud. With the window of 8192 words of block RAM it had before, `LostKng.b` packed
+for each byte at 2 Mbaud. It takes bincode images as well as packed ones, and refuses any other
+version of the header; doc/bincode.txt has what it checks. With the window of 8192 words of block RAM it had before, `LostKng.b` packed
 to 82 KB; now it packs to 71 KB, and 8 of the 12 large block RAMs in use came free.
 
 A `make yadan` build reports timing violations on the SDRAM's own pads, from constraints Tang

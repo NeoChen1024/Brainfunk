@@ -482,8 +482,22 @@ int main() {
         check(lz_compress(words, 8).size() > payload.size(), "a shorter window packs worse");
 
         const auto packed = pack_image(words);
-        check(std::equal(PACKED_MAGIC.begin(), PACKED_MAGIC.end(), packed.begin()), "packed image starts with the magic");
+        check(std::equal(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end(), packed.begin()), "packed image starts with the magic");
         check(unpack_image(packed) == words, "packed image round trip");
+        const auto plain = pack_image(words, Compression::None);
+        check(plain.size() == IMAGE_HEADER_BYTES + 4 * words.size(), "bincode image holds the words as they are");
+        check(unpack_image(plain) == words, "bincode image round trip");
+        for (const std::size_t at : {std::size_t{4}, std::size_t{5}, std::size_t{6}, std::size_t{7}, std::size_t{12}}) {
+            auto changed = plain;
+            changed[at] ^= 0x80;
+            bool rejected_header = false;
+            try {
+                (void)unpack_image(changed);
+            } catch (const BrainfunkException&) {
+                rejected_header = true;
+            }
+            check(rejected_header, "image header with a wrong version, flag, reserved bit or count is rejected");
+        }
         {
             std::istringstream in(std::string(packed.begin(), packed.end()));
             check(read_image(in) == words, "read_image takes a packed image");

@@ -46,10 +46,11 @@ check_codegen()
         # Every form of the image must convert to every other without loss, and run the same.
         ./brainfunk -b "$base.bit" -m hex | cmp "$base.hex" -
         ./brainfunk -b "$base.hex" -m bit | cmp "$base.bit" -
-        ./brainfunk -b "$base.hex" -m packed -o "$base.bfi"
-        ./brainfunk -b "$base.bfi" -m hex | cmp "$base.hex" -
+        ./brainfunk -b "$base.hex" -m bin -o "$base.bin"
+        ./brainfunk -b "$base.bin" -m packed -o "$base.bfi"
+        ./brainfunk -b "$base.bfi" -m bin | cmp "$base.bin" -
         ./brainfunk -b "$base.bfi" -m bit | cmp "$base.bit" -
-        for form in bit hex bfi; do
+        for form in bit hex bin bfi; do
             ./brainfunk -b "$base.$form" >"$base.image.out" <"$input"
             cmp "$tmpdir/$name.reference" "$base.image.out"
         done

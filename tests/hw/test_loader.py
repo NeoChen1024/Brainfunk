@@ -1,5 +1,7 @@
 """The image loader against the SDRAM model: what it writes must be the image bfload packed."""
 import random
+import struct
+import zlib
 
 import pytest
 
@@ -37,20 +39,30 @@ def stress_words():
     return words
 
 
-def pack(tmp_path, name, words):
-    """The image, its packed bytes as a file for $readmemh, and the bytes."""
+def with_header(data, at, value):
+    """The image file with one header byte changed, and its CRC made right again."""
+    data = bytearray(data)
+    data[at] = value
+    struct.pack_into("<I", data, 16, zlib.crc32(bytes(data[4:16] + data[20:])))
+    return bytes(data)
+
+
+def pack(tmp_path, name, words, mode="packed", change=None):
+    """The image, its image file's bytes as a file for $readmemh, and the bytes; mode bin is not compressed."""
     hexfile = tmp_path / f"{name}.hex"
     hexfile.write_text("".join(f"{word:08x}\n" for word in words))
-    packed = tmp_path / f"{name}.bfi"
-    run(ROOT / "bfload", "-m", "pack", "-o", packed, hexfile)
+    packed = tmp_path / f"{name}.{mode}"
+    run(ROOT / "brainfunk", "-m", mode, "-b", hexfile, "-o", packed)
     data = packed.read_bytes()
+    if change is not None:
+        data = with_header(data, *change)
     (tmp_path / f"{name}.bytes").write_text("".join(f"{byte:02x}\n" for byte in data))
     return hexfile, tmp_path / f"{name}.bytes", data
 
 
-def load(tmp_path, words, gap=0, corrupt=False, before=None, sources=SOURCES):
+def load(tmp_path, words, gap=0, corrupt_at=-1, before=None, sources=SOURCES, mode="packed", change=None):
     """Loads words, after the image before if there is one."""
-    hexfile, bytesfile, data = pack(tmp_path, "image", words)
+    hexfile, bytesfile, data = pack(tmp_path, "image", words, mode, change)
     first = []
     if before is not None:
         _, pre_file, pre = pack(tmp_path, "before", before)
@@ -58,7 +70,8 @@ def load(tmp_path, words, gap=0, corrupt=False, before=None, sources=SOURCES):
     obj = tmp_path / "obj"
     run("verilator", "--binary", "--timing", "-j", "2", "--top-module", "loader_tb", "--Mdir", obj,
         f"-GIMAGE_BYTES={len(data)}", f'-GIMAGE_FILE="{bytesfile}"',
-        f"-GWORDS={len(words)}", f'-GWORDS_FILE="{hexfile}"', f"-GGAP={gap}", f"-GCORRUPT={int(corrupt)}",
+        f"-GWORDS={len(words)}", f'-GWORDS_FILE="{hexfile}"', f"-GGAP={gap}", f"-GCORRUPT_AT={corrupt_at}",
+        f"-GREFUSE={int(corrupt_at >= 0 or change is not None)}",
         *first, *sources, "-o", "loader_tb")
     result = run(obj / "loader_tb", check=False, timeout=600)
     assert "loader_tb passed" in result.stdout, result.stdout[-2000:]
@@ -67,7 +80,7 @@ def load(tmp_path, words, gap=0, corrupt=False, before=None, sources=SOURCES):
 
 def copy_distances(data):
     """The distances of the copies in a packed image."""
-    at, distances = 14, []
+    at, distances = 20, []
     while at < len(data):
         token = data[at]
         if token & 0x80:
@@ -104,8 +117,28 @@ def test_loader_with_a_slow_source(tools, tmp_path, sources=SOURCES):
     load(tmp_path, words, gap=37, sources=sources)
 
 
-def test_loader_refuses_a_corrupt_image(tools, tmp_path):
-    load(tmp_path, stress_words()[:3000], corrupt=True)
+def test_loader_takes_an_image_that_is_not_compressed(tools, tmp_path, sources=SOURCES):
+    load(tmp_path, stress_words()[:3000], mode="bin", sources=sources)
+
+
+# Right CRC, but something this loader cannot take: another version, compression or reserved bit, a
+# payload size a plain image cannot have, more words than Code RAM.
+@pytest.mark.parametrize("at,value", [(4, 2), (5, 2), (5, 0x81), (6, 1), (7, 0x80), (8, 1), (14, 0x10), (15, 1)],
+                         ids=["version", "compression", "flag", "reserved", "reserved_high", "size", "words", "words_high"])
+def test_loader_refuses_what_it_cannot_take(tools, tmp_path, at, value, sources=SOURCES):
+    mode = "bin" if at == 8 else "packed"
+    _, output = load(tmp_path, stress_words()[:300], sources=sources, mode=mode, change=(at, value))
+    assert "refused" in output
+
+
+# Header bytes: 4 the version, 5 flags, 6 reserved, 9 payload size, 13 word count, 17 CRC.
+@pytest.mark.parametrize("at", [4, 5, 6, 9, 13, 17, -2], ids=["version", "flags", "reserved", "size", "words", "crc", "payload"])
+def test_loader_refuses_a_corrupt_image(tools, tmp_path, at, sources=SOURCES):
+    words = stress_words()[:3000]
+    size = len(pack(tmp_path, "probe", words)[2])
+    _, output = load(tmp_path, words, corrupt_at=at % size, sources=sources)
+    # A larger payload size may also leave it waiting for the rest; nothing else may.
+    assert "refused" in output or (at == 9 and "still waiting" in output)
 
 
 def test_loader_loads_lost_kingdom(tools, tmp_path):

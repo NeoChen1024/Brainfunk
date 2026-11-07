@@ -1,5 +1,5 @@
-/* Program images: bincode as words, as text, as a listing, and packed with word-level LZ.
- * doc/bincode.txt describes them. */
+/* Program images: bincode as words, as text, as a listing, and as image files, plain or
+ * packed with word-level LZ.  doc/bincode.txt describes them. */
 #include "libbrainfunk.hpp"
 #include "ctre.hpp"
 
@@ -18,8 +18,8 @@ namespace {
 constexpr std::size_t MAX_LITERAL = 128, MIN_COPY = 2, MAX_COPY = 129;
 /* How many earlier places with the same two words the compressor tries. */
 constexpr std::size_t MAX_CHAIN = 64;
-constexpr std::size_t HEADER_BYTES = 14;
-constexpr std::size_t FORMAT_LIMIT = std::size_t{1} << 24; // sizes are 3 bytes
+/* Bits 1:0 of the flags byte; the rest are reserved. */
+constexpr std::uint8_t COMPRESSION_MASK = 0x03;
 
 void put_little(std::vector<std::uint8_t>& out, std::uint32_t value, int bytes) {
     for (int i = 0; i < bytes; ++i) out.push_back(static_cast<std::uint8_t>(value >> (8 * i)));
@@ -121,30 +121,61 @@ std::uint32_t crc32(std::span<const std::uint8_t> bytes) noexcept {
     return ~crc;
 }
 
-std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words) {
-    if (words.size() >= FORMAT_LIMIT) throw BrainfunkException("image too large to pack: " + std::to_string(words.size()) + " words");
-    const auto payload = lz_compress(words);
-    if (payload.size() >= FORMAT_LIMIT) throw BrainfunkException("packed image too large");
-    std::vector<std::uint8_t> out(PACKED_MAGIC.begin(), PACKED_MAGIC.end());
-    put_little(out, static_cast<std::uint32_t>(payload.size()), 3);
-    put_little(out, static_cast<std::uint32_t>(words.size()), 3);
-    put_little(out, crc32(payload), 4);
+std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words, Compression compression) {
+    std::vector<std::uint8_t> payload;
+    if (compression == Compression::LZ) {
+        payload = lz_compress(words);
+    } else {
+        for (const auto word : words) put_little(payload, word, 4);
+    }
+    if (words.size() > UINT32_MAX || payload.size() > UINT32_MAX) throw BrainfunkException("image too large");
+
+    std::vector<std::uint8_t> out(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end());
+    out.push_back(IMAGE_VERSION);
+    out.push_back(static_cast<std::uint8_t>(compression));
+    put_little(out, 0, 2); // reserved
+    put_little(out, static_cast<std::uint32_t>(payload.size()), 4);
+    put_little(out, static_cast<std::uint32_t>(words.size()), 4);
+    /* The CRC covers the header after the magic, then the payload. */
+    std::vector<std::uint8_t> covered(out.begin() + 4, out.end());
+    covered.insert(covered.end(), payload.begin(), payload.end());
+    put_little(out, crc32(covered), 4);
     out.insert(out.end(), payload.begin(), payload.end());
     return out;
 }
 
 std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes) {
-    if (bytes.size() < HEADER_BYTES || !std::equal(PACKED_MAGIC.begin(), PACKED_MAGIC.end(), bytes.begin()))
-        throw BrainfunkException("not a packed image");
-    const std::size_t payload_size = get_little(bytes, 4, 3), word_count = get_little(bytes, 7, 3);
-    if (bytes.size() - HEADER_BYTES != payload_size)
-        throw BrainfunkException("packed image: the header says " + std::to_string(payload_size) + " bytes of payload, there are " +
-                                 std::to_string(bytes.size() - HEADER_BYTES));
-    const auto payload = bytes.subspan(HEADER_BYTES);
-    if (crc32(payload) != get_little(bytes, 10, 4)) throw BrainfunkException("packed image: wrong CRC");
-    auto words = lz_decompress(payload);
+    if (bytes.size() < 5 || !std::equal(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end(), bytes.begin()))
+        throw BrainfunkException("not an image file");
+    if (bytes[4] != IMAGE_VERSION)
+        throw BrainfunkException("image file version " + std::to_string(bytes[4]) + ", this reads version " +
+                                 std::to_string(IMAGE_VERSION));
+    if (bytes.size() < IMAGE_HEADER_BYTES) throw BrainfunkException("image file: the header is cut short");
+    const std::uint8_t flags = bytes[5];
+    const auto compression = flags & COMPRESSION_MASK;
+    if ((flags & ~COMPRESSION_MASK) != 0 || get_little(bytes, 6, 2) != 0)
+        throw BrainfunkException("image file: reserved header bits are set");
+    if (compression > static_cast<std::uint8_t>(Compression::LZ))
+        throw BrainfunkException("image file: unknown compression " + std::to_string(compression));
+
+    const std::size_t payload_size = get_little(bytes, 8, 4), word_count = get_little(bytes, 12, 4);
+    if (bytes.size() - IMAGE_HEADER_BYTES != payload_size)
+        throw BrainfunkException("image file: the header says " + std::to_string(payload_size) + " bytes of payload, there are " +
+                                 std::to_string(bytes.size() - IMAGE_HEADER_BYTES));
+    std::vector<std::uint8_t> covered(bytes.begin() + 4, bytes.begin() + 16);
+    covered.insert(covered.end(), bytes.begin() + IMAGE_HEADER_BYTES, bytes.end());
+    if (crc32(covered) != get_little(bytes, 16, 4)) throw BrainfunkException("image file: wrong CRC");
+
+    const auto payload = bytes.subspan(IMAGE_HEADER_BYTES);
+    std::vector<std::uint32_t> words;
+    if (compression == static_cast<std::uint8_t>(Compression::LZ)) {
+        words = lz_decompress(payload);
+    } else {
+        if (payload.size() % 4 != 0) throw BrainfunkException("image file: the payload is not whole words");
+        for (std::size_t at = 0; at < payload.size(); at += 4) words.push_back(get_little(payload, at, 4));
+    }
     if (words.size() != word_count)
-        throw BrainfunkException("packed image: the header says " + std::to_string(word_count) + " words, the payload holds " +
+        throw BrainfunkException("image file: the header says " + std::to_string(word_count) + " words, the payload holds " +
                                  std::to_string(words.size()));
     return words;
 }
@@ -224,7 +255,7 @@ void write_hex(std::ostream& os, std::span<const std::uint32_t> words) {
 
 std::vector<std::uint32_t> read_image(std::istream& in) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-    if (text.starts_with(std::string_view(reinterpret_cast<const char*>(PACKED_MAGIC.data()), PACKED_MAGIC.size()))) {
+    if (text.starts_with(std::string_view(reinterpret_cast<const char*>(IMAGE_MAGIC.data()), IMAGE_MAGIC.size()))) {
         const auto* data = reinterpret_cast<const std::uint8_t*>(text.data());
         return unpack_image(std::span(data, text.size()));
     }

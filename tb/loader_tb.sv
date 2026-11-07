@@ -1,6 +1,7 @@
 // The image loader with the SDRAM controller and model: loads a packed image as fast as the loader
 // takes bytes, or with GAP idle cycles between them, then checks every word in SDRAM against the
-// unpacked image. With CORRUPT, a payload byte is flipped and the loader must say the image is bad.
+// unpacked image. With REFUSE, the loader must say the image is bad: one CORRUPT_AT flips a byte of,
+// or one made wrong some other way.
 // With PRE_FILE, another image is loaded first, so nothing may carry over from one load to the next.
 `timescale 1ns/1ps
 module loader_tb #(
@@ -9,7 +10,8 @@ module loader_tb #(
     parameter int WORDS       = 1,
     parameter     WORDS_FILE  = "build/loader_tb.hex",
     parameter int GAP         = 0,
-    parameter bit CORRUPT     = 1'b0,
+    parameter int CORRUPT_AT  = -1,
+    parameter bit REFUSE      = 1'b0,
     parameter int PRE_BYTES   = 1,
     parameter     PRE_FILE    = ""
 );
@@ -55,11 +57,19 @@ module loader_tb #(
     int reads = 0;
     always @(posedge clk) if (req_valid && req_ready && !req_write) reads++;
 
+    // The loader may give up on an image before it has all of it.
+    bit finished = 1'b0;
+    always @(posedge clk) begin
+        if (start) finished <= 1'b0;
+        else if (done) finished <= 1'b1;
+    end
+
     // Driven between edges, so what the loader takes at an edge is plain.
     task automatic send(input logic [7:0] b);
+        if (finished) return;
         in_valid = 1'b1;
         in_data  = b;
-        while (!in_ready) @(negedge clk);
+        while (!in_ready && !finished) @(negedge clk);
         @(negedge clk);
         in_valid = 1'b0;
         repeat (GAP) @(negedge clk);
@@ -82,17 +92,21 @@ module loader_tb #(
         if (PRE_FILE != "") begin
             begin_load();
             for (int i = 0; i < PRE_BYTES; i++) send(pre[i]);
-            while (!done) @(negedge clk);
+            while (!finished) @(negedge clk);
             if (failed) begin $display("FAIL: the loader refused the first image"); $fatal; end
         end
         begin_load();
-        for (int i = 0; i < IMAGE_BYTES; i++) send(CORRUPT && i == IMAGE_BYTES - 2 ? ~image[i] : image[i]);
-        while (!done) @(negedge clk);
-        if (CORRUPT) begin
-            if (!failed) begin $display("FAIL: a corrupt image was taken"); $fatal; end
-            $display("loader_tb passed");
+        for (int i = 0; i < IMAGE_BYTES; i++) send(i == CORRUPT_AT ? image[i] ^ 8'h80 : image[i]);
+        if (REFUSE) begin
+            // A payload size made larger leaves it waiting for bytes that never come, which a UART
+            // Break ends; from the flash, more bytes always come, and the CRC is wrong.
+            for (int i = 0; i < 100000 && !finished; i++) @(negedge clk);
+            if (finished && !failed) begin $display("FAIL: a corrupt image was taken"); $fatal; end
+            if (finished) $display("loader_tb passed: refused");
+            else $display("loader_tb passed: still waiting");
             $finish;
         end
+        while (!finished) @(negedge clk);
         if (failed) begin $display("FAIL: the loader refused the image"); $fatal; end
         for (int i = 0; i < WORDS; i++) begin
             if (phy.sdram_peek(i) != expected[i]) begin

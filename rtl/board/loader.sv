@@ -36,6 +36,7 @@ module image_loader (
     logic [3:0]  header_pos;
     logic [23:0] payload_left, words_total;
     logic [31:0] crc_expected;
+    logic        header_bad, raw;   // raw: the payload is the words themselves, not LZ
     logic [8:0]  run_left;
     logic [1:0]  byte_pos;
     logic [31:0] word;
@@ -82,9 +83,10 @@ module image_loader (
     // A cycle late, which is safe: after a take, the next byte is two cycles away.
     always_ff @(posedge clk) begin
         byte_ready <= !rst && crc_bits == 4'd0 && (state == ST_MAGIC || state == ST_HEADER ||
-                      (in_payload && !payload_empty));
+                      (in_payload && !payload_empty && !(raw && state == ST_TOKEN)));
     end
-    assign crc_feed   = take && in_payload;
+    // The CRC covers the header after the magic, up to the CRC itself, then the payload.
+    assign crc_feed   = take && (in_payload || (state == ST_HEADER && header_pos < 4'd12));
 
     // Line 0 is the one being filled, line 1 the one read back.
     logic [3:0]  line_raddr, line_waddr;
@@ -172,6 +174,8 @@ module image_loader (
                         magic_pos <= magic_pos + 3'd1;
                         if (magic_pos == 3'd3) begin
                             header_pos <= '0;
+                            header_bad <= 1'b0;
+                            crc        <= '1;
                             state      <= ST_HEADER;
                         end
                     end else if (strict) begin
@@ -183,21 +187,53 @@ module image_loader (
                     end
                 end
 
+                // Version, flags, 2 reserved bytes, then little endian: payload bytes (4), words (4),
+                // CRC (4). Anything this loader cannot take fails at the end of the header: another
+                // version, a reserved bit, a payload of 16 MiB or more, more words than Code RAM,
+                // or a plain payload that is not whole words.
                 ST_HEADER: if (take) begin
-                    // Little endian: payload bytes (3), words (3), CRC (4).
-                    if (header_pos < 4'd3)      payload_left <= {byte_data, payload_left[23:8]};
-                    else if (header_pos < 4'd6) words_total  <= {byte_data, words_total[23:8]};
-                    else                        crc_expected <= {byte_data, crc_expected[31:8]};
+                    unique case (header_pos)
+                        4'd0: header_bad <= byte_data != 8'd1;
+                        4'd1: begin
+                            raw <= !byte_data[0];
+                            if (byte_data[7:1] != 7'd0) header_bad <= 1'b1;
+                        end
+                        4'd2, 4'd3: if (byte_data != 8'd0) header_bad <= 1'b1;
+                        4'd4, 4'd5, 4'd6: begin
+                            payload_left <= {byte_data, payload_left[23:8]};
+                            if (header_pos == 4'd4 && raw && byte_data[1:0] != 2'd0) header_bad <= 1'b1;
+                        end
+                        4'd8, 4'd9, 4'd10: begin
+                            words_total <= {byte_data, words_total[23:8]};
+                            if (header_pos == 4'd10 && byte_data[7:4] != 4'd0) header_bad <= 1'b1;
+                        end
+                        4'd7, 4'd11: if (byte_data != 8'd0) header_bad <= 1'b1;
+                        default: crc_expected <= {byte_data, crc_expected[31:8]};
+                    endcase
                     header_pos <= header_pos + 4'd1;
-                    if (header_pos == 4'd9) begin
-                        state <= ST_TOKEN;
+                    if (header_pos == 4'd15) begin
                         dest  <= '0;
-                        crc   <= '1;
+                        if (header_bad) begin
+                            failed <= 1'b1;
+                            done   <= 1'b1;
+                            state  <= ST_IDLE;
+                        end else begin
+                            state  <= ST_TOKEN;
+                        end
                     end
                 end
 
                 ST_TOKEN: begin
-                    if (take) begin
+                    if (raw) begin // one word at a time, as if each were a literal of its own
+                        if (!payload_empty) begin
+                            byte_pos <= '0;
+                            is_copy  <= 1'b0;
+                            run_left <= 9'd1;
+                            state    <= ST_LITERAL;
+                        end else if (crc_bits == 4'd0) begin
+                            state <= ST_FINISH;
+                        end
+                    end else if (take) begin
                         byte_pos <= '0;
                         if (byte_data[7]) begin
                             is_copy  <= 1'b1;

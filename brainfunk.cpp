@@ -58,7 +58,7 @@ static void print_stats(std::ostream& os, const ExecutionStats& stats) {
         << "\n"
         << "  -f file   Brainfuck source\n"
         << "  -s code   Brainfuck source on the command line\n"
-        << "  -b image  a program image instead of source: a packed image, a listing, or hexadecimal\n"
+        << "  -b image  a program image instead of source: an image file, a listing, or hexadecimal\n"
         << "            words, told apart by content; '-' is standard input. -O does not apply\n"
         << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n"
         << "  -o out    where the output of a mode that writes one goes (default standard output)\n"
@@ -67,12 +67,13 @@ static void print_stats(std::ostream& os, const ExecutionStats& stats) {
         << "              stat    run it, counting what it does; the report goes to -o or stderr\n"
         << "              bit     the program as a listing, one instruction a line\n"
         << "              hex     a bincode image as text, one hexadecimal word a line\n"
-        << "              packed  a packed image, compressed, as bfload sends to the board\n"
+        << "              bin     a bincode image file\n"
+        << "              packed  a packed image file, compressed, as bfload sends to the board\n"
         << "              bfc     C99\n"
         << "              llvm    portable textual LLVM IR\n"
         << "  -h        show this help\n"
         << "\n"
-        << "doc/bincode.txt describes the image formats; bit, hex and packed convert between\n"
+        << "doc/bincode.txt describes the image formats; bit, hex, bin and packed convert between\n"
         << "them without loss.\n";
     std::exit(status);
 }
@@ -146,7 +147,7 @@ int main(int argc, char** argv) {
         helpmsg(argv, 1);
     }
     if (mode == "bf") mode = "run";
-    constexpr std::string_view modes[] = {"run", "stat", "bit", "hex", "packed", "bfc", "llvm"};
+    constexpr std::string_view modes[] = {"run", "stat", "bit", "hex", "bin", "packed", "bfc", "llvm"};
     if (std::find(std::begin(modes), std::end(modes), mode) == std::end(modes)) {
         cerr << "Unknown mode: " << mode << '\n';
         helpmsg(argv, 1);
@@ -154,7 +155,7 @@ int main(int argc, char** argv) {
 
     try {
         /* The forms of an image convert as they are, without the checks that running needs. */
-        if (mode == "bit" || mode == "hex" || mode == "packed") {
+        if (mode == "bit" || mode == "hex" || mode == "bin" || mode == "packed") {
             std::vector<std::uint32_t> words;
             std::vector<Bitcode> program;
             if (!image.empty()) {
@@ -172,7 +173,7 @@ int main(int argc, char** argv) {
             } else if (mode == "hex") {
                 write_hex(*output, words);
             } else {
-                const auto bytes = pack_image(words);
+                const auto bytes = pack_image(words, mode == "packed" ? Compression::LZ : Compression::None);
                 output->write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
             }
             output->flush();

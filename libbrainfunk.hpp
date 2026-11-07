@@ -336,8 +336,14 @@ void write_listing(std::ostream& os, std::span<const Bitcode> code);
 /* A bincode image as text: one word a line, eight lowercase hexadecimal digits. */
 void write_hex(std::ostream& os, std::span<const std::uint32_t> words);
 
-/* A packed image starts with these four bytes. */
-inline constexpr std::array<std::uint8_t, 4> PACKED_MAGIC = {'B', 'F', 'I', 'M'};
+/* Every image file starts with these four bytes, then the format version. */
+inline constexpr std::array<std::uint8_t, 4> IMAGE_MAGIC = {'B', 'F', 'I', 'M'};
+inline constexpr std::uint8_t IMAGE_VERSION = 1;
+inline constexpr std::size_t IMAGE_HEADER_BYTES = 20;
+
+/* How an image's payload holds its words: a bincode image has them as they are,
+ * a packed image compresses them. */
+enum class Compression : std::uint8_t { None = 0, LZ = 1 };
 
 /* The farthest back an LZ copy can reach: its distance is 16 bits. */
 inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
@@ -351,17 +357,19 @@ inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
 /* Throws BrainfunkException on a token cut short or a copy from before the start. */
 [[nodiscard]] std::vector<std::uint32_t> lz_decompress(std::span<const std::uint8_t> payload);
 
-/* CRC-32 with the common reflected polynomial, as in the packed image header. */
+/* CRC-32 with the common reflected polynomial, as in the image header. */
 [[nodiscard]] std::uint32_t crc32(std::span<const std::uint8_t> bytes) noexcept;
 
-/* A whole packed image: magic, payload size, word count, CRC, then the payload. */
-[[nodiscard]] std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words);
+/* A whole image file: header, then the payload. */
+[[nodiscard]] std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words,
+                                                   Compression compression = Compression::LZ);
 
-/* Throws BrainfunkException unless the magic, both sizes and the CRC are right. */
+/* Throws BrainfunkException unless the magic, version, reserved bits, sizes and
+ * CRC are all right. */
 [[nodiscard]] std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes);
 
-/* Reads a program as words, whatever form it is in, told apart by content: a
- * packed image, a listing, or one hexadecimal word a line. */
+/* Reads a program as words, whatever form it is in, told apart by content: an
+ * image file, a listing, or one hexadecimal word a line. */
 [[nodiscard]] std::vector<std::uint32_t> read_image(std::istream& in);
 
 /* The same from a file; "-" is standard input. */

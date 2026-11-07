@@ -22,8 +22,8 @@ make test
 
 # Program images
 
-A program also takes the form of a listing (`-m bit`), hexadecimal words (`-m hex`), or a packed
-image, compressed with word-level LZ (`-m packed`). They
+A program also takes the form of a listing (`-m bit`), hexadecimal words (`-m hex`), a bincode
+image file (`-m bin`), or a packed image file, compressed with word-level LZ (`-m packed`). They
 convert into each other without loss, and `brainfunk -b` runs any of them; see
 [doc/bincode.txt](doc/bincode.txt). `bfload` sends a program to the YADAN board; see
 [doc/rtl.md](doc/rtl.md).
@@ -49,7 +49,8 @@ highest level; `visualbrainfunk` defaults to `-O0`, which is easier to follow wh
 
 `bit`: print optimized bitcode as a listing
 
-`hex`, `packed`: write the program image as hexadecimal words, or a packed image
+`hex`, `bin`, `packed`: write the program image as hexadecimal words, a bincode image file, or a
+packed image file
 
 `llvm`: lower optimized bitcode to portable textual LLVM IR
 

@@ -100,27 +100,38 @@ this output.
 Program images
 --------------
 
-A program is a sequence of words, the first at pc 0.  It takes three forms, which convert into
-each other without loss; brainfunk -m bit, hex and packed write them, and brainfunk -b,
+A program is a sequence of words, the first at pc 0.  It takes four forms, which convert into
+each other without loss; brainfunk -m bit, hex, bin and packed write them, and brainfunk -b,
 visualbrainfunk -b and bfload read any of them, told apart by content:
 
   listing        text, a line per word: "pc:<TAB>MNEMONIC<TAB>operands", as in doc/bitcode.txt,
                  pc counting from 0.  An illegal word other than 0 lists as X with the word,
                  "X<TAB>0x9abcdef0", so that it converts back.  Spacing is free when read.
   hexadecimal    text, a line per word, eight lowercase hexadecimal digits.
-  packed image   the words compressed, below.
+  bincode image  an image file whose payload is the words, 4 bytes each, little endian.
+  packed image   an image file whose payload is the words compressed, below.
 
 Every word converts to a listing line and back to itself, and the same for a listing line in
 the form brainfunk -m bit writes.  An instruction that does not fit its fields, which a program
 that is only interpreted may have, has no word, and converting it is an error.
 
-A packed image, as the board's loader rtl/board/loader.sv takes it:
+Image files have a header of 20 bytes, every value in it little endian:
 
-  "BFIM"        4 bytes
-  payload size  3 bytes, little endian, in bytes
-  word count    3 bytes, little endian
-  CRC-32        4 bytes, little endian, of the payload (the common reflected polynomial)
-  payload
+  0   magic         4 bytes, "BFIM"
+  4   version       1 byte, 1
+  5   flags         1 byte: bits 1:0 the compression, 0 none or 1 LZ; bits 7:2 reserved, 0
+  6   reserved      2 bytes, 0
+  8   payload size  4 bytes, in bytes
+  12  word count    4 bytes
+  16  CRC-32        4 bytes, of bytes 4 to 15 and the payload (the common reflected polynomial)
+  20  payload
+
+A reader refuses another version, a reserved bit set, and an unknown compression, so that a
+later version can use them.  The board's loader, rtl/board/loader.sv, also refuses a payload of
+16 MiB or more, 2^20 words or more, and a bincode image whose payload is not whole words; it
+refuses all of that as soon as it has the header.  It finds a wrong CRC only at the end, and a
+payload size larger than what follows leaves it waiting for the rest: over the UART, bfload
+reports no answer, and a Break starts over.
 
 A packed image's payload is a run of tokens, and every multi-byte value is little endian:
 

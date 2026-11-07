@@ -130,7 +130,12 @@ def test_loader_testbenches_catch(tools, tmp_path, name, file, text, replacement
     else:
         checks = [lambda where, sources: test_loader.test_loader_copies_from_anywhere(None, where, sources),
                   lambda where, sources: test_loader.test_loader_forgets_the_last_image(None, where, sources),
-                  lambda where, sources: test_loader.test_loader_with_a_slow_source(None, where, sources)]
+                  lambda where, sources: test_loader.test_loader_with_a_slow_source(None, where, sources),
+                  lambda where, sources: test_loader.test_loader_takes_an_image_that_is_not_compressed(None, where, sources)]
+        checks += [lambda where, sources, at=at: test_loader.test_loader_refuses_a_corrupt_image(None, where, at, sources)
+                   for at in [4, 13]]
+        checks += [lambda where, sources, change=change: test_loader.test_loader_refuses_what_it_cannot_take(None, where, *change, sources)
+                   for change in [(4, 2), (5, 0x81), (6, 1), (8, 1), (14, 0x10)]]
         sources = [path if source == original else source for source in test_loader.SOURCES]
     assert path in sources
     for number, check in enumerate(checks):

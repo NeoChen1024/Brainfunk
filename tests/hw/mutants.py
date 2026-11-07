@@ -381,5 +381,9 @@ LOADER_MUTANTS = [
     ('loader: held line kept', 'board/loader.sv', "held_valid <= 1'b0;\n                end", "end"),
     ('loader: held the wrong line', 'board/loader.sv', 'held_line  <= src[23:3];', 'held_line  <= dest[23:3];'),
     ('loader: short distance', 'board/loader.sv', "src           <= dest - 24'(distance);", "src           <= dest - 24'(distance[12:0]);"),
+    ('loader: any version', 'board/loader.sv', "4'd0: header_bad <= byte_data != 8'd1;", "4'd0: header_bad <= 1'b0;"),
+    ('loader: reserved ignored', 'board/loader.sv', "4'd2, 4'd3: if (byte_data != 8'd0) header_bad <= 1'b1;", "4'd2, 4'd3: ;"),
+    ('loader: always LZ', 'board/loader.sv', "raw <= !byte_data[0];", "raw <= 1'b0;"),
+    ('loader: header not in the CRC', 'board/loader.sv', "(state == ST_HEADER && header_pos < 4'd12)", "1'b0"),
     ('soc: loader never reads', 'brainfunk_soc.sv', 'load_owns_read <= load_req_valid;', "load_owns_read <= 1'b0;"),
 ]
