@@ -8,8 +8,8 @@ from conftest import ROOT, run
 
 @pytest.mark.parametrize("task", ["cover", "latency", "prove", "prove_lines", "prove_multiplier"])
 def test_formal_task(task):
-    if shutil.which("sby") is None:
-        pytest.skip("sby not installed")
+    if shutil.which("sby") is None or shutil.which("bitwuzla") is None:
+        pytest.skip("sby or bitwuzla not installed")
     prefix = ROOT / "build" / "formal" / task
     prefix.parent.mkdir(parents=True, exist_ok=True)
     result = run("sby", "-f", "--prefix", prefix, "core.sby", task, cwd=ROOT / "formal", check=False)

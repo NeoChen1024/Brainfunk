@@ -81,8 +81,8 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
 
 @pytest.mark.parametrize("name", FORMAL_MUTANTS)
 def test_formal_catches(tmp_path, name):
-    if shutil.which("sby") is None:
-        pytest.skip("sby not installed")
+    if shutil.which("sby") is None or shutil.which("bitwuzla") is None:
+        pytest.skip("sby or bitwuzla not installed")
     name, file, text, replacement = next(mutant for mutant in MUTANTS + FORMAL_ONLY_MUTANTS if mutant[0] == name)
     assert file == "brainfunk_core.sv"
     mutated(tmp_path, file, text, replacement)
@@ -93,7 +93,7 @@ mode prove
 depth 3
 
 [engines]
-smtbmc --nopresat yices
+smtbmc --nopresat bitwuzla
 
 [script]
 read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DFORMAL_INVARIANTS brainfunk_core.sv

@@ -183,7 +183,8 @@ The SDRAM needs about 100 ms after power-up. A 300 us wait lost data in the firs
 
 ## Verification
 
-The hardware tests are in `tests/hw`, in pytest, and need `pytest`, `pytest-xdist` and `filelock`.
+The hardware tests are in `tests/hw`, in pytest, and need `pytest`, `pytest-xdist` and `filelock`; formal
+needs SymbiYosys and Bitwuzla.
 Each range of random seeds and each program is a test of its own, so a failure can be rerun by name.
 Everything runs at nice 19.
 
@@ -230,7 +231,7 @@ length, from reset.
 It runs at two sizes, both with every cache signal free and with `F` and I/O: 16 cells in lines of
 4, strides up to 3; and lines of 8, strides up to 7. Two lines are not enough, because a backward
 scan going forward a line looks the same. `prove` and `prove_lines` replace the multiplier with an
-XOR on both sides, and `prove_multiplier` keeps the real one. Together they take about two minutes.
+XOR on both sides, and `prove_multiplier` keeps the real one. With Bitwuzla they take under a minute; yices took four times as long.
 Larger sizes did not finish within an hour.
 
 The proof covers what can go wrong, not what fails to happen: a core that stops making progress

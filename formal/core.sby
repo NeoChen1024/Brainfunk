@@ -1,3 +1,6 @@
+# Bitwuzla, because it is several times faster than yices here: prove 23 s against 97, and latency
+# 90 s against more than an hour. z3 was slower still.
+#
 # The prove tasks are unbounded: k-induction over the invariants in core_invariants.svh, which hold in
 # every reachable state. They cover the pipeline with every cache signal free, F and I/O included, at
 # two sizes: 16 cells in lines of 4 with strides up to 3, and lines of 8 with strides up to 7, so that
@@ -28,7 +31,7 @@ cover: mode cover
 cover: depth 40
 
 [engines]
-smtbmc --nopresat yices
+smtbmc --nopresat bitwuzla
 
 [script]
 prove: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DFORMAL_INVARIANTS brainfunk_core.sv
