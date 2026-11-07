@@ -1,21 +1,27 @@
-# bmc and bmc_miss replace the 8 x 8 multiplier with an XOR on both sides of the check, because the
-# multiplier is what the solver spends most of its time on; multiplier keeps the real one. With the
-# cache signals free the search grows quickly, so bmc assumes every access hits and goes deepest,
-# and bmc_miss leaves them free.
+# The prove tasks are unbounded: k-induction over the invariants in core_invariants.svh, which hold in
+# every reachable state. They cover the pipeline with every cache signal free, F and I/O included, at
+# two sizes: 16 cells in lines of 4 with strides up to 3, and lines of 8 with strides up to 7, so that
+# a backward scan has lines to go wrong in and the tables have strides to get wrong. prove and
+# prove_lines replace the 8 x 8 multiplier with an XOR on both sides, which the solver finds far
+# easier; prove_multiplier keeps the real one.
+#
+# latency is bounded: without F and I/O, every instruction retires within a fixed number of cycles,
+# which an induction would need its own invariants for. cover shows that every kind of retire is
+# reachable, so that the proofs are not vacuous.
 [tasks]
-bmc
-bmc_miss
-multiplier
+prove
+prove_lines
+prove_multiplier
 latency
 cover
 
 [options]
-bmc: mode bmc
-bmc: depth 32
-bmc_miss: mode bmc
-bmc_miss: depth 22
-multiplier: mode bmc
-multiplier: depth 15
+prove: mode prove
+prove: depth 3
+prove_lines: mode prove
+prove_lines: depth 3
+prove_multiplier: mode prove
+prove_multiplier: depth 3
 latency: mode bmc
 latency: depth 28
 cover: mode cover
@@ -25,14 +31,19 @@ cover: depth 40
 smtbmc --nopresat yices
 
 [script]
-multiplier: read -formal -sv -DFORMAL brainfunk_core.sv
-bmc: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DNO_MISSES brainfunk_core.sv
-bmc_miss: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
+prove: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DFORMAL_INVARIANTS brainfunk_core.sv
+prove_lines: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DFORMAL_INVARIANTS brainfunk_core.sv
+prove_multiplier: read -formal -sv -DFORMAL -DFORMAL_INVARIANTS brainfunk_core.sv
 latency: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DBOUNDED_LATENCY brainfunk_core.sv
 cover: read -formal -sv -DFORMAL brainfunk_core.sv
-chparam -set PC_WIDTH 5 -set ADDR_WIDTH 3 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+prove: chparam -set PC_WIDTH 5 -set ADDR_WIDTH 4 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+prove_lines: chparam -set PC_WIDTH 5 -set ADDR_WIDTH 4 -set LINE_BITS 3 -set STRIDE_BITS 3 brainfunk_core
+prove_multiplier: chparam -set PC_WIDTH 5 -set ADDR_WIDTH 4 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+latency: chparam -set PC_WIDTH 5 -set ADDR_WIDTH 3 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+cover: chparam -set PC_WIDTH 5 -set ADDR_WIDTH 3 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
 prep -top brainfunk_core
 
 [files]
 ../rtl/brainfunk_core.sv
 core_props.svh
+core_invariants.svh

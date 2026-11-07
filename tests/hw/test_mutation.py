@@ -87,21 +87,23 @@ def test_formal_catches(tmp_path, name):
     assert file == "brainfunk_core.sv"
     mutated(tmp_path, file, text, replacement)
     shutil.copy(ROOT / "formal" / "core_props.svh", tmp_path / "core_props.svh")
+    shutil.copy(ROOT / "formal" / "core_invariants.svh", tmp_path / "core_invariants.svh")
     (tmp_path / "check.sby").write_text(f"""[options]
-mode bmc
-depth 24
+mode prove
+depth 3
 
 [engines]
 smtbmc --nopresat yices
 
 [script]
-read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
-chparam -set PC_WIDTH 5 -set ADDR_WIDTH 3 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL -DFORMAL_INVARIANTS brainfunk_core.sv
+chparam -set PC_WIDTH 5 -set ADDR_WIDTH 4 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
 prep -top brainfunk_core
 
 [files]
 {tmp_path}/brainfunk_core.sv
 {tmp_path}/core_props.svh
+{tmp_path}/core_invariants.svh
 """)
     result = run("sby", "-f", "check.sby", cwd=tmp_path, check=False, timeout=600)
     assert result.returncode != 0, f"formal did not catch: {name}"

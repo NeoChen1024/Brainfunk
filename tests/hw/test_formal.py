@@ -6,7 +6,7 @@ import pytest
 from conftest import ROOT, run
 
 
-@pytest.mark.parametrize("task", ["cover", "multiplier", "latency", "bmc", "bmc_miss"])
+@pytest.mark.parametrize("task", ["cover", "latency", "prove", "prove_lines", "prove_multiplier"])
 def test_formal_task(task):
     if shutil.which("sby") is None:
         pytest.skip("sby not installed")

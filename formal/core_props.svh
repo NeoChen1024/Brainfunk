@@ -294,6 +294,10 @@ always_ff @(posedge clk) begin
     end
 end
 
+`ifdef FORMAL_INVARIANTS
+`include "core_invariants.svh"
+`endif
+
 `ifdef NO_MISSES
 // The pipeline alone, without the solver also having to consider every miss: it gets further.
 always_ff @(posedge clk) assume (imem_hit && dmem_hit && !imem_hold && !imem_refetch && !dmem_busy);

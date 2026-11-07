@@ -16,7 +16,7 @@ rtl/sdram_ctrl.sv        SDRAM controller
 rtl/brainfunk_soc.sv     all of those together
 rtl/board/               YADAN Board top, PLL, SDRAM pins, UART and FIFOs, image loader, SPI flash
 tb/                      Verilator cosimulation, SDRAM and flash models, UART testbench
-formal/                  SymbiYosys properties
+formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
 bfload.cpp               packs an image, and sends it to the board
 ```
@@ -188,7 +188,7 @@ Each range of random seeds and each program is a test of its own, so a failure c
 Everything runs at nice 19.
 
 ```shell
-make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 13 minutes
+make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 4 minutes
 pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
 pytest -n auto --mutation             # broken designs must be caught, 4 minutes
 pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial
@@ -218,12 +218,25 @@ forwarding; writes only at retire and at the effective address; sticky halt and 
 illegal words; one I/O byte per instruction; and no lost output. The caches and controller
 are not covered by formal, only by cosimulation.
 
-The checks are bounded. `bmc` runs to 32 steps assuming every cache access hits, with the multiplier
-replaced by an XOR on both sides, because the multiplier is what the solver spends most of its time
-on. `bmc_miss` leaves the cache signals free, to 22 steps, and `multiplier` keeps the real multiplier
-to 15 steps. There is no unbounded proof: induction needs invariants relating every pipeline stage,
-which have not been written. `cover` shows every path is reachable, and `latency` bounds
-every instruction except `F` and `IO`.
+The proof is unbounded: k-induction over `formal/core_invariants.svh`, which says how every stage of
+the pipeline relates to what has retired, in any state the core can reach. Among other things: the
+fields each stage decoded from its word; the path from the last retire through each stage to fetch,
+broken only where a guess is already known to be wrong; where each read's value comes from, for every
+older write still in flight; the two halves of `MUL`, input and output; and for `F`, a cursor up to
+which every cell it lands on is known to be non-zero, with each read in flight starting where the one
+before left off. With those, three steps of induction prove the properties for every run, of any
+length, from reset.
+
+It runs at two sizes, both with every cache signal free and with `F` and I/O: 16 cells in lines of
+4, strides up to 3; and lines of 8, strides up to 7. Two lines are not enough, because a backward
+scan going forward a line looks the same. `prove` and `prove_lines` replace the multiplier with an
+XOR on both sides, and `prove_multiplier` keeps the real one. Together they take about two minutes.
+Larger sizes did not finish within an hour.
+
+The proof covers what can go wrong, not what fails to happen: a core that stops making progress
+proves as well as one that runs. `latency` bounds that for everything but `F` and `IO`, to 28
+steps; cosimulation covers the rest. `cover` shows that every kind of retire is reachable, so that
+the proofs are not vacuous. Formal mutants are checked against the proof.
 
 ## YADAN Board
 

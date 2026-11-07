@@ -340,5 +340,5 @@ FORMAL_MUTANTS = [
     "scan retires every read", "scan test uses step field", "no multiply gap", "set reads memory", "illegal add writes",
     "core: W after miss", "core: miss does not restart pc", "guess on a non-branch stands", "guessed target not checked",
     "scan does not wait for an older write", "backward scan mask not reversed", "scan result keeps the test offset",
-    "scan moves on without having read",
+    "scan moves on without having read", "backward scan goes forward a line",
 ]
