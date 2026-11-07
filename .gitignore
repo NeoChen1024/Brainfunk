@@ -14,3 +14,5 @@ compile_commands.json
 *.bin.txt
 /build
 /bfload
+__pycache__
+.pytest_cache

@@ -111,12 +111,21 @@ The SDRAM needs about 100 ms after power-up. A 300 us wait lost data in the firs
 
 ## Verification
 
+The hardware tests are in `tests/hw`, in pytest, and need `pytest`, `pytest-xdist` and `filelock`.
+Each range of random seeds and each program is a test of its own, so a failure can be rerun by name.
+Everything runs at nice 19.
+
 ```shell
-make hw-test                   # cosimulation, UART testbench and formal
-HW_TEST_FULL=1 make hw-test    # also long.b and mandel.b, about 40 minutes
+make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 5 minutes
+pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
+pytest -n auto --mutation             # broken designs must be caught, 4 minutes
+pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial
+pytest --board --flash                # also programs the user flash, which wears out, so only on request
+pytest -k "evict and seed_5"          # one test by name
+tools/sdram_sweep.py phase            # measure the SDRAM's clock window on the board
 ```
 
-These run across as many processes as there are CPUs, or `JOBS`, at nice 19.
+The cycle counts of the real programs end up in `build/hw-test/cycles.json`.
 
 **Cosimulation** runs the core in lock step with `libbrainfunk`. At every retire it compares
 pc, next pc, `base_ptr`, the write address and data, and output; at the end it compares the

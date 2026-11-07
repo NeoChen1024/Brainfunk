@@ -1,0 +1,150 @@
+// SDRAM bring-up: writes all of it, reads it back, counts word errors per candidate read latency.
+module pll168(input logic clk_in, output logic clk, output logic sdclk, output logic locked);
+  logic [4:0] c; logic fb;
+  EG_PHY_PLL #(.DPHASE_SOURCE("DISABLE"),.DYNCFG("DISABLE"),.FIN("24.000"),.FEEDBK_MODE("NORMAL"),.FEEDBK_PATH("CLKC0_EXT"),
+    .STDBY_ENABLE("DISABLE"),.PLLRST_ENA("ENABLE"),.SYNC_ENABLE("DISABLE"),.DERIVE_PLL_CLOCKS("DISABLE"),.GEN_BASIC_CLOCK("DISABLE"),
+    .GMC_GAIN(6),.ICP_CURRENT(3),.KVCO(6),.LPF_CAPACITOR(3),.LPF_RESISTOR(2),.REFCLK_DIV(1),.FBCLK_DIV(@FB@),
+    .CLKC0_ENABLE("ENABLE"),.CLKC0_DIV(@DIV@),.CLKC0_CPHASE(@DIV1@),.CLKC0_FPHASE(0),
+    .CLKC1_ENABLE("ENABLE"),.CLKC1_DIV(@DIV@),.CLKC1_CPHASE(@CP@),.CLKC1_FPHASE(@FP@))
+   pll(.refclk(clk_in),.reset(1'b0),.stdby(1'b0),.extlock(locked),.load_reg(1'b0),.psclk(1'b0),.psdown(1'b0),.psstep(1'b0),.psclksel(3'b0),.psdone(),
+       .dclk(1'b0),.dcs(1'b0),.dwe(1'b0),.di(8'd0),.daddr(6'd0),.fbclk(fb),.clkc(c));
+  EG_LOGIC_BUFG b(.i(c[0]),.o(fb)); assign clk=fb; assign sdclk=c[1];
+endmodule
+
+// Test steps, Memtest86+ style. kind: 0 zero, 1 own address, 2 all bits toggling each word,
+// 3 checkerboard toggling each word, 4 walking one, 5 hash. A line is 8 words.
+module sdtest #(parameter int MHZ=@MHZ@, parameter int ID=@ID@, parameter int TRCD=@TRCD@, parameter int TRP=@TRP@, parameter int TRFC=@TRFC@,
+                parameter int FADE_SECONDS=@FADE@, parameter int CL=@CL@, parameter int REFI_US=@REFI@, parameter int AW=21)
+ (input logic clk_24mhz, output logic uart_tx_pin, input logic uart_rx_pin);
+  logic clk,sdclk,locked; pll168 p(.clk_in(clk_24mhz),.clk(clk),.sdclk(sdclk),.locked(locked));
+  localparam int BIT=MHZ*1000000/115200, REFI=REFI_US*MHZ, NC=4, SAMPLES=12, FIRST_SAMPLE=CL, LINES=18;
+  logic ras=1,cas=1,we=1; logic [10:0] a=0; logic [1:0] ba=0; logic oe=0; logic [31:0] wd=0; wire [31:0] dq;
+  assign dq = oe  ?  wd : 32'bz;
+  EG_PHY_SDRAM_2M_32 u(.clk(sdclk),.ras_n(ras),.cas_n(cas),.we_n(we),.addr(a),.ba(ba),.dq(dq),.cs_n(1'b0),.dm0(1'b0),.dm1(1'b0),.dm2(1'b0),.dm3(1'b0),.cke(1'b1));
+  logic [31:0] dq_q; always_ff @(posedge clk) dq_q<=dq;
+
+  // ---- the program of steps ----
+  localparam int STEPS=25;
+  logic [4:0] step=0; logic [2:0] kind=0; logic do_read=0,do_write=0,inv_r=0,inv_w=0,rev=0,desc=0,fade=0,last_step=0;
+  logic [9:0] prog;
+  function automatic logic [9:0] program_step(input logic [4:0] i);
+    //                     fade desc rev inv_w inv_r write read kind
+    case(i)
+      0:  return 10'b0_0_0_0_0_1_0_001; // own address
+      1:  return 10'b0_0_0_0_0_0_1_001;
+      2:  return 10'b0_0_0_1_0_1_0_001;
+      3:  return 10'b0_0_0_0_1_0_1_001;
+      4:  return 10'b0_0_0_0_0_1_0_010; // all bits toggle
+      5:  return 10'b0_0_0_0_0_0_1_010;
+      6:  return 10'b0_0_0_1_0_1_0_010;
+      7:  return 10'b0_0_0_0_1_0_1_010;
+      8:  return 10'b0_0_0_0_0_1_0_011; // checkerboard
+      9:  return 10'b0_0_0_0_0_0_1_011;
+      10: return 10'b0_0_0_0_0_1_0_100; // walking one
+      11: return 10'b0_0_0_0_0_0_1_100;
+      12: return 10'b0_0_0_1_0_1_0_100; // walking zero
+      13: return 10'b0_0_0_0_1_0_1_100;
+      14: return 10'b0_0_1_0_0_1_0_101; // random data, random line order
+      15: return 10'b0_0_1_0_0_0_1_101;
+      16: return 10'b0_1_0_1_0_1_0_101; // same data inverted, descending
+      17: return 10'b0_1_0_0_1_0_1_101;
+      18: return 10'b0_0_0_0_0_1_0_000; // moving inversions: zeros, then read-modify-write up, down
+      19: return 10'b0_0_0_1_0_1_1_000;
+      20: return 10'b0_1_0_0_1_1_1_000;
+      21: return 10'b0_0_0_0_0_0_1_000;
+      22: return 10'b0_0_1_0_0_1_0_101; // random line order, read old then write new
+      23: return 10'b0_0_1_1_0_1_1_101;
+      24: return 10'b1_0_0_0_1_0_1_101; // bit fade: wait with refresh only, then verify
+      default: return 10'b0;
+    endcase
+  endfunction
+
+  // ---- generator: k, then candidates, then the selected word ----
+  logic [17:0] line=0, line_q=0; logic [2:0] k=0; logic gen_inv=0;
+  logic [31:0] g_addr=0,g_hash=0,g_walk=0,g_tog=0,g_final=0; logic [31:0] g_base=0;
+  logic [20:0] waddr; assign waddr={line_q,k};
+  function automatic logic [31:0] hash32(input logic [20:0] x); logic [31:0] y; y={x[10:0],x}; return y^{y[12:0],y[31:13]}^{y[4:0],y[31:5]}; endfunction
+  logic [1:0] pick=0;
+  always_ff @(posedge clk) begin
+    g_addr<=kind==3'd5  ?  hash32(waddr) : 32'(waddr);
+    g_walk<=32'd1<<waddr[4:0];
+    g_tog <=kind==3'd2  ?  {32{k[0]}} : (kind==3'd3  ?  {16{k[0],!k[0]}} : 32'd0);
+    pick  <=(kind==3'd1||kind==3'd5) ? 2'd0:(kind==3'd4 ? 2'd1:2'd2);
+    g_final<=(pick==2'd0 ? g_addr:(pick==2'd1 ? g_walk:g_tog))^{32{gen_inv}};
+  end
+
+  logic [SAMPLES*32-1:0] bufm=0; logic [4:0] t=0; logic sampling=0; logic [3:0] delay=0; logic waiting=0;
+  logic [NC*24-1:0] err=0;
+  typedef enum logic [4:0] {S_BOOT,S_PALL,S_REF,S_MRS,S_STEP,S_LINE,S_ACT,S_RW,S_DATA,S_RECOVER,S_CMP,S_DRAIN,S_AFTER_READ,S_NEXT,S_DELAY,S_FADE,S_P0,S_P1} st_t;
+  st_t st=S_BOOT, after=S_STEP;
+  logic [7:0] w=0; logic [3:0] n=0; logic writing=0; logic [3:0] wc=0;
+  logic [24:0] boot=0; logic boot_done=0; logic [15:0] refcnt=0; logic ref_due=0; logic rst=1;
+  logic [4:0] ri=0; logic [1:0] ci=0; logic [2:0] dr=0;
+  logic v1=0,v2=0,v3=0,v4=0,v5=0; logic [31:0] c1=0,c2=0,c3=0,xored=0;
+  logic [31:0] fade_cnt=0; logic fade_done=0; logic [7:0] pc=0; logic [7:0] iter=0;
+  logic [7:0] txb=0; logic txv=0; logic [9:0] sh=10'h3FF; logic [3:0] bits=0; logic [13:0] dv=0; logic txbusy; assign txbusy=bits!=0||txv; assign uart_tx_pin=sh[0];
+  always_ff @(posedge clk) begin
+    if(bits!=0) begin if(dv==BIT-1) begin dv<=0; sh<={1'b1,sh[9:1]}; bits<=bits-1'b1; end else dv<=dv+1'b1; end
+    else if(txv) begin sh<={1'b1,txb,1'b0}; bits<=4'd10; dv<=0; end
+  end
+  function automatic logic [7:0] hex(input logic [3:0] x); return x<10 ? 8'h30+x:8'h57+x; endfunction
+
+  logic [10:0] mode_reg; assign mode_reg={4'b0000,3'(CL),4'b0011};
+  logic [17:0] line_x;
+  always_ff @(posedge clk) begin
+    rst<=!locked; prog<=program_step(step); last_step<=step==STEPS-1;
+    {ras,cas,we}<=3'b111; oe<=1'b0; txv<=1'b0;
+    refcnt<=refcnt+1'b1; ref_due<=refcnt>=REFI;
+    if(!boot_done) begin boot<=boot+1'b1; boot_done<=boot[24]; end
+    k<=k+1'b1; wd<=g_final;
+    line_x<=desc ? ~line:line;
+    line_q<=rev ? {line_x[0],line_x[1],line_x[2],line_x[3],line_x[4],line_x[5],line_x[6],line_x[7],line_x[8],line_x[9],line_x[10],line_x[11],line_x[12],line_x[13],line_x[14],line_x[15],line_x[16],line_x[17]}:line_x;
+    if(waiting) begin delay<=delay+1'b1; if(delay==FIRST_SAMPLE-2) begin waiting<=1'b0; sampling<=1'b1; t<=0; end end
+    if(sampling) begin bufm<={dq_q,bufm[SAMPLES*32-1:32]}; t<=t+1'b1; sampling<=t!=SAMPLES-1; end
+    c2<=c1; c3<=c2; v2<=v1; v3<=v2; xored<=c3^g_final; v4<=v3; v5<=v4&&xored!=0;
+    if(v5) err[NC*24-1:NC*24-24]<=err[NC*24-1:NC*24-24]+1'b1;
+    v1<=1'b0;
+    fade_done<=fade_cnt>=32'(FADE_SECONDS)*MHZ*1000000;
+    if(rst) begin st<=S_BOOT; boot<=0; boot_done<=0; end
+    else unique case(st)
+      S_BOOT: if(boot_done) st<=S_PALL;
+      S_PALL: begin {ras,cas,we}<=3'b010; a<=11'b100_0000_0000; n<=0; w<=0; st<=S_DELAY; after<=S_REF; end
+      S_DELAY: begin w<=w+1'b1; if(w==TRFC) begin w<=0; st<=after; end end
+      S_REF: begin {ras,cas,we}<=3'b001; n<=n+1'b1; w<=0; st<=S_DELAY; after<=(n==7) ? S_MRS:S_REF; end
+      S_MRS: begin {ras,cas,we}<=3'b000; ba<=0; a<=mode_reg; w<=0; st<=S_DELAY; after<=S_STEP; step<=0; end
+      S_STEP: begin kind<=prog[2:0]; do_read<=prog[3]; do_write<=prog[4]; inv_r<=prog[5]; inv_w<=prog[6]; rev<=prog[7]; desc<=prog[8]; fade<=prog[9];
+           line<=0; w<=0; fade_cnt<=0; st<=prog[9] ? S_FADE:S_LINE; writing<=!prog[3]; gen_inv<=prog[6]; end
+      S_FADE: begin fade_cnt<=fade_cnt+1'b1; refcnt<=refcnt+1'b1;
+           if(ref_due) begin refcnt<=0; ref_due<=1'b0; {ras,cas,we}<=3'b001; w<=0; st<=S_DELAY; after<=S_FADE; end
+           else if(fade_done) begin w<=0; st<=S_LINE; end end
+      S_LINE: begin w<=w+1'b1; if(TRCD<=3 && w==TRCD-1) k<=0; if(w==2) begin w<=0; st<=S_ACT; end end  // let line_q and the generator settle
+      S_ACT: begin refcnt<=refcnt;
+        if(ref_due) begin refcnt<=0; ref_due<=1'b0; {ras,cas,we}<=3'b001; w<=0; st<=S_DELAY; after<=S_LINE; end
+        else begin {ras,cas,we}<=3'b011; ba<=line_q[6:5]; a<=line_q[17:7]; w<=0; st<=S_RW; if(TRCD==4) k<=0; end end
+      S_RW: begin w<=w+1'b1; if(TRCD>4 && w==TRCD-5) k<=0;
+            if(w==TRCD-2) begin a<={3'b100,line_q[4:0],3'b000}; ba<=line_q[6:5]; wc<=0; w<=0;
+              if(writing) begin {ras,cas,we}<=3'b100; oe<=1'b1; st<=S_DATA; end
+              else begin {ras,cas,we}<=3'b101; waiting<=1'b1; delay<=0; st<=S_DATA; end end end
+      S_DATA: if(writing) begin wc<=wc+1'b1; if(wc==7) begin st<=S_RECOVER; w<=0; end else oe<=1'b1; end
+              else if(!sampling&&!waiting) begin st<=S_RECOVER; w<=0; end
+      S_RECOVER: begin w<=w+1'b1; if(w==TRP-1) begin w<=0;
+         if(writing) st<=S_NEXT; else begin ci<=0; ri<=0; gen_inv<=inv_r; st<=S_CMP; end end end
+      S_CMP: begin // one rotation of the sample buffer for one candidate latency
+         c1<=bufm[31:0]; bufm<={bufm[31:0],bufm[SAMPLES*32-1:32]}; v1<=ri>=ci && ri<ci+3'd4+3'd4; k<=3'(ri-ci); ri<=ri+1'b1;
+         if(ri==SAMPLES-1) begin ri<=0; dr<=0; st<=S_DRAIN; end end
+      S_DRAIN: begin dr<=dr+1'b1; if(dr==7) begin err<={err[NC*24-25:0],err[NC*24-1:NC*24-24]};
+           if(ci==NC-1) st<=S_AFTER_READ; else begin ci<=ci+1'b1; st<=S_CMP; end end end
+      S_AFTER_READ: begin if(do_write) begin writing<=1'b1; gen_inv<=inv_w; w<=0; st<=S_LINE; end else st<=S_NEXT; end
+      S_NEXT: begin line<=line+1'b1; writing<=!do_read; gen_inv<=inv_w; w<=0; st<=(line=='1) ? S_P0:S_LINE; pc<=0; end
+      S_P0: if(!txbusy) begin txv<=1'b1; pc<=pc+1'b1;
+           if(pc==0) txb<=hex(4'(ID>>4)); else if(pc==1) txb<=hex(4'(ID)); else if(pc==2) txb<=8'h20;
+           else if(pc==3) txb<=hex(4'(step>>4)); else if(pc==4) txb<=hex(4'(step)); else if(pc==5) txb<=8'h20;
+           else if(pc==8'd6+NC*6) begin txb<=8'h0A; st<=S_P1; end
+           else begin txb<=hex(err[NC*24-1:NC*24-4]); err<={err[NC*24-5:0],err[NC*24-1:NC*24-4]}; end end
+      S_P1: begin err<=0; w<=w+1'b1;
+           if(w==0) begin if(last_step) begin step<=0; iter<=iter+1'b1; end else step<=step+1'b1; end
+           if(w==3) begin w<=0; st<=S_STEP; end end
+      default: st<=S_BOOT;
+    endcase
+  end
+endmodule

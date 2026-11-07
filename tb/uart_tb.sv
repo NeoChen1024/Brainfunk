@@ -6,7 +6,8 @@
 // program the flash, which boots; a long press reloads from it, and power-up would too.
 `timescale 1ns/1ps
 module uart_tb #(
-    parameter int IMAGE_BYTES = 1
+    parameter int IMAGE_BYTES = 1,
+    parameter     IMAGE_FILE  = "build/uart_tb.bytes"
 );
     logic clk = 0, rx = 1, button_n = 1;
     wire tx, led, flash_cs_n, flash_clk, flash_mosi, flash_miso, flash_wp_n, flash_hold_n;
@@ -127,7 +128,7 @@ module uart_tb #(
     endtask
 
     initial begin
-        $readmemh("build/uart_tb.bytes", image);
+        $readmemh(IMAGE_FILE, image);
         repeat (2000) @(posedge clk);       // the empty flash has been read and refused by now
         check_id();
         load(1'b1, "E");

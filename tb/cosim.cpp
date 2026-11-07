@@ -4,7 +4,7 @@
 //   cosim --random N [--seed S] [--stall]                run N random programs at -O0..-O2
 //   cosim --evict N [--seed S] [--stall]                 run N random images built to force evictions
 //
-// Exit status is non-zero on the first divergence.
+// Exit status is non-zero on the first divergence. --json prints the results as one JSON object.
 #include "Vbrainfunk_soc.h"
 #include "Vbrainfunk_soc__Dpi.h"
 #include "libbrainfunk.hpp"
@@ -376,6 +376,33 @@ std::vector<std::uint32_t> assemble(const Brainfunk& program) {
     return words;
 }
 
+void print_json(const Result& result) {
+    std::printf("{\"retired\":%llu,\"cycles\":%llu,\"halted\":%s,\"trapped\":%s,\"truncated\":%s,\"ops\":{",
+                static_cast<unsigned long long>(result.retired), static_cast<unsigned long long>(result.cycles),
+                result.halted ? "true" : "false", result.trapped ? "true" : "false", result.truncated ? "true" : "false");
+    const char* separator = "";
+    for (std::size_t op = 0; op < result.count_per_op.size(); ++op) {
+        if (result.count_per_op[op] == 0) continue;
+        const auto name = opcode_name(static_cast<Opcode>(op));
+        std::printf("%s\"%.*s\":{\"count\":%llu,\"cycles\":%llu}", separator, static_cast<int>(name.size()), name.data(),
+                    static_cast<unsigned long long>(result.count_per_op[op]), static_cast<unsigned long long>(result.cycles_per_op[op]));
+        separator = ",";
+    }
+    std::printf("}}\n");
+}
+
+void print_batch(bool json, const char* what, std::uint32_t count, std::uint64_t halted, std::uint64_t truncated,
+                 std::uint64_t trapped, std::uint64_t retired) {
+    const auto ull = [](std::uint64_t value) { return static_cast<unsigned long long>(value); };
+    if (json) {
+        std::printf("{\"programs\":%u,\"halted\":%llu,\"truncated\":%llu,\"trapped\":%llu,\"retired\":%llu}\n", count,
+                    ull(halted), ull(truncated), ull(trapped), ull(retired));
+    } else {
+        std::printf("%u %s: %llu halted, %llu truncated, %llu trapped, %llu instructions compared\n", count, what, ull(halted),
+                    ull(truncated), ull(trapped), ull(retired));
+    }
+}
+
 void print_result(const Result& result) {
     std::printf("retired %llu cycles %llu cpi %.3f%s%s%s\n",
                 static_cast<unsigned long long>(result.retired),
@@ -398,13 +425,14 @@ void print_result(const Result& result) {
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
 
-    bool stall = false;
+    bool stall = false, json = false;
     std::uint64_t limit = 0;
     std::uint32_t random_count = 0, evict_count = 0, seed = 1;
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--stall") stall = true;
+        else if (arg == "--json") json = true;
         else if (arg == "--limit") limit = std::stoull(argv[++i]);
         else if (arg == "--random") random_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--evict") evict_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
@@ -428,9 +456,7 @@ int main(int argc, char** argv) {
                     return 1;
                 }
             }
-            std::printf("%u eviction images: %llu halted, %llu truncated, %llu trapped, %llu instructions compared\n",
-                        evict_count, static_cast<unsigned long long>(halted), static_cast<unsigned long long>(truncated),
-                        static_cast<unsigned long long>(trapped), static_cast<unsigned long long>(retired));
+            print_batch(json, "eviction images", evict_count, halted, truncated, trapped, retired);
             return 0;
         }
         if (random_count != 0) {
@@ -468,14 +494,12 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            std::printf("%u programs at 3 levels: %llu halted, %llu truncated, %llu trapped, %llu instructions compared\n",
-                        random_count, static_cast<unsigned long long>(halted), static_cast<unsigned long long>(truncated),
-                        static_cast<unsigned long long>(trapped), static_cast<unsigned long long>(retired));
+            print_batch(json, "programs at 3 levels", random_count, halted, truncated, trapped, retired);
             return 0;
         }
 
         if (files.empty()) {
-            std::cerr << "usage: cosim [--stall] [--limit N] image.hex [input-file]\n"
+            std::cerr << "usage: cosim [--json] [--stall] [--limit N] image.hex [input-file]\n"
                          "       cosim --random N [--seed S] [--stall]\n"
                          "       cosim --evict N [--seed S] [--stall]\n";
             return 2;
@@ -485,7 +509,9 @@ int main(int argc, char** argv) {
             std::ifstream file(files[1], std::ios::binary);
             input.assign(std::istreambuf_iterator<char>(file), {});
         }
-        print_result(cosim.run(read_image(files[0]), input, stall, limit, seed));
+        const auto result = cosim.run(read_image(files[0]), input, stall, limit, seed);
+        if (json) print_json(result);
+        else      print_result(result);
     } catch (const Divergence& divergence) {
         std::cerr << "DIVERGED: " << divergence.what << '\n';
         return 1;

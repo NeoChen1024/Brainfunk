@@ -28,10 +28,10 @@ test: all
 	sh tests/run-tests.sh
 
 hw-test: all
-	sh tb/run-hw-tests.sh
+	python3 -m pytest -n auto
 
 formal:
-	sh formal/run.sh
+	python3 -m pytest -n auto tests/hw/test_formal.py
 
 yadan:
 	sh synth/build-yadan.sh
