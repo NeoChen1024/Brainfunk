@@ -11,7 +11,10 @@ Every program keeps the terms its author gave it. Each source directory holds th
 own license and README files, unmodified, and a `SOURCE.md` with where and when the files
 were obtained. When a program's file names its author, the manifest records that author too.
 
-Programs whose license could not be established are not committed. `WANTED.md` lists them.
+Programs whose license could not be established are not committed, and `WANTED.md` lists
+them, unless their manifest records a deliberate decision to keep them anyway with
+`unknown_license_accepted = "<reason>"`. Those live in `unattributed/`, which says plainly
+that their author and license are unknown.
 
 ## Layout
 

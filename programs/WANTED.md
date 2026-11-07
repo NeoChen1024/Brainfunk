@@ -29,7 +29,7 @@ sources below:
 
 | Old file | Now | Difference |
 |---|---|---|
-| `bench.b` | `3rdparty/bfcorpus/cwfitzgerald/bench.b` | identical code |
+| `bench.b` | `programs/unattributed/bench.b` | identical; author and license unknown, kept on purpose |
 | `bottles.b` | `3rdparty/bfcorpus/cwfitzgerald/bottles.b` | identical code |
 | `e.b` | `programs/brainfuck.org/e.b` | identical |
 | `fib.b` | `programs/brainfuck.org/fib.b` | the old copy lacks the comments |

@@ -155,7 +155,7 @@ check_codegen overflow-move "$tmpdir/overflow-move.bf" "$tmpdir/empty.input"
 for program in \
     3rdparty/bfcorpus/cwfitzgerald/hello.b \
     programs/brainfuck.org/squares.b \
-    3rdparty/bfcorpus/cwfitzgerald/bench.b \
+    programs/unattributed/bench.b \
     3rdparty/bfcorpus/cwfitzgerald/bottles.b \
     3rdparty/bfcorpus/nyyrikki/triangle.bf \
     3rdparty/bfcorpus/copy/third_party/hanoi.bf \

@@ -201,9 +201,11 @@ def check_manifest(manifest: Path) -> list[str]:
     for key in ("name", "license"):
         if key not in source:
             errors.append(f"{where}: [source] has no {key}")
+    # Files committed here need a known license, or a recorded decision to keep them anyway.
     if source.get("license", "").lower() in ("", "unknown", "noassertion") and \
-            not source.get("submodule"):
-        errors.append(f"{where}: files committed to programs/ need a known license")
+            not source.get("submodule") and not source.get("unknown_license_accepted"):
+        errors.append(f"{where}: files committed to programs/ need a known license, "
+                      "or unknown_license_accepted with the reason")
     for license_file in source.get("license_files", []):
         if not (source_root(manifest, source) / license_file).is_file():
             errors.append(f"{where}: license file {license_file} not found")
