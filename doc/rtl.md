@@ -10,7 +10,7 @@ them, so programs must come from `-O2` or lower.
 ```text
 rtl/brainfunk_core.sv    the core
 rtl/brainfunk_predict.sv next-fetch and direction tables, which only guess
-rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines
+rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines; the data cache reads whole lines
 rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
 rtl/sdram_ctrl.sv        SDRAM controller
 rtl/brainfunk_soc.sv     all of those together
@@ -46,8 +46,8 @@ than the instruction right ahead are picked up in `M2`. A read colliding with a 
 cell is forwarded, so its undefined result is never used; simulation makes it return wrong data
 to keep that true.
 
-Anything younger than an unresolved branch or `F` is speculative. It can move `base_ptr`, which is
-restored, and read memory. It cannot write, because the flush reaches `X` before it gets to `W`.
+Anything younger than an unresolved branch is speculative. It can move `base_ptr`, which is restored,
+and read memory. It cannot write, because the flush reaches `X` before it gets to `W`.
 Input waits for an empty pipeline. Output acts in `X`, when everything older has been resolved.
 
 ## Timing
@@ -56,7 +56,7 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 |---|---|
 | `A`, `S`, `M`, `JE`, `JN` | 1 |
 | `MUL` | 3: source, multiplier, destination |
-| `F` | 1 per cell read, plus 5 to end |
+| `F` | 1 per line reached, plus 7 to end, plus up to 4 waiting for an older write |
 | Branch predicted taken, in the next-fetch table | nothing more |
 | Branch predicted taken, not in it | 3 more |
 | A word that is not a branch, wrongly in the next-fetch table | 3 more |
@@ -65,20 +65,53 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Cache miss, instruction | about 20, holding the front end |
 | Cache miss, data | about 30 to restart the instruction, about 20 more to write back a dirty line |
 
-`F` assumes each cell is non-zero and reads one per cycle, with `base_ptr` stepping ahead. The
-read that finds a zero flushes the reads behind it.
+`F` reads a line per cycle, and the read that finds a zero stops the reads behind it; see
+[Scanning](#scanning).
 
 On the same images at `-O2`:
 
-| Program | Multi-cycle | Pipeline, static prediction | With `brainfunk_predict.sv` | CPI |
-|---|---|---|---|---|
-| `mandel.b` | 4.96 G cycles | 3.94 G cycles | 3.09 G cycles | 3.50 → 2.78 → 2.18 |
-| `long.b` | | 1.18 G cycles | 0.91 G cycles | 1.76 → 1.36 |
-| `hanoi.b` | 183.2 M cycles | 141.2 M cycles | 74.0 M cycles | 2.68 → 2.07 → 1.08 |
+| Program | Multi-cycle | Pipeline | With prediction | With line scanning | CPI |
+|---|---|---|---|---|---|
+| `mandel.b` | 4.96 G cycles | 3.94 G | 3.09 G | 2.84 G | 3.50 → 2.78 → 2.18 → 2.01 |
+| `long.b` | | 1.18 G | 0.91 G | 0.91 G | 1.76 → 1.36 |
+| `hanoi.b` | 183.2 M cycles | 141.2 M | 74.0 M | 74.0 M | 2.68 → 2.07 → 1.08 |
 
-In `mandel.b`, 38% of the cycles are charged to `MUL` and 18% to `F`. The charge includes the
+In `mandel.b`, 42% of the cycles are charged to `MUL` and 11% to `F`. The charge includes the
 misprediction before an instruction, which is why `MUL` averages 3.6 cycles. These programs fit
 their caches, which cost them almost nothing. `LostKng.b` does not, and its CPI is about 11.
+
+### Scanning
+
+A cycle of `F` reads a whole 32-byte line, and looks at every cell of it the stride lands on. So its
+speed depends on how many of those there are, not on where they fall:
+
+| Stride | Cells per cycle | Where it is |
+|---|---|---|
+| 1 | 32 | |
+| 2 | 16 | `LostKng.b` |
+| 4 | 8 | `e.b`, `hanoi.b` |
+| 9 | 3.6 | `mandel.b` |
+| 16 or more | 1 | Any program: these go a cell at a time, and step `base_ptr` as they go |
+
+Reading a line takes one block RAM per cell, which costs 32 of them against the four of a word-wide
+read, but block RAM of that size was plentiful, and it freed four of the large ones. Four independently
+addressed byte lanes would have matched this on odd strides, reading the cells of a stride of 9 at
+about the same rate, but would have gained nothing on a stride of 4, and needed an adder per lane.
+
+A read is a line, so going to the next one needs no adder: `A` steps the line address, and a table
+gives the first cell the stride lands on there, from where it landed in the line before. Backward
+strides use the same tables with cells numbered from the end of the line. A mask of the cells to look
+at follows the read down the pipeline, built in three steps because it is a 32-way shift.
+
+`dmem_zero` comes straight from the cache, so `F` has no forwarding, and waits while any older write
+would still reach the cache after its first read. It stays in `A` until it finishes, so nothing younger
+runs alongside it, and its younger reads can be discarded. A line that misses restarts `F` from that
+line, as any instruction restarts.
+
+Finding the zero is the cheap part. Which cell it was, and so where `base_ptr` ends up, takes two more
+cycles after that, because a 32-way search and a subtraction cannot follow the zero test in one. `F`
+therefore costs 7 to end, where one cell at a time cost 5. In `mandel.b`, where it reaches about 6
+lines, that takes `F` from 22.3 cycles to 12.2, so the ending is now over half of it.
 
 ### Branch prediction
 
@@ -155,7 +188,7 @@ Each range of random seeds and each program is a test of its own, so a failure c
 Everything runs at nice 19.
 
 ```shell
-make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 5 minutes
+make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 13 minutes
 pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
 pytest -n auto --mutation             # broken designs must be caught, 4 minutes
 pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial

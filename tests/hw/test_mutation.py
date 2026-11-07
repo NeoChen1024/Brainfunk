@@ -8,8 +8,8 @@ import shutil
 import pytest
 
 from conftest import CORPUS, ROOT, assemble, run
-from mutants import FORMAL_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
-from test_cosim import CPI_LIMITS, program_cpi
+from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
+from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, program_cpi
 
 pytestmark = pytest.mark.mutation
 
@@ -72,6 +72,10 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
         image = assemble(CORPUS / "hanoi.b", 2, tmp_path / "hanoi.hex")
         if caught([cosim, "--limit", 1000000, image]):
             return
+    long_scan = tmp_path / "long_scan.hex"
+    long_scan.write_text(LONG_SCAN_IMAGE)
+    if caught([cosim, long_scan]):
+        return
     pytest.fail(f"nothing caught: {name}")
 
 
@@ -79,10 +83,10 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
 def test_formal_catches(tmp_path, name):
     if shutil.which("sby") is None:
         pytest.skip("sby not installed")
-    name, file, text, replacement = next(mutant for mutant in MUTANTS if mutant[0] == name)
+    name, file, text, replacement = next(mutant for mutant in MUTANTS + FORMAL_ONLY_MUTANTS if mutant[0] == name)
     assert file == "brainfunk_core.sv"
     mutated(tmp_path, file, text, replacement)
-    shutil.copy(ROOT / "formal" / "core_props.sv", tmp_path / "core_props.sv")
+    shutil.copy(ROOT / "formal" / "core_props.svh", tmp_path / "core_props.svh")
     (tmp_path / "check.sby").write_text(f"""[options]
 mode bmc
 depth 24
@@ -92,12 +96,12 @@ smtbmc --nopresat yices
 
 [script]
 read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
-read -formal -sv -DFORMAL_ABSTRACT_MUL core_props.sv
-prep -top core_props
+chparam -set PC_WIDTH 5 -set ADDR_WIDTH 3 -set LINE_BITS 2 -set STRIDE_BITS 2 brainfunk_core
+prep -top brainfunk_core
 
 [files]
 {tmp_path}/brainfunk_core.sv
-{tmp_path}/core_props.sv
+{tmp_path}/core_props.svh
 """)
     result = run("sby", "-f", "check.sby", cwd=tmp_path, check=False, timeout=600)
     assert result.returncode != 0, f"formal did not catch: {name}"

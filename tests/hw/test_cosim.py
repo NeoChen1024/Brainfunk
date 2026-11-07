@@ -46,7 +46,7 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
 # the design changes. fib.b's is close because it is the one that shows entries being taken out of the
 # next-fetch table: 1.43 as it is, 1.49 keeping false hits, 2.59 keeping wrong directions.
-CPI_LIMITS = {"hanoi.b": 1.3, "mandel.b": 2.4, "LostKng.b": 12.0, "fib.b": 1.46}
+CPI_LIMITS = {"hanoi.b": 1.3, "mandel.b": 2.1, "LostKng.b": 12.0, "fib.b": 1.46}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -61,6 +61,29 @@ def program_cpi(cosim, name, directory):
 @pytest.mark.parametrize("name", CPI_LIMITS)
 def test_prediction_keeps_cpi_down(tools, tmp_path, name):
     assert program_cpi(COSIM, name, tmp_path) < CPI_LIMITS[name]
+
+
+# F over more tape than the cache holds, in both directions. A miss has to restart it from the line that
+# missed: from where it began, it would evict that line getting back there, and never finish.
+LONG_SCAN_CELLS = 20000
+LONG_SCAN_IMAGE = "".join(f"{word:08x}\n" for word in [
+    0x50000000 | LONG_SCAN_CELLS,               # the far end,
+    0x20000001,                                 # marked
+    0x50000000 | (-LONG_SCAN_CELLS & 0xfffff),  # and back
+    0x20000001,                                 # every cell non-zero up to the mark
+    0x50000001,
+    0x60000000 | (-3 & 0xfffff),
+    0x40000000 | 0xfffff,                       # F backward, to the cell before the first
+    0x50000001,
+    0x40000001,                                 # F forward, to the cell after the mark
+    0x90000000,
+])
+
+
+def test_long_scan_crosses_the_cache(tools, tmp_path):
+    image = tmp_path / "long_scan.hex"
+    image.write_text(LONG_SCAN_IMAGE)
+    assert cosim_json(image)["halted"]
 
 
 @pytest.mark.parametrize("word", ["00000000", "00000001", "10100000", "20100000", "50100000", "80000002",

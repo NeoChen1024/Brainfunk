@@ -74,7 +74,7 @@ public:
         top_.eval(); // so that scopes exist
         sdram_ = scope("phy");
         tag_   = scope("dcache.tag");
-        for (int lane = 0; lane < 4; ++lane) lanes_[lane] = scope("dcache.g_lane[" + std::to_string(lane) + "].lane");
+        for (int cell = 0; cell < 32; ++cell) cell_rams_[cell] = scope("dcache.g_byte[" + std::to_string(cell) + "].ram");
         svSetScope(sdram_);
         for (std::size_t word = 0; word < TAPE_SIZE / 4; ++word) sdram_poke(static_cast<int>(SDRAM_TAPE + word), 0);
 
@@ -210,7 +210,7 @@ private:
     VerilatedContext context_;
     Vbrainfunk_soc   top_;
     svScope sdram_ = nullptr, tag_ = nullptr;
-    std::array<svScope, 4> lanes_{};
+    std::array<svScope, 32> cell_rams_{};
     std::vector<std::uint32_t> written_;
 
     static svScope scope(const std::string& path) {
@@ -226,8 +226,8 @@ private:
         const auto tag = static_cast<long long>(cell >> 14);
         svSetScope(tag_);
         if (ram_peek(index) == (4 | tag)) { // valid, tag
-            svSetScope(lanes_[cell & 3]);
-            return static_cast<std::uint8_t>(ram_peek(static_cast<int>((cell >> 2) & 4095)));
+            svSetScope(cell_rams_[cell & 31]);
+            return static_cast<std::uint8_t>(ram_peek(index));
         }
         svSetScope(sdram_);
         const auto word = static_cast<std::uint32_t>(sdram_peek(static_cast<int>(SDRAM_TAPE + cell / 4)));

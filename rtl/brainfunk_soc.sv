@@ -48,6 +48,7 @@ module brainfunk_soc #(
     logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr;
     logic [7:0]                 dmem_rdata, dmem_wdata;
     logic                       dmem_we, dmem_hit, dmem_miss, dmem_busy;
+    logic [31:0]                dmem_zero;
 
 `ifndef BRAINFUNK_RETIRE_PORT
     /* verilator lint_off UNUSEDSIGNAL */
@@ -122,7 +123,7 @@ module brainfunk_soc #(
 
     dcache #(.ADDR_WIDTH(DMEM_ADDR_WIDTH), .CLEAR_TAPE(CLEAR_TAPE_ON_RESET)) dcache (
         .clk(clk), .rst(cache_rst), .ready(d_ready),
-        .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit),
+        .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit), .dmem_zero(dmem_zero),
         .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata),
         .dmem_miss(dmem_miss), .dmem_miss_addr(dmem_miss_addr), .dmem_busy(dmem_busy),
         .req_valid(d_req_valid), .req_write(d_req_write), .req_line(d_req_line), .req_ready(d_req_ready),

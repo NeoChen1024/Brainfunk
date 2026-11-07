@@ -12,13 +12,19 @@
 // Nothing past A ever stalls, so an instruction's distance from older ones is settled by
 // M0. That is where it compares addresses, so X only has a multiplexer to work through.
 //
-// Speculation: anything younger than an unresolved JE, JN or F is speculative. It can move
-// base_ptr, which is restored, and read memory, which is harmless. It cannot write, because
-// the flush reaches X before anything younger gets to W. Input waits for an empty pipeline;
-// output acts in X, by which time everything older has been resolved.
+// Speculation: anything younger than an unresolved JE or JN is speculative. It can move base_ptr,
+// which is restored, and read memory, which is harmless. It cannot write, because the flush reaches
+// X before anything younger gets to W. Input waits for an empty pipeline; output acts in X, by which
+// time everything older has been resolved.
 //
-// F issues one read per cycle, assuming each cell is non-zero, with base_ptr stepping ahead.
-// The read that finds a zero ends it, and flushes the reads behind it.
+// F reads a line per cycle, and looks at every cell of it the stride lands on, all at once, assuming
+// none is zero. A read is a line, so the next one needs no adder: only which cell the stride lands on
+// first in the next line, from a table. A stride too long for that reads one cell per cycle, with
+// base_ptr stepping, through the same path. The read that finds a zero stops the reads behind it,
+// and then F works out where that left base_ptr, which nothing younger has needed yet.
+//
+// F has no forwarding: dmem_zero comes straight from the cache, so F waits until any write older than
+// it is no longer ahead of it. Nothing younger issues until F has finished.
 //
 // The memories are caches; see brainfunk_cache.sv. dmem_rdata arrives three edges after dmem_raddr,
 // and imem_rdata three edges after imem_addr if imem_en holds, each with a hit flag.
@@ -38,8 +44,10 @@
 //
 // The fused instructions (MULC, DJN, MJN, SRUN) are not implemented yet and trap.
 module brainfunk_core #(
-    parameter int PC_WIDTH   = 20,
-    parameter int ADDR_WIDTH = 16
+    parameter int PC_WIDTH    = 20,
+    parameter int ADDR_WIDTH  = 16,
+    parameter int LINE_BITS   = 5,  // cells in a line, as in the cache
+    parameter int STRIDE_BITS = 4   // F takes a line at a time with a stride below 1 << STRIDE_BITS
 ) (
     input  logic                  clk,
     input  logic                  rst,
@@ -70,6 +78,7 @@ module brainfunk_core #(
     output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
     input  logic                  dmem_hit,        // arrives with dmem_rdata
+    input  logic [(1 << LINE_BITS)-1:0] dmem_zero, // arrives with dmem_rdata: which cells of the line are zero
     output logic                  dmem_miss,       // one cycle; the instruction restarts
     output logic [ADDR_WIDTH-1:0] dmem_miss_addr,
     input  logic                  dmem_busy,       // handling a miss: nothing may issue
@@ -95,11 +104,6 @@ module brainfunk_core #(
     output logic [31:0]           retire_instr,
     output logic [PC_WIDTH-1:0]   retire_next_pc,
     output logic [ADDR_WIDTH-1:0] retire_base_ptr
-`ifdef FORMAL
-    ,
-    // Something is in W, retiring or not; the retire_ outputs describe it either way.
-    output logic                  formal_w_valid
-`endif
 );
 
     localparam logic [3:0] OP_A = 4'd1, OP_S = 4'd2, OP_MUL = 4'd3, OP_F = 4'd4, OP_M = 4'd5,
@@ -108,9 +112,10 @@ module brainfunk_core #(
     // Flushes, registered in X, so they act in the cycle the instruction is in W. Everything
     // younger is then in A or earlier, or in M0..X and killed on its way to the next stage.
     logic redirect;  // branch mispredicted: fetch from w_alt_pc
-    logic scan_exit; // F found its zero: only the reads behind it go
+    logic scan_stop; // F found its zero: only the reads behind it go
+    logic scan_done; // and has now worked out where base_ptr ends up, and retires
     logic flush;
-    assign flush = redirect || scan_exit;
+    assign flush = redirect || scan_stop;
 
     // ---- fetch ----
     logic                front_en;
@@ -197,6 +202,13 @@ module brainfunk_core #(
     assign d_seq      = d_pc + PC_WIDTH'(1);
     assign d_steer_pc = d_is_branch ? d_target : d_seq;
 
+    // F: a stride short enough to take a line at a time, and how long it is.
+    logic [STRIDE_BITS-1:0] d_stride_low, d_stride;
+    logic                   d_scan_wide;
+    assign d_stride_low = d_instr[STRIDE_BITS-1:0];
+    assign d_stride     = d_instr[19] ? -d_stride_low : d_stride_low;
+    assign d_scan_wide  = d_stride_low != '0 && (d_instr[19:STRIDE_BITS] == '0 || &d_instr[19:STRIDE_BITS]);
+
     // Which offset goes where: a_offset is added to form the address, and a_offset_2 to move
     // base_ptr, or for MUL to form the second address.
     /* verilator lint_off UNUSEDSIGNAL */
@@ -223,9 +235,62 @@ module brainfunk_core #(
     logic       a_go, a_last;
     logic [1:0] a_phase;
 
+    localparam int LINE_CELLS = 1 << LINE_BITS;
+
+    // Backward strides run through the same tables with the cells of a line numbered from its end.
+    logic                   a_scan_wide, a_scan_back, a_scan_more;
+    logic [STRIDE_BITS-1:0] a_scan_stride;  // 0 for a stride that goes a cell at a time
+
+    // Where in a line the first cell a stride lands on is, given where it was in the line before; and
+    // which cells a stride lands on, if the first is cell 0. Stride 0 here is a cell at a time.
+    logic [(1 << (STRIDE_BITS + LINE_BITS))-1:0][LINE_BITS-1:0] NEXT_CELL;
+    logic [(1 << STRIDE_BITS)-1:0][LINE_CELLS-1:0]              STRIDE_MASK;
+
+    generate
+        for (genvar stride = 0; stride < (1 << STRIDE_BITS); stride++) begin : g_stride
+            for (genvar at = 0; at < LINE_CELLS; at++) begin : g_at
+                if (stride == 0) begin : g_single
+                    assign NEXT_CELL[at]      = '0;
+                    assign STRIDE_MASK[0][at] = at == 0;
+                end else begin : g_stepping
+                    localparam int STEPS = (LINE_CELLS - at + stride - 1) / stride;
+                    assign NEXT_CELL[(stride << LINE_BITS) + at] = LINE_BITS'(at + STEPS * stride - LINE_CELLS);
+                    assign STRIDE_MASK[stride][at]               = at % stride == 0;
+                end
+            end
+        end
+    endgenerate
+
+    function automatic logic [LINE_CELLS-1:0] reversed(input logic [LINE_CELLS-1:0] value);
+        for (int i = 0; i < LINE_CELLS; i++) reversed[i] = value[LINE_CELLS - 1 - i];
+    endfunction
+
+    // The lowest of these cells, a group at a time so that it takes few logic levels.
+    localparam int GROUP = 8 < LINE_CELLS ? 8 : LINE_CELLS;
+
+    function automatic logic [LINE_BITS-1:0] lowest_cell(input logic [LINE_CELLS-1:0] cells);
+        lowest_cell = '0;
+        for (int group = LINE_CELLS / GROUP - 1; group >= 0; group--) begin
+            if (|cells[group * GROUP +: GROUP]) begin
+                lowest_cell = LINE_BITS'(group * GROUP);
+                for (int i = GROUP - 1; i >= 0; i--) begin
+                    if (cells[group * GROUP + i]) lowest_cell = LINE_BITS'(group * GROUP + i);
+                end
+            end
+        end
+    endfunction
+
     logic [ADDR_WIDTH-1:0] base_ptr, ea, moved;
     assign ea    = base_ptr + a_offset;
     assign moved = base_ptr + a_offset_2;
+
+    // The next line of a scan, from the line now in M0.
+    logic [ADDR_WIDTH-1:0] m0_ea;
+    logic [LINE_BITS-1:0]  m0_scan_cell, scan_next_cell;
+    logic [ADDR_WIDTH-1:0] scan_next_ea;
+    assign scan_next_cell = NEXT_CELL[{a_scan_stride, m0_scan_cell}];
+    assign scan_next_ea   = {m0_ea[ADDR_WIDTH-1:LINE_BITS] + (a_scan_back ? '1 : (ADDR_WIDTH-LINE_BITS)'(1)),
+                             scan_next_cell ^ {LINE_BITS{a_scan_back}}};
 
     logic a_issue, a_flag_mul_dst;
     assign a_issue        = a_valid && !dmem_busy && (!a_multi || a_go);
@@ -233,11 +298,16 @@ module brainfunk_core #(
 
     // A can take a new instruction; the front end moves if it has one to give.
     logic a_ready;
-    assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_exit;
+    assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_done;
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
     logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
+
+    // Writes that would reach the cache after a read issued in the next cycle.
+    logic m0_writes, m1_writes, m2_writes, older_writes, a_writes;
+    assign older_writes = (m0_valid && m0_writes) || (m1_valid && m1_writes) || (m2_valid && m2_writes);
+    assign a_writes     = a_valid && (a_is_add || a_is_set || a_is_mul || a_is_in);
     assign drained = !(m0_valid || m1_valid || m2_valid || x_valid || w_valid || redirect);
 
     logic out_pending;
@@ -252,9 +322,11 @@ module brainfunk_core #(
 
         if (rst) begin
             base_ptr <= '0;
-        end else if (flush) begin
+        end else if (redirect) begin
             base_ptr <= w_base;
-        end else if (a_issue && (a_is_move || a_is_scan)) begin
+        end else if (scan_done) begin
+            base_ptr <= scan_base;
+        end else if (a_issue && (a_is_move || (a_is_scan && !a_scan_wide))) begin
             base_ptr <= moved;
         end
 
@@ -283,7 +355,11 @@ module brainfunk_core #(
             a_alt_pc        <= d_predict_taken ? d_seq : d_target;
             a_phase         <= 2'd0;
             a_last          <= 1'b0;
-            a_go            <= 1'b1;
+            a_go            <= !d_is_scan || !(a_writes || older_writes);
+            a_scan_wide     <= d_scan_wide;
+            a_scan_back     <= d_instr[19];
+            a_scan_stride   <= d_scan_wide ? d_stride : '0;
+            a_scan_more     <= 1'b0;
             a_offset        <= (d_is_mul || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
                                                                       : d_addr[ADDR_WIDTH-1:0];
             a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
@@ -322,7 +398,15 @@ module brainfunk_core #(
                 a_go   <= 1'b1;
                 a_last <= 1'b1;
             end
-        end else if (!a_is_scan && !dmem_busy) begin // H or an illegal word: issued, stays until flushed
+        end else if (a_is_scan) begin
+            if (scan_stop) begin
+                a_go    <= 1'b0;
+                a_phase <= 2'd1;
+            end else if (a_phase == 2'd0 && !older_writes) begin
+                a_go <= 1'b1;
+            end
+            if (a_issue && a_scan_wide) a_scan_more <= 1'b1;
+        end else if (!dmem_busy) begin // H or an illegal word: issued, stays until flushed
             a_go <= 1'b0;
         end
     end
@@ -330,17 +414,17 @@ module brainfunk_core #(
     // ---- M0: compares against everything that has not written yet ----
     // Each stage's fields, as one uop. pc, instr and base_after are only for the retire port.
     logic                  m0_uses_cache, m1_uses_cache, m2_uses_cache, x_uses_cache;
-    logic                  m0_writes, m0_retire, m0_no_read, m0_is_branch, m0_is_je, m0_predict_taken;
+    logic                  m0_retire, m0_no_read, m0_is_branch, m0_is_je, m0_predict_taken;
     logic                  m0_is_scan, m0_is_out_read, m0_is_mul_src, m0_is_mul_dst, m0_is_halt, m0_is_trap;
     logic [7:0]            m0_data;
-    logic [ADDR_WIDTH-1:0] m0_ea, m0_base, m0_base_after;
+    logic [ADDR_WIDTH-1:0] m0_base, m0_base_after;
     logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
     logic [31:0]           m0_instr;
     logic                  m0_next_taken, m0_target_wrong;
     logic [3:0]            m0_slot;
     logic [1:0]            m0_counter;
 
-    logic                  m1_writes, m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
+    logic                  m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
     logic                  m1_is_scan, m1_is_out_read, m1_is_mul_src, m1_is_mul_dst, m1_is_halt, m1_is_trap;
     logic [7:0]            m1_data;
     logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
@@ -351,7 +435,7 @@ module brainfunk_core #(
     logic [1:0]            m1_counter;
     logic [4:1]            m1_hit;
 
-    logic                  m2_writes, m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
+    logic                  m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
     logic                  m2_is_scan, m2_is_out_read, m2_is_mul_src, m2_is_mul_dst, m2_is_halt, m2_is_trap;
     logic [7:0]            m2_data;
     logic [ADDR_WIDTH-1:0] m2_ea, m2_base, m2_base_after;
@@ -385,7 +469,14 @@ module brainfunk_core #(
 
     // ---- X ----
     logic [7:0] x_value, x_addend, mul_operand, mul_factor, product, x_sum;
-    logic       x_zero, x_taken, x_wrong_way, x_mispredict, x_scan_exit, x_miss;
+    logic       x_zero, x_taken, x_wrong_way, x_mispredict, x_scan_found, x_miss;
+
+    // F: which cells the read in each stage looks at. Stride and direction stay in A while it lasts.
+    logic [LINE_CELLS-1:0] m0_scan_mask, m1_scan_mask, m2_scan_mask, x_scan_mask, x_scan_zeros, w_scan_zeros;
+    logic [LINE_BITS-1:0]  m1_scan_cell, m2_scan_cell, s1_cell;
+    logic [ADDR_WIDTH-LINE_BITS-1:0] s1_line;
+    logic                  scan_found_1;
+    logic [ADDR_WIDTH-1:0] scan_base;
 
     assign x_value = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
     assign x_zero  = x_value == 8'd0;
@@ -395,7 +486,8 @@ module brainfunk_core #(
     assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit;
     assign x_wrong_way  = x_taken != x_predict_taken;
     assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
-    assign x_scan_exit  = x_valid && !flush && dmem_hit && x_is_scan && x_zero;
+    assign x_scan_zeros = dmem_zero & x_scan_mask;
+    assign x_scan_found = x_valid && !flush && dmem_hit && x_is_scan && |x_scan_zeros;
 
     assign x_addend = x_is_mul_dst ? product : x_data;
     assign x_sum    = x_value + x_addend;
@@ -408,7 +500,9 @@ module brainfunk_core #(
             x_valid   <= 1'b0;
             w_valid   <= 1'b0;
             redirect  <= 1'b0;
-            scan_exit <= 1'b0;
+            scan_stop <= 1'b0;
+            scan_found_1 <= 1'b0;
+            scan_done <= 1'b0;
             dmem_miss <= 1'b0;
             dmem_we   <= 1'b0;
         end else begin
@@ -419,12 +513,19 @@ module brainfunk_core #(
             w_valid   <= x_valid && !flush && !x_miss;
             dmem_we   <= x_valid && !flush && !x_miss && x_writes;
             redirect  <= x_mispredict || x_miss;
-            scan_exit <= x_scan_exit;
+            scan_stop <= x_scan_found;
+            scan_found_1 <= scan_stop;
+            scan_done <= scan_found_1;
             dmem_miss <= x_miss;
         end
 
         // A to M0
-        m0_ea            <= ea;
+        // The address only moves on from a line that has been read.
+        if (!a_scan_more || a_issue) begin
+            m0_ea        <= a_scan_more ? scan_next_ea : ea;
+            m0_scan_cell <= a_scan_more ? scan_next_cell : ea[LINE_BITS-1:0] ^ {LINE_BITS{a_scan_back}};
+        end
+        m0_scan_mask     <= STRIDE_MASK[a_scan_stride];
         m0_base          <= base_ptr;
         m0_base_after    <= a_is_move ? moved : base_ptr;
         m0_writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
@@ -460,7 +561,9 @@ module brainfunk_core #(
         m1_hit[4] <= w_valid && w_writes && m0_ea == w_ea;
 
         m1_ea            <= m0_ea;
-        m1_base          <= m0_base;
+        m1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;
+        m1_scan_cell     <= m0_scan_cell;
+        m1_scan_mask     <= m0_scan_mask << (8 * (m0_scan_cell >> 3));
         m1_base_after    <= m0_base_after;
         m1_writes        <= m0_writes;
         m1_uses_cache    <= m0_uses_cache;
@@ -492,6 +595,8 @@ module brainfunk_core #(
         m2_from_w2     <= !m1_hit[1] && !m1_hit[2] && !m1_hit[3] && m1_hit[4];
 
         m2_ea            <= m1_ea;
+        m2_scan_cell     <= m1_scan_cell;
+        m2_scan_mask     <= m1_scan_mask << (2 * ((m1_scan_cell >> 1) & LINE_BITS'(3)));
         m2_base          <= m1_base;
         m2_base_after    <= m1_base_after;
         m2_writes        <= m1_writes;
@@ -526,6 +631,7 @@ module brainfunk_core #(
                         ((m2_no_read || !m2_from_w2) ? 8'd0 : w2_data) : w1_data) : w_data;
 
         x_ea            <= m2_ea;
+        x_scan_mask     <= a_scan_back ? reversed(m2_scan_mask << m2_scan_cell[0]) : m2_scan_mask << m2_scan_cell[0];
         x_base          <= m2_base;
         x_base_after    <= m2_base_after;
         x_writes        <= m2_writes;
@@ -562,9 +668,9 @@ module brainfunk_core #(
         product <= 8'(mul_operand * mul_factor);
 `endif
 
-        // X to W. A scan read only retires if it found the zero.
+        // X to W. F does not retire from here: it retires when it has its result, two cycles after.
         w_writes     <= x_writes;
-        w_retire     <= x_is_scan ? x_zero : x_retire;
+        w_retire     <= !x_is_scan && x_retire;
         w_is_halt    <= x_is_halt;
         w_is_trap    <= x_is_trap;
         w_ea         <= x_ea;
@@ -580,6 +686,10 @@ module brainfunk_core #(
         w_slot        <= x_slot;
         w_counter    <= x_counter;
         w_data       <= x_sum;
+        w_scan_zeros <= a_scan_back ? reversed(x_scan_zeros) : x_scan_zeros;
+        s1_cell      <= lowest_cell(w_scan_zeros) ^ {LINE_BITS{a_scan_back}};
+        s1_line      <= w_ea[ADDR_WIDTH-1:LINE_BITS];
+        scan_base    <= {s1_line, s1_cell} - a_offset;
         w1_data      <= w_data;
         w2_data      <= w1_data;
 
@@ -631,14 +741,14 @@ module brainfunk_core #(
     assign dmem_wdata = w_data;
     assign dmem_miss_addr = w_ea;
 
-    assign retire_valid    = w_valid && w_retire;
+    assign retire_valid    = (w_valid && w_retire) || scan_done;
     assign retire_pc       = w_pc;
     assign retire_instr    = w_instr;
     assign retire_next_pc  = w_next_pc;
-    assign retire_base_ptr = w_base_after;
+    assign retire_base_ptr = scan_done ? scan_base : w_base_after;
 
 `ifdef FORMAL
-    assign formal_w_valid = w_valid;
+`include "core_props.svh"
 `endif
 
 endmodule

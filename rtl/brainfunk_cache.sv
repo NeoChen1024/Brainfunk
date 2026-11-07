@@ -138,6 +138,7 @@ module dcache #(
     input  logic [ADDR_WIDTH-1:0] dmem_raddr,
     output logic [7:0]            dmem_rdata,
     output logic                  dmem_hit,
+    output logic [31:0]           dmem_zero,   // with dmem_rdata: which cells of its line are zero
     input  logic                  dmem_we,
     input  logic [ADDR_WIDTH-1:0] dmem_waddr,
     input  logic [7:0]            dmem_wdata,
@@ -201,10 +202,12 @@ module dcache #(
         .wdata(dmem_we)
     );
 
-    // Four byte lanes: the core writes one, a fill writes all of them.
-    logic        filling;
-    logic [11:0] fill_addr;
-    logic [31:0] fill_data, lane_rdata;
+    // One block RAM per cell of a line, so that a read gets the whole line at once. The core writes
+    // one, a fill writes the four of a word. F needs the width; see the core.
+    logic         filling;
+    logic [11:0]  fill_addr;
+    logic [31:0]  fill_data;
+    logic [255:0] line_rdata;
     always_ff @(posedge clk) begin
         filling   <= state == ST_FILL && rd_valid;
         fill_addr <= {index_q, word_q};
@@ -212,31 +215,30 @@ module dcache #(
     end
 
     generate
-        for (genvar i = 0; i < 4; i++) begin : g_lane
-            ram_bank #(.WIDTH(8), .ADDR_WIDTH(12)) lane (
+        for (genvar i = 0; i < 32; i++) begin : g_byte
+            ram_bank #(.WIDTH(8), .ADDR_WIDTH(9)) ram (
                 .clk(clk),
                 .en(1'b1),
-                .raddr(raddr[13:2]),
-                .rdata(lane_rdata[8*i +: 8]),
-                .we(filling || (dmem_we && dmem_waddr[1:0] == 2'(i))),
-                .waddr(filling ? fill_addr : dmem_waddr[13:2]),
-                .wdata(filling ? fill_data[8*i +: 8] : dmem_wdata)
+                .raddr(raddr[13:5]),
+                .rdata(line_rdata[8*i +: 8]),
+                .we(filling ? fill_addr[2:0] == 3'(i / 4) : (dmem_we && dmem_waddr[4:0] == 5'(i))),
+                .waddr(filling ? fill_addr[11:3] : dmem_waddr[13:5]),
+                .wdata(filling ? fill_data[8*(i % 4) +: 8] : dmem_wdata)
             );
         end
     endgenerate
 
-    assign wr_data = clearing ? 32'd0 : lane_rdata;
-
     logic [ADDR_WIDTH-1:0] addr_1, addr_2;
-    logic [1:0]            select_1, select_2;
     always_ff @(posedge clk) begin
         addr_1     <= raddr;
         addr_2     <= addr_1;
         dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};
-        select_1   <= raddr[1:0];
-        select_2   <= select_1;
-        dmem_rdata <= lane_rdata[8*select_2 +: 8];
+        dmem_rdata <= line_rdata[8*addr_2[4:0] +: 8];
+        for (int i = 0; i < 32; i++) dmem_zero[i] <= line_rdata[8*i +: 8] == 8'd0;
     end
+
+    // A line being written back is already in line_rdata, so picking its word can take a register.
+    always_ff @(posedge clk) wr_data <= clearing ? 32'd0 : line_rdata[32*addr_1[4:2] +: 32];
 
     assign tag_we       = state == ST_RESET || state == ST_TAG_WRITE;
     assign tag_valid_in = state == ST_TAG_WRITE;
