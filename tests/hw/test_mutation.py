@@ -9,7 +9,7 @@ import pytest
 
 from conftest import CORPUS, ROOT, assemble, run
 from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
-from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, program_cpi
+from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, MUL_SELF_IMAGES, program_cpi
 
 pytestmark = pytest.mark.mutation
 
@@ -71,6 +71,11 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
     if (CORPUS / "hanoi.b").exists():
         image = assemble(CORPUS / "hanoi.b", 2, tmp_path / "hanoi.hex")
         if caught([cosim, "--limit", 1000000, image]):
+            return
+    for layout, text in MUL_SELF_IMAGES.items():
+        mul = tmp_path / f"mul_{layout}.hex"
+        mul.write_text(text)
+        if caught([cosim, mul]):
             return
     long_scan = tmp_path / "long_scan.hex"
     long_scan.write_text(LONG_SCAN_IMAGE)

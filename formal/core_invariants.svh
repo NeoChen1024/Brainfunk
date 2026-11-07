@@ -46,6 +46,7 @@ endfunction
         assert (s``_is_scan == (s``_instr[31:28] == OP_F)); \
         if (s``_is_mul_src || s``_is_mul_dst) assert (s``_instr[31:28] == OP_MUL); \
         if (s``_is_out_read) assert (s``_instr[31:28] == OP_IO && word_legal(s``_instr) && s``_instr[0]); \
+        if (s``_is_mul_dst) assert (s``_mul_unit == (s``_instr[7:0] == 8'd1 || s``_instr[7:0] == 8'hFF) && s``_mul_negate == (s``_instr[7:0] == 8'hFF)); \
         if (s``_target_wrong) assert (s``_is_branch); \
         if (s``_instr[31:28] == OP_MUL) assert (s``_is_mul_src != s``_is_mul_dst); \
         assert (s``_writes == ((s``_instr[31:28] == OP_A || s``_instr[31:28] == OP_S) && word_legal(s``_instr) || s``_is_mul_dst || (word_in(s``_instr) && s``_retire))); \
@@ -95,12 +96,24 @@ always_ff @(posedge clk) begin
     h2_ea <= h1_ea;
 end
 
-`define IS_SOURCE_OF(source, dest) (source``_valid && source``_is_mul_src && source``_pc == dest``_pc && source``_instr == dest``_instr)
-
-function automatic logic operand_ready(input logic [31:0] instr, input logic [ADDR_WIDTH-1:0] base);
-    operand_ready = mul_factor == instr[7:0] && (short_ea_of(base, instr) != a || mul_operand == cell_a) &&
-                                                (short_ea_of(base, instr) != b || mul_operand == cell_b);
+// What mul_operand holds is the value of the cell at ea, as far as the tracked cells can tell.
+function automatic logic operand_holds(input logic [ADDR_WIDTH-1:0] ea);
+    operand_holds = (ea != a || mul_operand == cell_a) && (ea != b || mul_operand == cell_b);
 endfunction
+
+// A stage with the read of a MUL's source in it, and that source.
+`define SOURCE_IN(t) (t``_valid && t``_is_mul_src)
+`define SOURCE_EA(t) short_ea_of(t``_base, t``_instr)
+
+// Whatever reads a MUL's source next, from nearest to furthest, reads this cell, or none does and
+// mul_operand already holds it.
+// Past that read, nothing writes the cell before the destination; with no such read left, nothing will.
+`define PROVIDED_FROM_M0(ea) (`SOURCE_IN(m0) ? `SOURCE_EA(m0) == (ea) : !`WRITES(m0, ea) && `PROVIDED_FROM_M1(ea))
+`define PROVIDED_FROM_M1(ea) (`SOURCE_IN(m1) ? `SOURCE_EA(m1) == (ea) : !`WRITES(m1, ea) && `PROVIDED_FROM_M2(ea))
+`define PROVIDED_FROM_M2(ea) (`SOURCE_IN(m2) ? `SOURCE_EA(m2) == (ea) : !`WRITES(m2, ea) && `PROVIDED_FROM_X(ea))
+`define PROVIDED_FROM_X(ea)  (`SOURCE_IN(x) ? `SOURCE_EA(x) == (ea) : !`WRITES(x, ea) && operand_holds(ea) && \
+                              !(w_valid && w_writes && w_ea == (ea) && w_data != mul_operand))
+`define WRITES(t, ea) (t``_valid && t``_writes && t``_ea == (ea))
 
 `define IS_READ_OF(s) (s``_is_out_read && s``_pc == a_pc && s``_instr == a_instr && s``_base == base_ptr)
 
@@ -193,6 +206,9 @@ assign scan_ending   = scan_stop || scan_found_1 || scan_done;
         if (last == b) assert (cell_b == 8'd0); \
     end
 
+`define PREV_MUL_IS(s) (s``_is_mul_dst && short_ea_of(s``_base, s``_instr) == base_ptr + prev_mul_source && \
+                        addr_ea_of(s``_base, s``_instr) != base_ptr + prev_mul_source)
+
 // The path the pipeline is on, from what has retired, oldest stage first: a stage is on it, and says
 // where it goes next, unless something older is already certain to flush it.
 logic [PC_WIDTH-1:0]   path_w_pc, path_x_pc, path_m2_pc, path_m1_pc, path_m0_pc, path_a_pc;
@@ -246,6 +262,7 @@ always_ff @(posedge clk) if (!rst) begin
         assert (x_is_scan == (x_instr[31:28] == OP_F));
         if (x_is_mul_src || x_is_mul_dst) assert (x_instr[31:28] == OP_MUL);
         if (x_is_out_read) assert (x_instr[31:28] == OP_IO && word_legal(x_instr) && x_instr[0]);
+        if (x_is_mul_dst) assert (x_mul_unit == (x_instr[7:0] == 8'd1 || x_instr[7:0] == 8'hFF) && x_mul_negate == (x_instr[7:0] == 8'hFF));
         if (x_target_wrong) assert (x_is_branch);
         if (x_instr[31:28] == OP_MUL) assert (x_is_mul_src != x_is_mul_dst);
         assert (x_writes == ((x_instr[31:28] == OP_A || x_instr[31:28] == OP_S) && word_legal(x_instr) || x_is_mul_dst || (word_in(x_instr) && x_retire)));
@@ -334,9 +351,12 @@ always_ff @(posedge clk) if (!rst) begin
         if (a_is_move) assert (a_offset_2 == ADDR_WIDTH'($signed(a_instr[19:0])));
         if (a_is_mul) begin
             assert (a_offset_2 == ADDR_WIDTH'($signed(a_instr[19:8])));
+            assert (a_mul_source == ADDR_WIDTH'($signed(a_instr[27:20])));
+            assert (a_mul_unit == (a_instr[7:0] == 8'd1 || a_instr[7:0] == 8'hFF));
+            assert (a_mul_negate == (a_instr[7:0] == 8'hFF));
             case (a_phase)
                 2'd0: assert (a_go && !a_last && a_offset == ADDR_WIDTH'($signed(a_instr[27:20])));
-                2'd1: assert (!a_go && !a_last && a_offset == a_offset_2);
+                2'd1: assert (!a_go && !a_last && a_offset == a_offset_2 && !a_mul_unit);
                 2'd2: assert (a_go && a_last && a_offset == a_offset_2);
                 default: assert (1'b0);
             endcase
@@ -428,39 +448,45 @@ always_ff @(posedge clk) if (!rst) begin
     `CELL_VALUE(a, cell_a, a1_hit, a2_hit, a3_hit, a1_value, a2_value, a3_value)
     `CELL_VALUE(b, cell_b, b1_hit, b2_hit, b3_hit, b1_value, b2_value, b3_value)
 
-    // The multiplier: its source is taken in X, and the destination is at least two stages behind it.
-    // The cache being busy can hold the destination back further, but nothing else can touch the operand.
-    if (ok_w && a_valid && a_is_mul && a_phase == 2'd1) assert (`IS_SOURCE_OF(m0, a) && m0_base == base_ptr);
-    if (ok_w && a_valid && a_is_mul && a_phase == 2'd2) begin
-        assert (!m0_valid);
-        if (m1_valid) assert (`IS_SOURCE_OF(m1, a) && m1_base == base_ptr);
-        else if (m2_valid) assert (`IS_SOURCE_OF(m2, a) && m2_base == base_ptr);
-        else if (x_valid) assert (`IS_SOURCE_OF(x, a) && x_base == base_ptr);
-        else assert (operand_ready(a_instr, base_ptr));
+    // The multiplier: its source is taken in X. A destination with a factor of 1 or -1 can follow it
+    // straight away; any other needs a cycle between, for the multiplier. A destination is told
+    // nothing about which source it belongs to: only that the next one to reach X is for its cell.
+    if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd1) assert (m0_valid && m0_is_mul_src && m0_pc == a_pc && m0_instr == a_instr && m0_base == base_ptr);
+    if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd2) begin
+        if (!a_mul_unit) assert (!`SOURCE_IN(m0));
+        assert (`PROVIDED_FROM_M0(short_ea_of(base_ptr, a_instr)));
     end
-    if (ok_w && m0_valid && m0_is_mul_dst) begin
-        assert (!m1_valid);
-        if (m2_valid) assert (`IS_SOURCE_OF(m2, m0) && m2_base == m0_base);
-        else if (x_valid) assert (`IS_SOURCE_OF(x, m0) && x_base == m0_base);
-        else assert (operand_ready(m0_instr, m0_base));
+    if (ok_m1 && m0_valid && m0_is_mul_dst) begin
+        if (!m0_mul_unit) assert (!`SOURCE_IN(m1));
+        assert (`PROVIDED_FROM_M1(short_ea_of(m0_base, m0_instr)));
     end
-    if (ok_w && m1_valid && m1_is_mul_dst) begin
-        assert (!m2_valid);
-        if (x_valid) assert (`IS_SOURCE_OF(x, m1) && x_base == m1_base);
-        else assert (operand_ready(m1_instr, m1_base));
+    if (ok_m2 && m1_valid && m1_is_mul_dst) begin
+        if (!m1_mul_unit) assert (!`SOURCE_IN(m2));
+        assert (`PROVIDED_FROM_M2(short_ea_of(m1_base, m1_instr)));
     end
-    if (ok_w && m2_valid && m2_is_mul_dst) begin
-        assert (!x_valid);
-        assert (operand_ready(m2_instr, m2_base));
+    if (ok_x && m2_valid && m2_is_mul_dst) begin
+        if (!m2_mul_unit) assert (!`SOURCE_IN(x));
+        assert (`PROVIDED_FROM_X(short_ea_of(m2_base, m2_instr)));
     end
     if (ok_w && x_valid && x_is_mul_dst) begin
+        assert (operand_holds(short_ea_of(x_base, x_instr)));
 `ifdef FORMAL_ABSTRACT_MUL
-        if (short_ea_of(x_base, x_instr) == a) assert (product == (cell_a ^ x_data));
-        if (short_ea_of(x_base, x_instr) == b) assert (product == (cell_b ^ x_data));
+        if (!x_mul_unit) assert (product == (mul_operand ^ x_data));
 `else
-        if (short_ea_of(x_base, x_instr) == a) assert (product == 8'(cell_a * x_data));
-        if (short_ea_of(x_base, x_instr) == b) assert (product == 8'(cell_b * x_data));
+        if (!x_mul_unit) assert (product == 8'(mul_operand * x_data));
 `endif
+    end
+
+    // The MUL a following one can take its source from, without reading it.
+    if (prev_mul && ok_m0 && !a_valid) assert (`PROVIDED_FROM_M0(base_ptr + prev_mul_source));
+    // ...which is the last thing to have left A.
+    if (prev_mul && ok_m0 && !a_valid) begin
+        if (m0_valid) assert (`PREV_MUL_IS(m0));
+        else if (m1_valid) assert (`PREV_MUL_IS(m1));
+        else if (m2_valid) assert (`PREV_MUL_IS(m2));
+        else if (x_valid) assert (`PREV_MUL_IS(x));
+        else if (w_valid) assert (w_instr[31:28] == OP_MUL && w_retire && short_ea_of(w_base, w_instr) == base_ptr + prev_mul_source &&
+                                  addr_ea_of(w_base, w_instr) != base_ptr + prev_mul_source);
     end
 
     // The tracked word reads as itself.

@@ -55,7 +55,7 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Event | Cycles |
 |---|---|
 | `A`, `S`, `M`, `JE`, `JN` | 1 |
-| `MUL` | 3: source, multiplier, destination |
+| `MUL` | 3: source, multiplier, destination; 2 with a factor of 1 or -1; 1 sharing the previous `MUL`'s source |
 | `F` | 1 per line reached, plus 7 to end, plus up to 4 waiting for an older write |
 | Branch predicted taken, in the next-fetch table | nothing more |
 | Branch predicted taken, not in it | 3 more |
@@ -77,7 +77,8 @@ On the same images at `-O2`:
 | `hanoi.b` | 183.2 M cycles | 141.2 M | 74.0 M | 74.0 M | 2.68 → 2.07 → 1.08 |
 
 In `mandel.b`, 42% of the cycles are charged to `MUL` and 11% to `F`. The charge includes the
-misprediction before an instruction, which is why `MUL` averages 3.6 cycles. These programs fit
+misprediction before an instruction, which is why `MUL` averages 3.6 cycles. See [Multiplying](#multiplying)
+for what came after this table. These programs fit
 their caches, which cost them almost nothing. `LostKng.b` does not, and its CPI is about 11.
 
 ### Scanning
@@ -112,6 +113,25 @@ Finding the zero is the cheap part. Which cell it was, and so where `base_ptr` e
 cycles after that, because a 32-way search and a subtraction cannot follow the zero test in one. `F`
 therefore costs 7 to end, where one cell at a time cost 5. In `mandel.b`, where it reaches about 6
 lines, that takes `F` from 22.3 cycles to 12.2, so the ending is now over half of it.
+
+### Multiplying
+
+`MUL` is a read of its source, then a read and write of its destination. The product comes from the
+DSP block a cycle after the source's value leaves `X`, so the destination waits a cycle between.
+
+In the corpus, nearly every factor is 1 or -1: 100% of `MUL` in `mandel.b` and `LostKng.b`, though
+none in `long.b`. Those need no multiplier: the destination adds or subtracts the source's value as it
+left `X` a cycle before, so it follows the source straight away. And a `MUL` right after another with
+the same source, which that one did not write, needs no read of its own, because `mul_operand` still
+holds the value; that is 12% of `MUL` in `mandel.b`. Everything else still goes through the DSP block,
+which now takes its factor from the destination in `M2`, so that a shared source works with any factor.
+
+| Program | `MUL` before | `MUL` after | Cycles |
+|---|---|---|---|
+| `mandel.b` | 3.57 cycles | 2.44 | 2.84 G → 2.47 G |
+
+Reading the source and destination together, when they share a line, would make most of the rest one
+cycle. That needs a second read of the cell store, as dual issue will, so it waits for that.
 
 ### Branch prediction
 

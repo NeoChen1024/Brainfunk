@@ -5,6 +5,11 @@
 //   IF      fetch_pc addresses the instruction memory, which takes three edges
 //   D       decode; check the next-fetch guess, predict JE and JN, redirect fetch
 //   A       base_ptr + offset; M moves base_ptr here. MUL, F and IO stay for several cycles
+//
+// MUL is a read of its source and a read and write of its destination, three cycles apart so that
+// the multiplier has a cycle between X and X. A factor of 1 or -1 needs no multiplier, so its
+// destination follows straight after. A MUL right after another one with the same source, which
+// that one did not write, needs no read of its own: the source's value is still in mul_operand.
 //   M0..M2  the data memory read, which takes three edges
 //   X       result, zero test; resolves branches and the end of F
 //   W       writes the data memory, retires
@@ -223,6 +228,8 @@ module brainfunk_core #(
     logic                  a_is_add, a_is_set, a_is_mul, a_is_scan, a_is_move, a_is_branch, a_is_je;
     logic                  a_is_in, a_is_out, a_is_halt, a_multi;
     logic                  a_predict_taken;
+    logic                  a_mul_unit, a_mul_negate, a_mul_chained;
+    logic [ADDR_WIDTH-1:0] a_mul_source;
     logic [ADDR_WIDTH-1:0] a_offset, a_offset_2;
     logic [7:0]            a_data;
     logic [PC_WIDTH-1:0]   a_pc, a_next_pc, a_alt_pc, a_fetched_next;
@@ -299,6 +306,24 @@ module brainfunk_core #(
     // A can take a new instruction; the front end moves if it has one to give.
     logic a_ready;
     assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_done;
+
+    // The instruction before the one in D, if it was a MUL whose source is still in mul_operand: A's
+    // when A has one, because then it leaves A as D's arrives, or else the last to leave.
+    logic                  prev_mul;
+    logic [ADDR_WIDTH-1:0] prev_mul_source;
+    always_ff @(posedge clk) begin
+        if (rst || redirect) begin
+            prev_mul <= 1'b0;
+        end else if (a_valid && a_ready) begin
+            prev_mul        <= a_is_mul && !scan_done && a_mul_source != a_offset_2;
+            prev_mul_source <= a_mul_source;
+        end
+    end
+
+    logic d_mul_chained, d_mul_unit;
+    assign d_mul_chained = d_is_mul && (a_valid ? a_is_mul && a_mul_source != a_offset_2 && d_short[ADDR_WIDTH-1:0] == a_mul_source
+                                                : prev_mul && d_short[ADDR_WIDTH-1:0] == prev_mul_source);
+    assign d_mul_unit    = d_instr[7:0] == 8'd1 || d_instr[7:0] == 8'hFF;
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
@@ -344,6 +369,10 @@ module brainfunk_core #(
             a_is_halt       <= d_is_halt && d_legal;
             a_multi         <= d_multi;
             a_predict_taken <= d_predict_taken;
+            a_mul_unit      <= d_mul_unit;
+            a_mul_negate    <= d_instr[7:0] == 8'hFF;
+            a_mul_chained   <= d_mul_chained;
+            a_mul_source    <= d_short[ADDR_WIDTH-1:0];
             a_next_taken    <= d_next_taken;
             a_fetched_next  <= i2_pc;
             a_slot          <= d_prev_pc[3:0];
@@ -353,23 +382,25 @@ module brainfunk_core #(
             a_instr         <= d_instr;
             a_next_pc       <= d_is_halt ? d_pc : d_predict_taken ? d_target : d_seq;
             a_alt_pc        <= d_predict_taken ? d_seq : d_target;
-            a_phase         <= 2'd0;
-            a_last          <= 1'b0;
+            a_phase         <= d_mul_chained ? 2'd2 : 2'd0;
+            a_last          <= d_mul_chained;
             a_go            <= !d_is_scan || !(a_writes || older_writes);
             a_scan_wide     <= d_scan_wide;
             a_scan_back     <= d_instr[19];
             a_scan_stride   <= d_scan_wide ? d_stride : '0;
             a_scan_more     <= 1'b0;
-            a_offset        <= (d_is_mul || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
-                                                                      : d_addr[ADDR_WIDTH-1:0];
+            a_offset        <= ((d_is_mul && !d_mul_chained) || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
+                                                                                          : d_addr[ADDR_WIDTH-1:0];
             a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
         end else if (a_is_mul) begin
             unique case (a_phase)
-                2'd0: if (!dmem_busy) begin // source issues now, then a gap for the multiplier
-                    a_go     <= 1'b0;
+                2'd0: if (!dmem_busy) begin // source issues now, then a gap for the multiplier, if any
+                    a_go     <= a_mul_unit;
+                    a_last   <= a_mul_unit;
                     a_offset <= a_offset_2;
-                    a_phase  <= 2'd1;
+                    a_phase  <= a_mul_unit ? 2'd2 : 2'd1;
                 end
+                2'd2: ;
                 default: begin
                     a_go    <= 1'b1;
                     a_last  <= 1'b1;
@@ -420,7 +451,7 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m0_base, m0_base_after;
     logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
     logic [31:0]           m0_instr;
-    logic                  m0_next_taken, m0_target_wrong;
+    logic                  m0_next_taken, m0_target_wrong, m0_mul_unit, m0_mul_negate;
     logic [3:0]            m0_slot;
     logic [1:0]            m0_counter;
 
@@ -430,7 +461,7 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
     logic [PC_WIDTH-1:0]   m1_pc, m1_next_pc, m1_alt_pc;
     logic [31:0]           m1_instr;
-    logic                  m1_next_taken, m1_target_wrong;
+    logic                  m1_next_taken, m1_target_wrong, m1_mul_unit, m1_mul_negate;
     logic [3:0]            m1_slot;
     logic [1:0]            m1_counter;
     logic [4:1]            m1_hit;
@@ -441,7 +472,7 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m2_ea, m2_base, m2_base_after;
     logic [PC_WIDTH-1:0]   m2_pc, m2_next_pc, m2_alt_pc;
     logic [31:0]           m2_instr;
-    logic                  m2_next_taken, m2_target_wrong;
+    logic                  m2_next_taken, m2_target_wrong, m2_mul_unit, m2_mul_negate;
     logic [3:0]            m2_slot;
     logic [1:0]            m2_counter;
     logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
@@ -452,7 +483,7 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] x_ea, x_base, x_base_after;
     logic [PC_WIDTH-1:0]   x_pc, x_next_pc, x_alt_pc;
     logic [31:0]           x_instr;
-    logic                  x_next_taken, x_target_wrong;
+    logic                  x_next_taken, x_target_wrong, x_mul_unit, x_mul_negate;
     logic [3:0]            x_slot;
     logic [1:0]            x_counter;
     logic                  x_from_w, x_from_early;
@@ -468,7 +499,7 @@ module brainfunk_core #(
     logic [7:0]            w_data, w1_data, w2_data;
 
     // ---- X ----
-    logic [7:0] x_value, x_addend, mul_operand, mul_factor, product, x_sum;
+    logic [7:0] x_value, x_addend, mul_operand, product, x_sum;
     logic       x_zero, x_taken, x_wrong_way, x_mispredict, x_scan_found, x_miss;
 
     // F: which cells the read in each stage looks at. Stride and direction stay in A while it lasts.
@@ -489,7 +520,8 @@ module brainfunk_core #(
     assign x_scan_zeros = dmem_zero & x_scan_mask;
     assign x_scan_found = x_valid && !flush && dmem_hit && x_is_scan && |x_scan_zeros;
 
-    assign x_addend = x_is_mul_dst ? product : x_data;
+    // A factor of 1 or -1 takes the source's value as it is, straight from X a cycle before.
+    assign x_addend = !x_is_mul_dst ? x_data : !x_mul_unit ? product : x_mul_negate ? -mul_operand : mul_operand;
     assign x_sum    = x_value + x_addend;
 
     always_ff @(posedge clk) begin
@@ -548,6 +580,8 @@ module brainfunk_core #(
         m0_alt_pc        <= a_alt_pc;
         m0_instr         <= a_instr;
         m0_next_taken    <= a_next_taken;
+        m0_mul_unit      <= a_mul_unit;
+        m0_mul_negate    <= a_mul_negate;
         m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
         m0_slot           <= a_slot;
         m0_counter       <= a_counter;
@@ -584,6 +618,8 @@ module brainfunk_core #(
         m1_alt_pc        <= m0_alt_pc;
         m1_instr         <= m0_instr;
         m1_next_taken    <= m0_next_taken;
+        m1_mul_unit      <= m0_mul_unit;
+        m1_mul_negate    <= m0_mul_negate;
         m1_target_wrong  <= m0_target_wrong;
         m1_slot           <= m0_slot;
         m1_counter       <= m0_counter;
@@ -618,6 +654,8 @@ module brainfunk_core #(
         m2_alt_pc        <= m1_alt_pc;
         m2_instr         <= m1_instr;
         m2_next_taken    <= m1_next_taken;
+        m2_mul_unit      <= m1_mul_unit;
+        m2_mul_negate    <= m1_mul_negate;
         m2_target_wrong  <= m1_target_wrong;
         m2_slot           <= m1_slot;
         m2_counter       <= m1_counter;
@@ -652,20 +690,19 @@ module brainfunk_core #(
         x_alt_pc        <= m2_alt_pc;
         x_instr         <= m2_instr;
         x_next_taken    <= m2_next_taken;
+        x_mul_unit      <= m2_mul_unit;
+        x_mul_negate    <= m2_mul_negate;
         x_target_wrong  <= m2_target_wrong;
         x_slot           <= m2_slot;
         x_counter       <= m2_counter;
 
-        // Multiplier: operand at the end of X, product a cycle later, used by the
-        // destination's X one cycle after that.
-        if (x_valid && x_is_mul_src) begin
-            mul_operand <= x_value;
-            mul_factor  <= x_data;
-        end
+        // Multiplier: operand at the end of X, product a cycle later with the factor of the destination
+        // then in M2, used by that destination's X.
+        if (x_valid && x_is_mul_src) mul_operand <= x_value;
 `ifdef FORMAL_ABSTRACT_MUL
-        product <= mul_operand ^ mul_factor;
+        product <= mul_operand ^ m2_data;
 `else
-        product <= 8'(mul_operand * mul_factor);
+        product <= 8'(mul_operand * m2_data);
 `endif
 
         // X to W. F does not retire from here: it retires when it has its result, two cycles after.

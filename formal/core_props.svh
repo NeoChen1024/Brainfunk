@@ -265,7 +265,10 @@ always_ff @(posedge clk) begin
             if (op == OP_A && addr_ea == a) assert (dmem_wdata == 8'(cell_a + data));
             if (op == OP_MUL && addr_ea == a && short_ea == b) begin
 `ifdef FORMAL_ABSTRACT_MUL
-                assert (dmem_wdata == 8'(cell_a + (cell_b ^ data)));
+                // Factors of 1 and -1 do not go through the multiplier, so they are checked as they are.
+                if (data == 8'd1) assert (dmem_wdata == 8'(cell_a + cell_b));
+                else if (data == 8'hFF) assert (dmem_wdata == 8'(cell_a - cell_b));
+                else assert (dmem_wdata == 8'(cell_a + (cell_b ^ data)));
 `else
                 assert (dmem_wdata == 8'(cell_a + 8'(cell_b * data)));
 `endif

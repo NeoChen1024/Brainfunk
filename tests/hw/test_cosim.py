@@ -44,9 +44,10 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
-# the design changes. fib.b's is close because it is the one that shows entries being taken out of the
-# next-fetch table: 1.43 as it is, 1.49 keeping false hits, 2.59 keeping wrong directions.
-CPI_LIMITS = {"hanoi.b": 1.3, "mandel.b": 2.1, "LostKng.b": 12.0, "fib.b": 1.46}
+# the design changes. Some are close because of what they are there to catch: mandel.b's, MULs that stop
+# sharing a source (1.741 as it is, 1.769 without); fib.b's, next-fetch false hits left in the table
+# (1.345 against 1.430).
+CPI_LIMITS = {"hanoi.b": 1.2, "mandel.b": 1.755, "LostKng.b": 12.0, "fib.b": 1.40}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -78,6 +79,27 @@ LONG_SCAN_IMAGE = "".join(f"{word:08x}\n" for word in [
     0x40000001,                                 # F forward, to the cell after the mark
     0x90000000,
 ])
+
+
+# A MUL that writes its own source, then one with the same source, which must read it again. The second
+# image puts a line boundary between them, so that an instruction cache miss empties A in between.
+MUL_SELF_WORDS = [0x20000005,   # [0] = 5
+                  0x20000101,   # [1] = 1
+                  0x30000001,   # [0] += [0]: 10
+                  0x30000101,   # [1] += [0]: 11, not 6
+                  0x80000101,   # output [1]
+                  0x90000000]
+MUL_SELF_IMAGES = {
+    "adjacent": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS),
+    "across_a_line": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS[:2] + [0x20000200] * 5 + MUL_SELF_WORDS[2:]),
+}
+
+
+@pytest.mark.parametrize("layout", MUL_SELF_IMAGES)
+def test_mul_after_one_that_wrote_its_source(tools, tmp_path, layout):
+    image = tmp_path / "mul.hex"
+    image.write_text(MUL_SELF_IMAGES[layout])
+    assert cosim_json(image)["halted"]
 
 
 def test_long_scan_crosses_the_cache(tools, tmp_path):
