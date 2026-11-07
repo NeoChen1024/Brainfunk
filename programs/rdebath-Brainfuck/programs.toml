@@ -1,0 +1,579 @@
+# Robert de Bath's Brainfuck repository, as a submodule. Its testing/ directory collects
+# third-party programs next to his own test programs.
+#
+# Licensing, from testing/Copyrights: the programs Robert de Bath wrote are public domain or
+# CC0, and are marked license = "CC0-1.0" below. The others are by third parties, or
+# mechanical translations of their work, and keep whatever terms their authors gave them;
+# the author is recorded where the file names one. The repository itself is GPL-2.0.
+#
+# Observations come from running brainfunk -O3 with 8-bit cells, EOF as 0, and a 60 s limit.
+# Expected outputs that only match with wider cells say so in expect_cell_bits.
+
+[source]
+name = "rdebath-Brainfuck"
+url = "https://github.com/rdebath/Brainfuck"
+submodule = "3rdparty/rdebath-Brainfuck"
+license = "GPL-2.0-only"
+license_files = ["LICENSE", "testing/Copyrights"]
+
+[defaults]
+origin = "handwritten"
+role = "workload"
+halts = "always"
+cell_bits = 8
+
+# ---------------------------------------------------------------- Robert de Bath's own
+
+[[program]]
+file = "testing/al-count-0.b"
+family = "rdebath"
+license = "CC0-1.0"
+notes = "Binary counter benchmark, smallest size."
+
+[[program]]
+file = "testing/al-count-1.b"
+family = "rdebath"
+license = "CC0-1.0"
+notes = "Binary counter benchmark, 671 M instructions."
+
+[[program]]
+file = "testing/al-count-2.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "stress"
+halts = "never"
+notes = "Binary counter benchmark, about 1.1e17 instructions."
+
+[[program]]
+file = "testing/al-count-3.b"
+family = "rdebath"
+license = "CC0-1.0"
+notes = "Binary counter benchmark, 5.4 G instructions."
+
+[[program]]
+file = "testing/Counter.b"
+family = "rdebath"
+license = "CC0-1.0"
+notes = "Hard to optimize counter, 5.4 G ticks."
+cases = [{ expect = "testing/Counter.out" }]
+
+[[program]]
+file = "testing/EasyOpt.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+
+[[program]]
+file = "testing/Endtest.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+halts = "with-input"
+cases = [{ input = "testing/Endtest.in" }]
+notes = "Reports how the implementation handles end of input."
+
+[[program]]
+file = "testing/Hello.b"
+family = "rdebath"
+license = "CC0-1.0"
+cases = [{ expect = "testing/Hello.out" }]
+
+[[program]]
+file = "testing/Hello2.b"
+family = "rdebath"
+license = "CC0-1.0"
+cases = [{ expect = "testing/Hello2.out" }]
+
+[[program]]
+file = "testing/Precalc.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+notes = "Catches optimizers that miscompute constant folding."
+
+[[program]]
+file = "testing/PrecalcBreak.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+
+[[program]]
+file = "testing/Prime2.b"
+family = "rdebath"
+license = "CC0-1.0"
+halts = "with-input"
+cases = [{ input = "testing/Prime2.in", expect = "testing/Prime2.out", expect_cell_bits = 32 }]
+
+[[program]]
+file = "testing/Prttab.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+
+[[program]]
+file = "testing/Skiploop.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+notes = "Large runs of + and - inside a loop that never runs."
+
+[[program]]
+file = "testing/Sorry-needs-16.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = 16
+
+[[program]]
+file = "testing/Sorry-needs-32.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = 32
+
+[[program]]
+file = "testing/Tribit.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/cells30k.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+
+[[program]]
+file = "testing/cells100k.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+halts = "never"
+tape_cells = 100000
+notes = "Needs 100000 cells; loops forever on the 64 KiB wrapping tape."
+
+[[program]]
+file = "testing/cell-max.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/cell-type.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/too-slow.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cases = [{ expect = "testing/too-slow.out" }]
+notes = "Fast only when the implementation folds the loop away."
+
+[[program]]
+file = "testing/Cellsize.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/Cellsize2.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/Cellsize3.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/Cellsize4.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "testing/Cellsize5.b"
+family = "rdebath"
+license = "CC0-1.0"
+role = "conformance"
+cell_bits = "any"
+
+[[program]]
+file = "bitwidth.b"
+family = "rdebath"
+role = "conformance"
+cell_bits = "any"
+notes = "Not in testing/Copyrights, but the README describes it as the author's torture test."
+
+[[program]]
+file = "extras/hellbox-103.b"
+family = "rdebath"
+notes = "103-command Hello World, by Robert de Bath, 2014. Not in testing/Copyrights."
+
+# ------------------------------------------------------------------ third parties
+
+[[program]]
+file = "testing/awib-0.4.b"
+author = "Mats Linander"
+family = "awib"
+halts = "with-input"
+cases = [{ input = "testing/awib-0.4.in", expect = "testing/awib-0.4.out" }]
+notes = "awib 0.4 compiling itself to C."
+
+[[program]]
+file = "testing/Beer.b"
+author = "Jim Crawford"
+family = "crawford"
+cases = [{ expect = "testing/Beer.out" }]
+
+[[program]]
+file = "testing/Bench.b"
+family = "unknown-bench"
+cases = [{ expect = "testing/Bench.out" }]
+notes = "Author not named in the file."
+
+[[program]]
+file = "testing/BusyBeaver.b"
+family = "busybeaver"
+
+[[program]]
+file = "testing/BusyBeaverOverflow.b"
+family = "busybeaver"
+role = "stress"
+halts = "never"
+
+[[program]]
+file = "testing/chess.b"
+family = "unknown-chess"
+notes = "Author not named in the file."
+
+[[program]]
+file = "testing/Collatz.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+halts = "with-input"
+cases = [{ input = "testing/Collatz.in", expect = "testing/Collatz.out" }]
+
+[[program]]
+file = "testing/cristofd-30000.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+notes = "From Cristofani's tests.b."
+
+[[program]]
+file = "testing/cristofd-close.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+notes = "Unbalanced ]: implementations should reject it."
+
+[[program]]
+file = "testing/cristofd-endtest.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+halts = "with-input"
+cases = [{ input = "testing/cristofd-endtest.in" }]
+
+[[program]]
+file = "testing/cristofd-leftmargin.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+tape_left = true
+notes = "Walks left of the start; prints 2 MB on a wrapping tape."
+
+[[program]]
+file = "testing/cristofd-misctest.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+
+[[program]]
+file = "testing/cristofd-open.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+notes = "Unbalanced [: implementations should reject it."
+
+[[program]]
+file = "testing/cristofd-rightmargin.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+role = "conformance"
+
+[[program]]
+file = "testing/Euler1.b"
+family = "euler"
+cell_bits = 32
+cases = [{ expect = "testing/Euler1.out", expect_cell_bits = 32 }]
+notes = "Project Euler 1, extended from Euler1-orig.b."
+
+[[program]]
+file = "testing/Euler1-orig.b"
+family = "euler"
+cell_bits = 32
+
+[[program]]
+file = "testing/Euler5.b"
+family = "euler"
+cell_bits = 32
+cases = [{ expect = "testing/Euler5.out", expect_cell_bits = 32 }]
+
+[[program]]
+file = "testing/Euler5-orig.b"
+family = "euler"
+cell_bits = 32
+notes = "From eevee/project-euler (heteroglot)."
+
+[[program]]
+file = "testing/Factor.b"
+author = "Brian Raiter"
+family = "raiter"
+halts = "with-input"
+cases = [{ input = "testing/Factor.in", expect = "testing/Factor.out" }]
+
+[[program]]
+file = "testing/fibint.b"
+family = "unknown-fib"
+cases = [{ expect = "testing/fibint.out", expect_cell_bits = 32 }]
+
+[[program]]
+file = "testing/Golden.b"
+family = "cristofani"
+cases = [{ expect = "testing/Golden.out" }]
+
+[[program]]
+file = "testing/Hanoi.b"
+author = "Clifford Wolf"
+family = "clifford-bfc"
+origin = "compiled"
+cases = [{ expect = "testing/Hanoi.out" }]
+notes = "Written in Clifford Wolf's bfc language, compiled to Brainfuck."
+
+[[program]]
+file = "testing/Impeccable.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+cases = [{ expect = "testing/Impeccable.out" }]
+notes = "36 s at -O3."
+
+[[program]]
+file = "testing/Kiloseconds.b"
+family = "kiloseconds"
+halts = "with-input"
+notes = "From bavardage/Kiloseconds; reads date +%H%M%S."
+
+[[program]]
+file = "testing/Life.b"
+author = "Linus Åkesson"
+family = "akesson"
+halts = "interactive"
+cases = [{ input = "testing/Life.in", expect = "testing/Life.out" }]
+
+[[program]]
+file = "testing/Long.b"
+family = "unknown-long"
+cases = [{ expect = "testing/Long.out" }]
+
+[[program]]
+file = "testing/LostKng.b"
+author = "Jon Ripley"
+family = "ripley"
+origin = "compiled"
+halts = "interactive"
+cases = [{ input = "testing/LostKng.in", expect = "testing/LostKng.out" }]
+notes = "Lost Kingdom, a text adventure written in BFBASIC."
+
+[[program]]
+file = "testing/Mandelbrot.b"
+author = "Erik Bosman"
+family = "bosman"
+cases = [{ expect = "testing/Mandelbrot.out" }]
+
+[[program]]
+file = "testing/Mandelbrot-extreme.b"
+author = "Erik Bosman"
+family = "bosman"
+halts = "never"
+notes = "Larger render; over 60 s at -O3."
+
+[[program]]
+file = "testing/Mandelbrot-r64.b"
+author = "Erik Bosman"
+family = "bosman"
+
+[[program]]
+file = "testing/Mandelbrot-tiny.b"
+author = "Erik Bosman"
+family = "bosman"
+
+[[program]]
+file = "testing/numwarp.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+halts = "with-input"
+cases = [{ input = "testing/numwarp.in", expect = "testing/numwarp.out" }]
+
+[[program]]
+file = "testing/oobrain.b"
+author = "Chris Rathman"
+family = "rathman"
+cases = [{ expect = "testing/oobrain.out" }]
+
+[[program]]
+file = "testing/OptimTease.b"
+author = "Nathan van Doorn"
+family = "vandoorn"
+halts = "with-input"
+cases = [
+  { input = "testing/OptimTease.in", expect = "testing/OptimTease.out" },
+  { input = "testing/OptimTease2.in" },
+]
+
+[[program]]
+file = "testing/PIdigits.b"
+family = "pidigits"
+halts = "with-input"
+cell_bits = 32
+cases = [
+  { input = "testing/PIdigits.in", expect = "testing/PIdigits.out", expect_cell_bits = 32 },
+  { input = "testing/PIdigits2.in" },
+]
+
+[[program]]
+file = "testing/PIdigits-as.b"
+family = "pidigits"
+halts = "never"
+notes = "Over 60 s at -O3."
+
+[[program]]
+file = "testing/PIdigits-cp.b"
+family = "pidigits"
+halts = "never"
+notes = "Over 60 s at -O3."
+
+[[program]]
+file = "testing/PIdigits-orig.b"
+family = "pidigits"
+
+[[program]]
+file = "testing/Prime.b"
+family = "mueller"
+halts = "with-input"
+cases = [
+  { input = "testing/Prime.in", expect = "testing/Prime.out", expect_cell_bits = 32 },
+  { input = "testing/Prime8.in", expect = "testing/Prime8.out" },
+]
+notes = "Urban Müller's prime.b, reformatted. Prime8.b is a symlink to it."
+
+[[program]]
+file = "testing/Prime-multi.b"
+family = "mueller"
+notes = "Variant of Urban Müller's prime.b."
+
+[[program]]
+file = "testing/Prime-orig.b"
+author = "Urban Müller"
+family = "mueller"
+halts = "with-input"
+
+[[program]]
+file = "testing/SelfInt.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+halts = "with-input"
+cases = [{ input = "testing/SelfInt.in", expect = "testing/SelfInt.out" }]
+notes = "dbfi.b, a Brainfuck interpreter in Brainfuck."
+
+[[program]]
+file = "testing/squaresums.b"
+author = "Justice Suh"
+family = "suh"
+cell_bits = 32
+cases = [{ expect = "testing/squaresums.out", expect_cell_bits = 32 }]
+
+[[program]]
+file = "testing/utm.b"
+author = "Daniel B. Cristofani"
+family = "cristofani"
+halts = "with-input"
+cases = [{ input = "testing/utm.in" }]
+
+[[program]]
+file = "testing/Zozotez.b"
+author = "Pål Wester"
+family = "wester"
+origin = "macro"
+halts = "with-input"
+cases = [{ input = "testing/Zozotez.in", expect = "testing/Zozotez.out" }]
+notes = "LISP interpreter. Output differs with EOF as 0; check other EOF modes."
+
+[[program]]
+file = "extras/bf2c_v1.b"
+family = "unknown-bf2c"
+halts = "with-input"
+notes = "Brainfuck to C translator; loops forever on EOF as 0."
+
+[[program]]
+file = "extras/bf2c_v2.b"
+family = "unknown-bf2c"
+halts = "with-input"
+notes = "Brainfuck to C translator; loops forever on EOF as 0."
+
+[[program]]
+file = "extras/txtbf.b"
+family = "rdebath"
+role = "fragment"
+notes = "Output of the txtbf text generator."
+
+# ------------------------------------------------------- Urban Müller's distribution
+
+[[program]]
+file = "umueller/src/hello.b"
+author = "Urban Müller"
+family = "mueller"
+
+[[program]]
+file = "umueller/src/prime.b"
+author = "Urban Müller"
+family = "mueller"
+halts = "with-input"
+
+[[program]]
+file = "umueller/src/atoi.b"
+author = "Urban Müller"
+family = "mueller"
+role = "fragment"
+halts = "with-input"
+
+[[program]]
+file = "umueller/src/div10.b"
+author = "Urban Müller"
+family = "mueller"
+role = "fragment"
+
+[[program]]
+file = "umueller/src/mul10.b"
+author = "Urban Müller"
+family = "mueller"
+role = "fragment"
+
+[[program]]
+file = "umueller/src/varia.b"
+author = "Urban Müller"
+family = "mueller"
+role = "fragment"

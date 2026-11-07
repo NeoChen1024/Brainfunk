@@ -1,0 +1,48 @@
+# awib's system test programs, read from the submodule in place.
+
+[source]
+name = "awib-systest"
+url = "https://github.com/matslina/awib"
+submodule = "3rdparty/awib"
+license = "GPL-3.0-or-later"
+license_files = ["COPYING"]
+
+[defaults]
+author = "Mats Linander"
+family = "awib"
+origin = "handwritten"
+role = "conformance"
+halts = "always"
+cell_bits = 8
+
+[[program]]
+file = "systest/basicops.b"
+halts = "with-input"
+cases = [{ input = "systest/basicops.in", expect = "systest/basicops.out" }]
+
+[[program]]
+file = "systest/comments.b"
+cases = [{ expect = "systest/comments.out" }]
+
+[[program]]
+file = "systest/empty.b"
+cases = [{ expect = "systest/empty.out" }]
+
+[[program]]
+file = "systest/endoffile.b"
+cases = [{ expect = "systest/endoffile.out" }]
+
+[[program]]
+file = "systest/factor.b"
+author = "Brian Raiter"
+family = "raiter"
+role = "workload"
+halts = "with-input"
+cases = [{ input = "systest/factor.in", expect = "systest/factor.out" }]
+notes = "The file says: Copyright (C) 1999 by Brian Raiter, under the GNU General Public License."
+
+[[program]]
+file = "systest/memoryhog.b"
+role = "workload"
+cases = [{ expect = "systest/memoryhog.out" }]
+notes = "Writes to all 65535 cells."

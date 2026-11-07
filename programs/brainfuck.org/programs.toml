@@ -1,0 +1,226 @@
+# Daniel B. Cristofani's programs from https://brainfuck.org/.
+#
+# The site says: "I'm licensing all of these under a Creative Commons Attribution-ShareAlike
+# 4.0 International License. Haven't got around to putting that into all the individual
+# files." See SOURCE.md and LICENSE.
+
+[source]
+name = "brainfuck.org"
+url = "https://brainfuck.org/"
+retrieved = "2026-11-08"
+license = "CC-BY-SA-4.0"
+license_files = ["LICENSE", "SOURCE.md"]
+
+[defaults]
+author = "Daniel B. Cristofani"
+family = "cristofani"
+origin = "handwritten"
+role = "workload"
+halts = "always"
+cell_bits = 8
+
+[[program]]
+file = "392quine.b"
+url = "https://brainfuck.org/392quine.b"
+notes = "Slight modification of Erik Bosman's 410-byte quine."
+
+[[program]]
+file = "400quine.b"
+url = "https://brainfuck.org/400quine.b"
+notes = "Slight modification of Erik Bosman's 410-byte quine."
+
+[[program]]
+file = "bounce.b"
+url = "https://brainfuck.org/bounce.b"
+halts = "interactive"
+notes = "Particle automaton; advances one step per ENTER."
+
+[[program]]
+file = "bsort.b"
+url = "https://brainfuck.org/bsort.b"
+halts = "with-input"
+notes = "Bubble sort of its input bytes."
+
+[[program]]
+file = "chessboard.b"
+url = "https://brainfuck.org/chessboard.b"
+halts = "with-input"
+notes = "Reads a FEN position."
+
+[[program]]
+file = "collatz.b"
+url = "https://brainfuck.org/collatz.b"
+halts = "with-input"
+eof = ["0", "keep"]
+
+[[program]]
+file = "dbf2c.b"
+url = "https://brainfuck.org/dbf2c.b"
+halts = "with-input"
+eof = ["0", "keep"]
+notes = "Brainfuck to C translator."
+
+[[program]]
+file = "dbfi.b"
+url = "https://brainfuck.org/dbfi.b"
+halts = "with-input"
+notes = "Brainfuck interpreter: a program, then !, then its input."
+
+[[program]]
+file = "dquine.b"
+url = "https://brainfuck.org/dquine.b"
+notes = "Quine."
+
+[[program]]
+file = "dvorak.b"
+url = "https://brainfuck.org/dvorak.b"
+halts = "with-input"
+eof = ["0", "keep"]
+notes = "QWERTY to Dvorak filter."
+
+[[program]]
+file = "e.b"
+url = "https://brainfuck.org/e.b"
+halts = "never"
+notes = "Prints digits of e without end."
+
+[[program]]
+file = "factorial.b"
+url = "https://brainfuck.org/factorial.b"
+halts = "never"
+notes = "Prints factorials without end."
+
+[[program]]
+file = "factorial2.b"
+url = "https://brainfuck.org/factorial2.b"
+halts = "never"
+notes = "Prints factorials without end; faster than factorial.b."
+
+[[program]]
+file = "fib.b"
+url = "https://brainfuck.org/fib.b"
+halts = "never"
+notes = "Prints Fibonacci numbers without end."
+
+[[program]]
+file = "ghost.b"
+url = "https://brainfuck.org/ghost.b"
+halts = "interactive"
+notes = "Word game."
+
+[[program]]
+file = "golden.b"
+url = "https://brainfuck.org/golden.b"
+halts = "never"
+notes = "Prints digits of the golden ratio without end."
+
+[[program]]
+file = "head.b"
+url = "https://brainfuck.org/head.b"
+halts = "with-input"
+notes = "First ten lines of its input; prints NULs forever on short input with EOF as 0."
+
+[[program]]
+file = "impeccable.b"
+url = "https://brainfuck.org/impeccable.b"
+halts = "never"
+notes = "Prints impeccable numbers without end."
+
+[[program]]
+file = "isort.b"
+url = "https://brainfuck.org/isort.b"
+halts = "with-input"
+notes = "Insertion sort of its input bytes."
+
+[[program]]
+file = "jabh.b"
+url = "https://brainfuck.org/jabh.b"
+notes = "Just another brainfuck hacker."
+
+[[program]]
+file = "life.b"
+url = "https://brainfuck.org/life.b"
+halts = "interactive"
+notes = "Conway's Game of Life."
+
+[[program]]
+file = "null.b"
+url = "https://brainfuck.org/null.b"
+notes = "The empty program, a quine."
+
+[[program]]
+file = "numwarp.b"
+url = "https://brainfuck.org/numwarp.b"
+halts = "with-input"
+
+[[program]]
+file = "qsort.b"
+url = "https://brainfuck.org/qsort.b"
+halts = "with-input"
+notes = "Quicksort of its input bytes."
+
+[[program]]
+file = "random.b"
+url = "https://brainfuck.org/random.b"
+halts = "never"
+notes = "Rule 30 random bytes without end."
+
+[[program]]
+file = "rot13.b"
+url = "https://brainfuck.org/rot13.b"
+halts = "with-input"
+
+[[program]]
+file = "short.b"
+url = "https://brainfuck.org/short.b"
+role = "fragment"
+notes = "A collection of short programs, not one program."
+
+[[program]]
+file = "sierpinski.b"
+url = "https://brainfuck.org/sierpinski.b"
+
+[[program]]
+file = "squares.b"
+url = "https://brainfuck.org/squares.b"
+
+[[program]]
+file = "squares2.b"
+url = "https://brainfuck.org/squares2.b"
+halts = "never"
+notes = "Prints square numbers without end."
+
+[[program]]
+file = "tests.b"
+url = "https://brainfuck.org/tests.b"
+role = "conformance"
+notes = "Tests for implementations; parts are deliberately unbalanced."
+
+[[program]]
+file = "thuemorse.b"
+url = "https://brainfuck.org/thuemorse.b"
+halts = "never"
+notes = "Prints the Thue-Morse sequence without end."
+
+[[program]]
+file = "tictactoe.b"
+url = "https://brainfuck.org/tictactoe.b"
+halts = "interactive"
+
+[[program]]
+file = "utm.b"
+url = "https://brainfuck.org/utm.b"
+halts = "with-input"
+notes = "Universal Turing machine after Yurii Rogozhin."
+
+[[program]]
+file = "wc.b"
+url = "https://brainfuck.org/wc.b"
+halts = "with-input"
+eof = ["0", "keep"]
+
+[[program]]
+file = "xmastree.b"
+url = "https://brainfuck.org/xmastree.b"
+halts = "with-input"
+notes = "Reads the tree height."
