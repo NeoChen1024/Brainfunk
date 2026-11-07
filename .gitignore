@@ -13,5 +13,6 @@ compile_commands.json
 *.bin.txt
 /build
 /bfload
-__pycache__
+__pycache__/
 .pytest_cache
+/programs/elvm/out/

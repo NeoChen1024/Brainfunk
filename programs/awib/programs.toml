@@ -1,0 +1,28 @@
+# awib.b, built from the 3rdparty/awib submodule. See SOURCE.md for how to rebuild it.
+
+[source]
+name = "awib"
+url = "https://github.com/matslina/awib"
+license = "GPL-3.0-or-later"
+license_files = ["LICENSE", "SOURCE.md"]
+generator = "3rdparty/awib util/bfpp.py at f9f43a0092b6c4ba77c6d2d9e21db3b3b37cd706"
+
+[defaults]
+author = "Mats Linander"
+family = "awib"
+origin = "macro"
+role = "workload"
+halts = "with-input"
+cell_bits = 8
+eof = ["0", "255", "keep"]
+
+[[program]]
+file = "awib.b"
+generated_from = "3rdparty/awib/awib-skeleton.b"
+notes = "Brainfuck compiler in Brainfuck. The first input line may select a target, such as @lang_c or @386_linux."
+cases = [
+  { input = "../../3rdparty/awib/systest/factor.b" },
+  { input = "../../3rdparty/awib/systest/basicops.b" },
+  { input = "../../3rdparty/awib/systest/memoryhog.b" },
+  { input = "awib.b" },
+]

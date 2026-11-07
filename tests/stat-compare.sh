@@ -4,18 +4,30 @@
 #   sh tests/stat-compare.sh program.b...
 #
 # Programs must halt; they read end-of-input from stdin. With no arguments, runs
-# the programs of the local test/ corpus that do, and reports any that are absent.
+# eight classic programs from programs/ and the 3rdparty/ submodules, and reports
+# any that are absent. For a wider set, pass a list from the corpus tool:
+#
+#   sh tests/stat-compare.sh $(tools/corpus/corpus.py list --role workload \
+#       --halts always --cell-bits 8 --unique)
 set -eu
 
 BRAINFUNK="${BRAINFUNK:-./brainfunk}"
-CORPUS="${BF_CORPUS:-test}"
 
 if [ "$#" -eq 0 ]; then
-    for program in hello.b squares.b bench.b bottles.b sierpinski.bf hanoi.b long.b mandel.b; do
-        if [ -f "$CORPUS/$program" ]; then
-            set -- "$@" "$CORPUS/$program"
+    for program in \
+        3rdparty/bfcorpus/cwfitzgerald/hello.b \
+        programs/brainfuck.org/squares.b \
+        programs/unattributed/bench.b \
+        3rdparty/bfcorpus/cwfitzgerald/bottles.b \
+        3rdparty/bfcorpus/nyyrikki/triangle.bf \
+        3rdparty/bfcorpus/copy/third_party/hanoi.bf \
+        3rdparty/rdebath-Brainfuck/testing/Long.b \
+        3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
+    do
+        if [ -f "$program" ]; then
+            set -- "$@" "$program"
         else
-            echo "SKIP: $CORPUS/$program not found" >&2
+            echo "SKIP: $program not found" >&2
         fi
     done
 fi

@@ -1,0 +1,30 @@
+--- a/target/bf.c
++++ b/target/bf.c
+@@ -1,5 +1,6 @@
+ #include <assert.h>
+ #include <stdbool.h>
++#include <stdlib.h>
+ 
+ #include <ir/ir.h>
+ #include <target/util.h>
+@@ -212,6 +213,20 @@
+     }
+   }
+   bf_magic_comment("pop:InitData");
++
++  // Registers start at 0, so the first push wraps SP to the top of the 24-bit
++  // address space, and the tape must reach about 51 million cells. Start SP and
++  // BP lower instead: 83 blocks of 256 words end at cell 65141, so the default
++  // fits a 64 KiB tape. ELVM_BF_STACK_TOP=0 keeps the original behaviour.
++  int stack_top = 83 * 256;
++  const char* env = getenv("ELVM_BF_STACK_TOP");
++  if (env)
++    stack_top = atoi(env);
++  if (stack_top) {
++    bf_comment("init stack");
++    bf_add_word(BF_SP, stack_top);
++    bf_add_word(BF_BP, stack_top);
++  }
+ }
+ 
+ static void bf_loop_begin(int ptr, char c) {

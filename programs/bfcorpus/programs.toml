@@ -1,0 +1,3253 @@
+# thaliaarchi/bfcorpus, a curated collection with one directory per author, as a submodule.
+#
+# Licensing: "Programs are licensed by their respective owners. See the README.md file in
+# each sub-directory for more information." Each entry keeps the License: line of the
+# nearest README.md verbatim as license_note; many say "None". The collection's own
+# commentary is CC BY-SA 4.0 (LICENSE).
+#
+# Entries marked reviewed = false were drafted by a tool: their halts, role and origin are
+# guesses. Families follow bfcorpus's author directories, corrected where the evidence says
+# someone else wrote the program; see the notes on those entries.
+#
+# Drafted by tools/corpus/corpus.py draft from 3rdparty/bfcorpus.
+# halts was guessed from one run on empty input with a 5 s limit.
+
+[source]
+name = "bfcorpus"
+submodule = "3rdparty/bfcorpus"
+license = "NOASSERTION"
+license_files = ["LICENSE", "README.md"]
+url = "https://github.com/thaliaarchi/bfcorpus"
+
+[defaults]
+origin = "unknown"
+role = "workload"
+cell_bits = 8
+
+[[program]]
+file = "agreen/helloworld.b"
+family = "agreen"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/all_numbers.bf"
+family = "antosser"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/calc.old.bf"
+family = "antosser"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/calculator.bf"
+family = "antosser"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/dck.bf"
+family = "antosser"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/fibonacci.bf"
+family = "antosser"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/plus.bf"
+family = "antosser"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/pyramid.bf"
+family = "antosser"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "antosser/square.bf"
+family = "antosser"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/1021jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/108felix.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/114jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/121keymaker.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/133jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/161sean.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/335daniel.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/354laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/365bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/370laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/379bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/382laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/391bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/410laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/459laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/463laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/470daniel.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/476laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/499laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/50bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/52bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/52daniel.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/52davidg.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/52laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/52ricardo.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/578bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/578jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/57bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/598bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/630bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/63keymaker.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/65jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/70felix.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/716daniel.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/7221bertram.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/75bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/78daniel.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/78felix.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/78laurent.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/80davidg.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/84jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/92jeffrey.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc1/954bertram.b"
+family = "bfgolf"
+halts = "always"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfcc2/594laurent.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/50bertram.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/50daniel.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/51bertram.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/51davidg.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/51laurent.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/56davids.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/59bertram.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/66laurent.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/69nyyrikki.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/70bertram.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "bfgolf/bfgolf2/91davids.b"
+family = "bfgolf"
+halts = "with-input"
+reviewed = false
+
+[[program]]
+file = "breadbox/factor.b"
+family = "breadbox"
+halts = "with-input"
+license_note = "[GPL-2.0-or-later](https://github.com/BR903/ELFkickers/blob/master/COPYING)"
+reviewed = false
+
+[[program]]
+file = "breadbox/hello.b"
+family = "breadbox"
+halts = "always"
+license_note = "[GPL-2.0-or-later](https://github.com/BR903/ELFkickers/blob/master/COPYING)"
+reviewed = false
+
+[[program]]
+file = "breadbox/quine.b"
+family = "breadbox"
+halts = "always"
+license_note = "[GPL-2.0-or-later](https://github.com/BR903/ELFkickers/blob/master/COPYING)"
+reviewed = false
+
+[[program]]
+file = "copy/bfminifier.bf"
+family = "copy"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/div13.bf"
+family = "copy"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/euler06-brainfuck.bf"
+family = "copy"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/hammingweight.bf"
+family = "copy"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/beer.b"
+family = "crawford"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/bockbeer.b"
+family = "unknown-bockbeer"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/char.bf"
+family = "unknown-char"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/hanoi.bf"
+family = "clifford-bfc"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/hellom.bf"
+family = "unknown-hellom"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/oobrain.b"
+family = "rathman"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/quine505.b"
+family = "unknown-quine505"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "copy/third_party/yapi.b"
+family = "pidigits"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "cristofd/392quine.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/400quine.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/bsort.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/collatz.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/dbf2c.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/dbfi.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/dquine.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/dvorak.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/e.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/factorial.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/factorial2.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/fib.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/golden.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/head.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/impeccable.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/isort.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/jabh.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/life.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/null.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.old0.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.old1.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.old2.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.old3.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/numwarp.old4.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/qsort.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/random.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/rot13.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/beep.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/bin2ascii.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/brainfuck.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/cat.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/catunary.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/clear.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/hello.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/move9999.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/pow2.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/prisoneralld.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/prisonertft.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/randombin.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/randomreal.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/reverse.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/sortbytes.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/stripws.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/text2bf.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/short/true.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/sierpinski.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/squares.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/squares2.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tests/cell30000.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tests/io.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tests/leftbound.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tests/obscure.b"
+family = "cristofd"
+halts = "always"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tests/rightbound.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/thuemorse.b"
+family = "cristofd"
+halts = "never"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/tictactoe.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/utm.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/wc.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cristofd/xmastree.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/bench.b"
+notes = "Author unknown; the earliest copy found is a 2013 GitHub bundle (fabianishere/brainfuck)."
+family = "unknown-bench"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/bottles.b"
+notes = "bfcorpus credits Connor Fitzgerald, but the code is a byte substring of 99botles.bf by Ben Olmstead in esoteric.sange.fi/brainfuck/bf-source/prog/ (1998)."
+author = "Ben Olmstead"
+family = "olmstead"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/deadcodetest.b"
+family = "cwfitzgerald"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/hello.b"
+notes = "The commented Hello World! from the Wikipedia article Brainfuck (2013), as found in a 2013 GitHub bundle."
+family = "wikipedia"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/long.b"
+notes = "long.b by Oleg Mazonka (mazonka.com/brainf/long.b), copied into Fitzgerald's benchmark suite."
+author = "Oleg Mazonka"
+family = "mazonka"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/loopremove.b"
+family = "cwfitzgerald"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/serptri.b"
+family = "cwfitzgerald"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cwfitzgerald/twinkle.b"
+family = "cwfitzgerald"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "cybis/Sudoku.bf"
+family = "cybis"
+halts = "with-input"
+license_note = "None, but I received permission from the author to distribute CyBF."
+reviewed = false
+
+[[program]]
+file = "ebosman/mandelbrot/mandelbrot-huge.b"
+family = "ebosman"
+halts = "never"
+license_note = "None for mandelbrot, GPL-2.0 for bfstrip"
+reviewed = false
+
+[[program]]
+file = "ebosman/mandelbrot/mandelbrot-titannic.b"
+family = "ebosman"
+halts = "never"
+license_note = "None for mandelbrot, GPL-2.0 for bfstrip"
+reviewed = false
+
+[[program]]
+file = "ebosman/mandelbrot/mandelbrot.b"
+family = "ebosman"
+halts = "always"
+license_note = "None for mandelbrot, GPL-2.0 for bfstrip"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/array/read_array_1-cell.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/array/read_array_2-cell.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/array/write_array_1-cell.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/array/write_array_2-cell.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/clear.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/clear_nowrap1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/clear_nowrap2.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/copy_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/swap1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/assign/swap2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bitwise/not_assign1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bitwise/not_assign_nowrap.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/and1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/and2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/and_assign.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/mux.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/nand.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/nor_assign.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign3.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign4.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign5.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign6.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/not_assign7.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or3.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or4.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or_assign1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/or_assign2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/xnor.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/bool/xor.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/comment/comment_after_clear.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/comment/comment_after_loop.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/comment/header_comment.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/cmp_nowrap.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/eq_assign1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/eq_assign2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/gt.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/le_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/lt_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/ne_assign1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/compare/ne_assign2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if2.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if3.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if_else1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if_else2.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/if_else3.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/control/loop_stride.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/div_explain.b"
+family = "none1"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/print_decimal.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/print_decimal_any_size1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/print_decimal_any_size2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_all_chars.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_decimal1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_decimal2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_decimal3.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_until.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_until_chars.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/io/read_until_lf.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/add_assign1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/add_assign2.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/div_assign1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/div_assign2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/divmod1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/divmod2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/divmod3.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/divmod4.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/divmod5.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/exp_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/mod1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/mod2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/mul_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/neg_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/neg_assign_nowrap.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/square_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/sub_assign.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/sum_range1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/math/sum_range2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/rand/lcg.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/rand/simple.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/find_nonzero_left.b"
+family = "esolang"
+halts = "never"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/find_nonzero_right.b"
+family = "esolang"
+halts = "never"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/find_zero_left.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/find_zero_right.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/shift_dynamic_left.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/algorithms/shift/shift_dynamic_right.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cat/eof_-1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cat/eof_0.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cat/eof_no_change_or_-1.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cat/eof_no_change_or_0.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cat/nonterminating.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/cell_size.b"
+family = "rdebath"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/hello_world/hello_world1.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/hello_world/hello_world2.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/hello_world/hello_world3.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/hello_world/hello_world4.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/hello_world/hello_world5.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/looping_counter.b"
+family = "esolang"
+halts = "never"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/move_value.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/print_brainfuck.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/quine.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/truth_machine/truth_machine.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/truth_machine/truth_machine_alt.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/truth_machine/truth_machine_kinda.old.b"
+family = "esolang"
+halts = "with-input"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "esolang/brainfuck/xkcd_random.b"
+family = "esolang"
+halts = "always"
+license_note = "[CC0 1.0 Universal Public Domain Dedication](https://esolangs.org/wiki/Esolang:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/1.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/10.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/11.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/12.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/13.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/14.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/15.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/16.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/17.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/18.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/2.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/3.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/4.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/5.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/6.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/7.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/8.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/longest_running/9.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/1.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/10.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/11.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/12.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/13.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/14.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/15.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/16.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/17.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/18.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/2.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/3.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/4.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/5.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/6.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/7.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/8.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/most_cells/9.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/13.1.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/13.2.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.1.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.10.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.11.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.12.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.13.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.14.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.2.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.3.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.4.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.5.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.6.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.7.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.8.b"
+family = "eterevsky"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "eterevsky/unknown/14.9.b"
+family = "eterevsky"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "iwriteiam/bfi.b"
+family = "iwriteiam"
+halts = "with-input"
+license_note = "[GPL-2.0](https://www.iwriteiam.nl/#license) [[2](https://web.archive.org/web/20040207113106/http://home.wxs.nl:80/~faase009/Fhome.html)]"
+reviewed = false
+
+[[program]]
+file = "keymaker/abc.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/atbash.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/bct.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/beer.b"
+family = "keymaker"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/collatz.b"
+family = "keymaker"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/count9to0.b"
+family = "keymaker"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/digitalr.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/facto.b"
+family = "keymaker"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/hello.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/isbn.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/kbfi.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/langton.b"
+family = "keymaker"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/morse.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/narc.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/pgq.b"
+family = "keymaker"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/ptmbsg.b"
+family = "keymaker"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/quine.b"
+family = "keymaker"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/selfsize.b"
+family = "keymaker"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "keymaker/uload.b"
+family = "keymaker"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "kiwec/wc.b"
+family = "kiwec"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test10.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test11.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test12.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test13.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test14.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test15.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test16.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test17.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test18.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test19.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test20.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test21.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test22.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test23.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test24.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test25.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bf-sed/test9.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test10.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test11.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test12.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test13.b"
+notes = "Copy of a snippet from Cristofani's short.b, used as an interpreter test."
+family = "cristofd"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test14.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test5.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test6.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test7.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test8.b"
+family = "lvogel"
+halts = "always"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "lvogel/bfli/test9.b"
+family = "lvogel"
+halts = "with-input"
+license_note = "GPL-2.0-or-later for bfli, none for bf-sed"
+reviewed = false
+
+[[program]]
+file = "m-archibald/BrainfuinoLogo.bf"
+family = "m-archibald"
+halts = "never"
+license_note = "Unlicense"
+reviewed = false
+
+[[program]]
+file = "makenowjust/a.bf"
+family = "makenowjust"
+halts = "always"
+license_note = "[SUSHI-WARE](https://github.com/makenowjust/quine/blob/main/LICENSE.md),"
+reviewed = false
+
+[[program]]
+file = "makenowjust/echo.bf"
+family = "makenowjust"
+halts = "with-input"
+license_note = "[SUSHI-WARE](https://github.com/makenowjust/quine/blob/main/LICENSE.md),"
+reviewed = false
+
+[[program]]
+file = "makenowjust/quine1257.bf"
+family = "makenowjust"
+halts = "always"
+license_note = "[SUSHI-WARE](https://github.com/makenowjust/quine/blob/main/LICENSE.md),"
+reviewed = false
+
+[[program]]
+file = "makenowjust/quine404.bf"
+family = "makenowjust"
+halts = "always"
+license_note = "[SUSHI-WARE](https://github.com/makenowjust/quine/blob/main/LICENSE.md),"
+reviewed = false
+
+[[program]]
+file = "makenowjust/quine8929.bf"
+family = "makenowjust"
+halts = "always"
+license_note = "[SUSHI-WARE](https://github.com/makenowjust/quine/blob/main/LICENSE.md),"
+reviewed = false
+
+[[program]]
+file = "mitxela/choosenumber.bf"
+family = "mitxela"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "mitxela/tictactoe-comments.bf"
+family = "mitxela"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "mitxela/tictactoe.bf"
+family = "mitxela"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/alphabet.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/aplusb.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/brainnofuck.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/cat.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/deadfish.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/fib14.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/fib20.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/fizzbuzz.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/fuckyou.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/hello.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/macrotest.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/nobrainfuck.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/oddoreven.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/print.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/tm.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/bffuck/xkcdrand.b"
+family = "none1"
+halts = "always"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/BFFuck/blob/main/LICENSE),"
+reviewed = false
+
+[[program]]
+file = "none1/kolakoski.b"
+family = "none1"
+halts = "never"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/none-None1),"
+reviewed = false
+
+[[program]]
+file = "none1/nevergonna.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/none-None1),"
+reviewed = false
+
+[[program]]
+file = "none1/rng.b"
+family = "none1"
+halts = "with-input"
+license_note = "CC0 1.0 Universal [[1](https://github.com/none-None1/none-None1),"
+reviewed = false
+
+[[program]]
+file = "nyyrikki/bfi.bf"
+family = "nyyrikki"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "nyyrikki/bitdbl.bf"
+family = "nyyrikki"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "nyyrikki/triangle.bf"
+family = "nyyrikki"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "pipevm/pong.bf"
+family = "pipevm"
+halts = "with-input"
+license_note = "[GNU General Public License, Version 3.0](https://github.com/lestrozi/pipevm/blob/main/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "pipevm/sh.bf"
+family = "pipevm"
+halts = "with-input"
+license_note = "[GNU General Public License, Version 3.0](https://github.com/lestrozi/pipevm/blob/main/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "rdebath/bitwidth.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/bf2c_v1.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/bf2c_v2.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/hellbox-103.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/md5.gw.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/md5.hw.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/extras/txtbf.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Cellsize.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Cellsize2.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Cellsize3.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Cellsize4.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Cellsize5.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Counter.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/EasyOpt.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Endtest.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Hello.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Hello2.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Precalc.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/PrecalcBreak.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Prime2.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Prttab.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Skiploop.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Sorry-needs-16.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Sorry-needs-32.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/Tribit.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/al-count-0.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/al-count-1.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/al-count-2.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/al-count-3.b"
+family = "rdebath"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/cell-max.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/cell-type.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/cells100k.b"
+family = "rdebath"
+halts = "never"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/cells30k.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/third_party/Impeccable.b"
+family = "cristofd"
+halts = "with-input"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "rdebath/testing/too-slow.b"
+family = "rdebath"
+halts = "always"
+license_note = "Public domain [[1](https://github.com/rdebath/Brainfuck/blob/master/README.md#copyrights),"
+reviewed = false
+
+[[program]]
+file = "regehr/loop2.b"
+family = "regehr"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/beer.b"
+family = "rkusnery"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/bfc.b"
+family = "rkusnery"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/bfc.commented.b"
+family = "rkusnery"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/echo.b"
+family = "rkusnery"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/quine.b"
+family = "rkusnery"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/reverse.b"
+family = "rkusnery"
+halts = "never"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rkusnery/ryanquine.b"
+family = "rkusnery"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rosettacode/hello_world.b"
+family = "rosettacode"
+halts = "always"
+license_note = "[GNU Free Documentation License, Version 1.2](https://rosettacode.org/wiki/Rosetta_Code:Copyrights)"
+reviewed = false
+
+[[program]]
+file = "rqu1/aes.bf"
+family = "rqu1"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rune/bfpretty.b"
+family = "rune"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "rune/polyglot.txt.b"
+family = "rune"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/bfrs/move_right.b"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/bfrs/mul.b"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/4-kyu/bf-compare-two-strings.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/6-kyu/bf-hello-world.bf"
+family = "thaliaarchi"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/6-kyu/brainf-star-star-k-test.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/6-kyu/esolang-interpreters-number-1-introduction-to-esolangs-and-my-first-interpreter-ministringfuck.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/bf-a-plus-b-without-plus-sign.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/bf-basics-number-0-hello-world.bf"
+family = "thaliaarchi"
+halts = "always"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/bf-print-the-rest-of-the-alphabet.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/brainfuck-simple-pig-latin.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/build-a-square.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/7-kyu/reversing-fun.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/get-nth-even-number.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/grasshopper-summation.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/grasshopper-terminal-game-move-function.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/makeuppercase.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/multiply.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/remove-first-and-last-character.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/third-angle-of-a-triangle.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "thaliaarchi/codewars/8-kyu/you-cant-code-under-pressure-number-1.bf"
+family = "thaliaarchi"
+halts = "with-input"
+license_note = "[MPL-2.0](https://github.com/thaliaarchi/bfrs/blob/main/LICENSE) for"
+reviewed = false
+
+[[program]]
+file = "ultrabear/beemovie.bf"
+family = "ultrabear"
+halts = "never"
+license_note = "[GPL-3.0](https://github.com/ultrabear/bfi/blob/main/LICENSE)"
+reviewed = false
+
+[[program]]
+file = "umueller/atoi.b"
+family = "umueller"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "umueller/div10.b"
+family = "umueller"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "umueller/hello.b"
+family = "umueller"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "umueller/mul10.b"
+family = "umueller"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "umueller/prime.b"
+family = "umueller"
+halts = "with-input"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "umueller/varia.b"
+family = "umueller"
+halts = "always"
+license_note = "None"
+reviewed = false
+
+[[program]]
+file = "wikipedia/hello_world.b"
+family = "wikipedia"
+halts = "with-input"
+license_note = "[Creative Commons Attribution-ShareAlike 4.0 International](https://en.wikipedia.org/wiki/Wikipedia:Copyrights)"
+reviewed = false

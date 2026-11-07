@@ -1,0 +1,595 @@
+# ELVM's test programs compiled to Brainfuck. Generated, not committed: build them with
+#
+#   tools/corpus/build-elvm.sh WORKDIR
+#
+# which patches a copy of 3rdparty/ELVM with bf-stack-top.patch (the stack starts at word
+# 21248, so programs fit a 64 KiB tape), builds every test, and installs the files below
+# into out/, checking each blake3. tools/corpus/check-elvm.py WORKDIR rechecks the limits.
+#
+# Listed here: the outputs that fit 1M bitcode words at -O2 and print what ELVM's own
+# interpreter prints for the same inputs. Left out, as programs/WANTED.md explains: eli.c
+# (3.4M cells: its heap grows past the stack), 8cc.c (2.9M words) and elc.c (6.3M words).
+#
+# These outputs share a large runtime, so they look alike to the static duplicate check;
+# they differ in what the compiled C program does at run time.
+
+[source]
+name = "elvm"
+url = "https://github.com/shinh/ELVM"
+license = "MIT"
+license_files = ["../../3rdparty/ELVM/LICENSE"]
+generated = true
+build = "tools/corpus/build-elvm.sh WORKDIR"
+generator = "3rdparty/ELVM at 020d1d8cfead001e9866947d7072021ad22886da, with bf-stack-top.patch"
+
+[defaults]
+author = "Shinichiro Hamaji and ELVM contributors"
+family = "elvm"
+origin = "compiled"
+cell_bits = 8
+eof = ["0"]
+
+[[program]]
+file = "out/00exit.eir.bf"
+blake3 = "58dd0431b2bccf1d392a5d698456266b326d36eeb7193c4b6cb1937b39de5ae2"
+generated_from = "3rdparty/ELVM/test/00exit.eir"
+role = "conformance"
+halts = "always"
+notes = "13732 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/01putc.eir.bf"
+blake3 = "823d0d625117d01ec3e4dad2e65920f189956f3bda9c312e7de0e45b7893ecf1"
+generated_from = "3rdparty/ELVM/test/01putc.eir"
+role = "conformance"
+halts = "always"
+notes = "13735 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/02mov.eir.bf"
+blake3 = "03b333e5be5a9a1ac56800c2475d10ff205266ffb0f12cbd7188c47920697079"
+generated_from = "3rdparty/ELVM/test/02mov.eir"
+role = "conformance"
+halts = "always"
+notes = "13736 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/03mov_reg.eir.bf"
+blake3 = "5faa0056909b6f80212991bf973ec20da48ad4946a708a4676df735b49a7c4da"
+generated_from = "3rdparty/ELVM/test/03mov_reg.eir"
+role = "conformance"
+halts = "always"
+notes = "13746 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/04getc.eir.bf"
+blake3 = "90de6a62c75e34fd8987254612e1536b9fb7feeda0e61497e086052cf3fe34a7"
+generated_from = "3rdparty/ELVM/test/04getc.eir"
+role = "conformance"
+halts = "with-input"
+notes = "13777 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/04getc.in" }]
+
+[[program]]
+file = "out/05regjmp.eir.bf"
+blake3 = "84ecb3aec1720f68ac72f5afa45bbcb9b7c67fa18372db9936625eb42f4ea6cf"
+generated_from = "3rdparty/ELVM/test/05regjmp.eir"
+role = "conformance"
+halts = "always"
+notes = "13782 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/06mem.eir.bf"
+blake3 = "f0d7ca79436cacb0aa04641c70022000434197bf7078754eda3d5b501eff1898"
+generated_from = "3rdparty/ELVM/test/06mem.eir"
+role = "conformance"
+halts = "always"
+notes = "13934 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/07mem.eir.bf"
+blake3 = "941cd62e3c801f87dc92b6a16e163404479ddfdb31ad4d88abdf891babf91c07"
+generated_from = "3rdparty/ELVM/test/07mem.eir"
+role = "conformance"
+halts = "always"
+notes = "14014 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/08data.eir.bf"
+blake3 = "f71a4c38bfbda828bb7e08690bedb642cd5ada62d2a15227a20bf154a77ace4f"
+generated_from = "3rdparty/ELVM/test/08data.eir"
+role = "conformance"
+halts = "always"
+notes = "13820 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/24_cmp.c.eir.bf"
+blake3 = "0cd7fe6ddbf7e05b906dcae9a82af176a555cf1d31c24fc49b4499ddf5f6ec9a"
+generated_from = "3rdparty/ELVM/test/24_cmp.c"
+role = "workload"
+halts = "always"
+notes = "282369 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/24_cmp2.c.eir.bf"
+blake3 = "d3504ca5bbac32bc430916fe9d22a9ee89ff7b16ff403858a6b68d9cc1676acd"
+generated_from = "3rdparty/ELVM/test/24_cmp2.c"
+role = "workload"
+halts = "always"
+notes = "281948 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/24_mem.eir.bf"
+blake3 = "5600398da96a9025736d892fdede90c271849cb7a8f820e70f4336672c12bc26"
+generated_from = "3rdparty/ELVM/test/24_mem.eir.rb"
+role = "conformance"
+halts = "always"
+notes = "14261 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/24_muldiv.c.eir.bf"
+blake3 = "333d60fddfa575c3b8f26c12b0c5a759679a2e04042d41f6594ec520eadb1e21"
+generated_from = "3rdparty/ELVM/test/24_muldiv.c"
+role = "workload"
+halts = "always"
+notes = "277821 bitcode words at -O2; 1.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/8cc.in.c.eir.bf"
+blake3 = "e450016d85c727abfdc91b5d4ed4e758ff6b003eaff66423bc3d61ccbde2c57d"
+generated_from = "3rdparty/ELVM/test/8cc.in.c"
+role = "workload"
+halts = "with-input"
+notes = "14032 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/8cc.in" }]
+
+[[program]]
+file = "out/add_self.eir.bf"
+blake3 = "22d702a22751060005c0ec016fa2f3788ce265ffdcd2a4435558abe158e1ea2e"
+generated_from = "3rdparty/ELVM/test/add_self.eir"
+role = "conformance"
+halts = "always"
+notes = "13783 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/addsub.c.eir.bf"
+blake3 = "d0d950f631e8423e426692b184583b10a88326778afe03668cc9b1d1c54b7b4c"
+generated_from = "3rdparty/ELVM/test/addsub.c"
+role = "workload"
+halts = "always"
+notes = "14670 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/array.c.eir.bf"
+blake3 = "0a7cfe90304f031a37c2af45237eea383bc985725f62558dfaed21bfd0bca8e4"
+generated_from = "3rdparty/ELVM/test/array.c"
+role = "workload"
+halts = "always"
+notes = "279040 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/basic.eir.bf"
+blake3 = "9ddf20a4cc114ea93bd71107fc6aae6e5e70ae3cf7d1adf78f28246324abf090"
+generated_from = "3rdparty/ELVM/test/basic.eir"
+role = "conformance"
+halts = "always"
+notes = "13888 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/bitops.c.eir.bf"
+blake3 = "049a060c508e75d99fdef876f04ca320729cdc8e5d4668cbbb4da6cbc376202d"
+generated_from = "3rdparty/ELVM/test/bitops.c"
+role = "workload"
+halts = "always"
+notes = "279335 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/bm_mov.eir.bf"
+blake3 = "29a57f62d65463c9034e86e39a82336c8c8c16fc4df219dcf45e0f210e491db5"
+generated_from = "3rdparty/ELVM/test/bm_mov.eir.rb"
+role = "conformance"
+halts = "always"
+notes = "22773 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/bool.c.eir.bf"
+blake3 = "2e141550a01c8a672c384249cb06e0461f32aa6fd3a4d0d0b08f2f8105eefbf2"
+generated_from = "3rdparty/ELVM/test/bool.c"
+role = "workload"
+halts = "always"
+notes = "276401 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/bug_cmp.eir.bf"
+blake3 = "2e252ff3b5accf3cd50fe6ab1914777a6708355dc7f0e62c50facd89028d44bf"
+generated_from = "3rdparty/ELVM/test/bug_cmp.eir"
+role = "conformance"
+halts = "always"
+notes = "13879 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/cmp_eq.c.eir.bf"
+blake3 = "db5742c61f7420b7ab58f1f94863e5581e27bd91880b30e6d834d7d1415b2876"
+generated_from = "3rdparty/ELVM/test/cmp_eq.c"
+role = "workload"
+halts = "with-input"
+notes = "14968 bitcode words at -O2; 1.2 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_eq_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_eq_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_eq_3.in" }]
+
+[[program]]
+file = "out/cmp_ge.c.eir.bf"
+blake3 = "11afcbf9b59f25471a98e473519975977807beefd08e9477222a17457fe26188"
+generated_from = "3rdparty/ELVM/test/cmp_ge.c"
+role = "workload"
+halts = "with-input"
+notes = "14893 bitcode words at -O2; 1.4 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_ge_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_ge_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_ge_3.in" }]
+
+[[program]]
+file = "out/cmp_gt.c.eir.bf"
+blake3 = "40bae587b927f6c6f648de6ed78696748eb4c2a80fe0a2e11121bea314127ede"
+generated_from = "3rdparty/ELVM/test/cmp_gt.c"
+role = "workload"
+halts = "with-input"
+notes = "14909 bitcode words at -O2; 1.8 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_gt_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_gt_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_gt_3.in" }]
+
+[[program]]
+file = "out/cmp_le.c.eir.bf"
+blake3 = "693a21af63617602a1d4a00cbd615aa45ff6693f35fd2a65c9bba4b754a3248e"
+generated_from = "3rdparty/ELVM/test/cmp_le.c"
+role = "workload"
+halts = "with-input"
+notes = "14878 bitcode words at -O2; 1.6 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_le_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_le_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_le_3.in" }]
+
+[[program]]
+file = "out/cmp_lt.c.eir.bf"
+blake3 = "18beaf4a1c94ea921364aec7abbf74900ea0e954d597ea7eae0c88d7f16ad12e"
+generated_from = "3rdparty/ELVM/test/cmp_lt.c"
+role = "workload"
+halts = "with-input"
+notes = "14894 bitcode words at -O2; 1.4 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_lt_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_lt_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_lt_3.in" }]
+
+[[program]]
+file = "out/cmp_ne.c.eir.bf"
+blake3 = "f0f36638d1bebc876b8a1772779b128809d78911fa81593191a23abcff52a2ec"
+generated_from = "3rdparty/ELVM/test/cmp_ne.c"
+role = "workload"
+halts = "with-input"
+notes = "14813 bitcode words at -O2; 0.9 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/cmp_ne_1.in" }, { input = "../../3rdparty/ELVM/test/cmp_ne_2.in" }, { input = "../../3rdparty/ELVM/test/cmp_ne_3.in" }]
+
+[[program]]
+file = "out/cmps.eir.bf"
+blake3 = "f10e6ef3d17b5ba50365742c9c7e6e83d8091f40eac3c14fc679112f34fb529a"
+generated_from = "3rdparty/ELVM/test/cmps.eir.rb"
+role = "conformance"
+halts = "always"
+notes = "15947 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/computed_goto.c.eir.bf"
+blake3 = "fd0c97a27c731d0baac9ccd0b4629706eea23bbef56ad14f562b6caceb755d8b"
+generated_from = "3rdparty/ELVM/test/computed_goto.c"
+role = "workload"
+halts = "always"
+notes = "282107 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+
+[[program]]
+file = "out/copy_struct.c.eir.bf"
+blake3 = "f25a561e40aa16f55dc3c4a5ef65cba599d5e1c980c3e620b0b3a65ca850151c"
+generated_from = "3rdparty/ELVM/test/copy_struct.c"
+role = "workload"
+halts = "always"
+notes = "279438 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+
+[[program]]
+file = "out/dump_ir.c.eir.bf"
+blake3 = "25744ac260b9d0dfad976946625efce1fe3b31020e1c7f0e6c1656f3fbfb46c9"
+generated_from = "3rdparty/ELVM out/dump_ir.c, assembled from ELVM's own sources"
+role = "workload"
+halts = "with-input"
+notes = "513615 bitcode words at -O2; 25.4 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/dump_ir.in" }]
+
+[[program]]
+file = "out/echo.eir.bf"
+blake3 = "7b2603158dbb19568a7cc9d2170b030d4152071479bf5d6c2c193c6edf3756fa"
+generated_from = "3rdparty/ELVM/test/echo.eir"
+role = "conformance"
+halts = "with-input"
+notes = "13810 bitcode words at -O2; 0.4 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/echo.in" }]
+
+[[program]]
+file = "out/eof.c.eir.bf"
+blake3 = "16bed0c1a7364827ba0699f1b55b513bdb03089a500bd7fd2fd1978208eca6f0"
+generated_from = "3rdparty/ELVM/test/eof.c"
+role = "workload"
+halts = "with-input"
+notes = "277069 bitcode words at -O2; 2.8 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/eof.in" }]
+
+[[program]]
+file = "out/fgets.c.eir.bf"
+blake3 = "7e03cd2742018ce9f2b9a53571cba317a1d73e55aacf05963efbcc47e30b6ee2"
+generated_from = "3rdparty/ELVM/test/fgets.c"
+role = "workload"
+halts = "with-input"
+notes = "289463 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/fgets.in" }]
+
+[[program]]
+file = "out/field_addr.c.eir.bf"
+blake3 = "febd8793a5c7f8198b3a6e469f8a8e86405d1ff206df30dfe5ee0927d05eb097"
+generated_from = "3rdparty/ELVM/test/field_addr.c"
+role = "workload"
+halts = "always"
+notes = "275389 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/fizzbuzz.c.eir.bf"
+blake3 = "465498f187381fda34252ecbf99eb6f981a2d4e1c2bfc8f77dcc835d0e394815"
+generated_from = "3rdparty/ELVM/test/fizzbuzz.c"
+role = "workload"
+halts = "always"
+notes = "280487 bitcode words at -O2; 3.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/fizzbuzz_fast.c.eir.bf"
+blake3 = "f559654f0e62421fc284dc65493e954ff83daa8a371d63b8072cc6204059843a"
+generated_from = "3rdparty/ELVM/test/fizzbuzz_fast.c"
+role = "workload"
+halts = "always"
+notes = "93165 bitcode words at -O2; 3.1 s at -O3 over its inputs."
+
+[[program]]
+file = "out/func.c.eir.bf"
+blake3 = "868a451bb4ecb424970d6a4186a7b076f546917c07adb9348bc040e7f117901d"
+generated_from = "3rdparty/ELVM/test/func.c"
+role = "workload"
+halts = "with-input"
+notes = "19035 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/func.in" }]
+
+[[program]]
+file = "out/func2.c.eir.bf"
+blake3 = "00ff8548d038afc88ef877448cf4088b127626a4f701485bfdda744be3ebd14e"
+generated_from = "3rdparty/ELVM/test/func2.c"
+role = "workload"
+halts = "always"
+notes = "280780 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/func_ptr.c.eir.bf"
+blake3 = "116479ab2410580e300749bfac25be504d8301a2337a011a00cca42947ff18cd"
+generated_from = "3rdparty/ELVM/test/func_ptr.c"
+role = "workload"
+halts = "always"
+notes = "88478 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/getchar.c.eir.bf"
+blake3 = "5d048aecf06edb8c54a41f052c2b34ce5a080ded5eb90d8a49eb75c0e8605156"
+generated_from = "3rdparty/ELVM/test/getchar.c"
+role = "workload"
+halts = "with-input"
+notes = "14338 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/getchar.in" }]
+
+[[program]]
+file = "out/global.c.eir.bf"
+blake3 = "9d3c6c8b5b64b444f2f4c00ecdab230d9f56920d234d71701c09c39b9dfbbdb5"
+generated_from = "3rdparty/ELVM/test/global.c"
+role = "workload"
+halts = "always"
+notes = "275422 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/global_array.c.eir.bf"
+blake3 = "8e1c614db364ceb6e2104b554368e9165893e4464c75ff1c4ce4ce263fa63ae4"
+generated_from = "3rdparty/ELVM/test/global_array.c"
+role = "workload"
+halts = "always"
+notes = "280200 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/global_struct_ref.c.eir.bf"
+blake3 = "6b39798dde584aa554279fd3615e7ebccc1c1254c9701f301bed266c8ff69dcb"
+generated_from = "3rdparty/ELVM/test/global_struct_ref.c"
+role = "workload"
+halts = "always"
+notes = "275234 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+
+[[program]]
+file = "out/hello.c.eir.bf"
+blake3 = "a5372b927018d87fec20cb566440034b37fd46b515c1d3365dd3b338412af553"
+generated_from = "3rdparty/ELVM/test/hello.c"
+role = "workload"
+halts = "always"
+notes = "275397 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/increment.c.eir.bf"
+blake3 = "4d8e819ffa1515b38d2153d37b19fe1793a51f06c0e5231155a97c24a6d0b027"
+generated_from = "3rdparty/ELVM/test/increment.c"
+role = "workload"
+halts = "always"
+notes = "278008 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+
+[[program]]
+file = "out/isprint.eir.bf"
+blake3 = "920518c064336c496534e4889b00866befbf2164c2d052855d0c0f4c45f3f7dc"
+generated_from = "3rdparty/ELVM/test/isprint.eir"
+role = "conformance"
+halts = "always"
+notes = "13907 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/jmps.eir.bf"
+blake3 = "c4a818420f2a4c5dcc742a8cb320d6d43a45d8608ef1e6cafd88db3f14100eec"
+generated_from = "3rdparty/ELVM/test/jmps.eir.rb"
+role = "conformance"
+halts = "always"
+notes = "16206 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+
+[[program]]
+file = "out/lisp.c.eir.bf"
+blake3 = "60780d56f65d611f96a5b34170e6ebc35774cbef5bd2035d2db6669e089db531"
+generated_from = "3rdparty/ELVM/test/lisp.c"
+role = "workload"
+halts = "with-input"
+notes = "494153 bitcode words at -O2; 0.9 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/lisp.in" }]
+
+[[program]]
+file = "out/logic_val.c.eir.bf"
+blake3 = "906ec52ca826ccb89517a0c1bf75fe3c960acc6401eff1ab130c05b28f2c1316"
+generated_from = "3rdparty/ELVM/test/logic_val.c"
+role = "workload"
+halts = "always"
+notes = "88299 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/loop.c.eir.bf"
+blake3 = "20fff10f04565fc36aca5a1181dd15f547475fb4aa438b883f8ae5f15934ea43"
+generated_from = "3rdparty/ELVM/test/loop.c"
+role = "workload"
+halts = "with-input"
+notes = "18389 bitcode words at -O2; 0.3 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/loop.in" }]
+
+[[program]]
+file = "out/malloc.c.eir.bf"
+blake3 = "9e28cff517b7505423863fe6b273e4575ae4209afdf1440189b8156d47c31841"
+generated_from = "3rdparty/ELVM/test/malloc.c"
+role = "workload"
+halts = "always"
+notes = "177242 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/muldiv.c.eir.bf"
+blake3 = "808bb8d8141c0b922281c1ecfe7a733396f53a7f79c29b5db84766dac6256ff0"
+generated_from = "3rdparty/ELVM/test/muldiv.c"
+role = "workload"
+halts = "always"
+notes = "277798 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/neg.eir.bf"
+blake3 = "6c4d63df2d73fe9cd4f1c84273cbd7155e817e66a480d77126f64ba8a235cca0"
+generated_from = "3rdparty/ELVM/test/neg.eir"
+role = "conformance"
+halts = "always"
+notes = "13805 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/nullptr.c.eir.bf"
+blake3 = "7e06c85084dcbd3c2c9d0fd25dbee56aef384d99d3953bfd14d616bc8c6b9da0"
+generated_from = "3rdparty/ELVM/test/nullptr.c"
+role = "workload"
+halts = "always"
+notes = "276023 bitcode words at -O2; 0.8 s at -O3 over its inputs."
+
+[[program]]
+file = "out/print_int.c.eir.bf"
+blake3 = "cd78ef4f158e52f8cc0e6ba9b5932127eab9f0721c421b7627d68350fb2db6b8"
+generated_from = "3rdparty/ELVM/test/print_int.c"
+role = "workload"
+halts = "always"
+notes = "89125 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/printf.c.eir.bf"
+blake3 = "201e290d82e9d86764cddcd4a894de2236027419dd7bbe21d415fde89b1f49ba"
+generated_from = "3rdparty/ELVM/test/printf.c"
+role = "workload"
+halts = "always"
+notes = "279840 bitcode words at -O2; 0.9 s at -O3 over its inputs."
+
+[[program]]
+file = "out/putchar.c.eir.bf"
+blake3 = "e450016d85c727abfdc91b5d4ed4e758ff6b003eaff66423bc3d61ccbde2c57d"
+generated_from = "3rdparty/ELVM/test/putchar.c"
+role = "workload"
+halts = "always"
+notes = "14032 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/puts.c.eir.bf"
+blake3 = "b7d915bf88825e5acee746cd38b4fa2d530818203e42d55eb09bd83469959fa7"
+generated_from = "3rdparty/ELVM/test/puts.c"
+role = "workload"
+halts = "always"
+notes = "274636 bitcode words at -O2; 0.6 s at -O3 over its inputs."
+
+[[program]]
+file = "out/qsort.c.eir.bf"
+blake3 = "dcc8593c82a70cacf33a3e6e0614b24909b2f2d01c330b6cc9ed1a4e4db035a9"
+generated_from = "3rdparty/ELVM/test/qsort.c"
+role = "workload"
+halts = "always"
+notes = "295078 bitcode words at -O2; 1.4 s at -O3 over its inputs."
+
+[[program]]
+file = "out/struct.c.eir.bf"
+blake3 = "c2891de5bf9675fa46ff9de410895c7dad16df1917411e96183f2980259cb933"
+generated_from = "3rdparty/ELVM/test/struct.c"
+role = "workload"
+halts = "with-input"
+notes = "276297 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/struct.in" }]
+
+[[program]]
+file = "out/sub.eir.bf"
+blake3 = "2501b07eca50f994ecc34b34730c1fc3d69bc18316a6dbc38aaa8b7c64a1ae19"
+generated_from = "3rdparty/ELVM/test/sub.eir"
+role = "conformance"
+halts = "always"
+notes = "13776 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+
+[[program]]
+file = "out/sub_bug.eir.bf"
+blake3 = "37816e653c4ead1665492a7493c84f0647e3ca5cf45391547825b536c2a68ce3"
+generated_from = "3rdparty/ELVM/test/sub_bug.eir"
+role = "conformance"
+halts = "always"
+notes = "13858 bitcode words at -O2; 0.5 s at -O3 over its inputs."
+
+[[program]]
+file = "out/swapcase.c.eir.bf"
+blake3 = "e7a112bf6914a7573ef7ae1d0419de1e109af783a1eed978ef26a9602c417234"
+generated_from = "3rdparty/ELVM/test/swapcase.c"
+role = "workload"
+halts = "with-input"
+notes = "17124 bitcode words at -O2; 2.9 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/swapcase_1.in" }, { input = "../../3rdparty/ELVM/test/swapcase_2.in" }, { input = "../../3rdparty/ELVM/test/swapcase_3.in" }, { input = "../../3rdparty/ELVM/test/swapcase_4.in" }, { input = "../../3rdparty/ELVM/test/swapcase_5.in" }, { input = "../../3rdparty/ELVM/test/swapcase_6.in" }]
+
+[[program]]
+file = "out/switch_case.c.eir.bf"
+blake3 = "2d30393b5d6b799dc75da481063674d3aab9b5dcc3c75cd432579e07ec8fcdce"
+generated_from = "3rdparty/ELVM/test/switch_case.c"
+role = "workload"
+halts = "with-input"
+notes = "276909 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/switch_case.in" }]
+
+[[program]]
+file = "out/switch_op.c.eir.bf"
+blake3 = "456968ca662c49f90f4b4c6534a58918da4f8350abdac21a5ebc2511c21495a0"
+generated_from = "3rdparty/ELVM/test/switch_op.c"
+role = "workload"
+halts = "with-input"
+notes = "277592 bitcode words at -O2; 0.7 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/switch_op.in" }]
+
+[[program]]
+file = "out/switch_range.c.eir.bf"
+blake3 = "fb17d4b08ea2aed68545b9ad56370681dd2a23e960e6ad241cd4a3046010f33a"
+generated_from = "3rdparty/ELVM/test/switch_range.c"
+role = "workload"
+halts = "with-input"
+notes = "277507 bitcode words at -O2; 1.0 s at -O3 over its inputs."
+cases = [{ input = "../../3rdparty/ELVM/test/switch_range.in" }]

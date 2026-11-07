@@ -1,3 +1,15 @@
 [submodule "ctre"]
 	path = ctre
 	url = https://github.com/hanickadot/compile-time-regular-expressions
+[submodule "3rdparty/awib"]
+	path = 3rdparty/awib
+	url = https://github.com/matslina/awib
+[submodule "3rdparty/ELVM"]
+	path = 3rdparty/ELVM
+	url = https://github.com/shinh/ELVM
+[submodule "3rdparty/rdebath-Brainfuck"]
+	path = 3rdparty/rdebath-Brainfuck
+	url = https://github.com/rdebath/Brainfuck
+[submodule "3rdparty/bfcorpus"]
+	path = 3rdparty/bfcorpus
+	url = https://github.com/thaliaarchi/bfcorpus

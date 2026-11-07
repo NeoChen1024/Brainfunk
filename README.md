@@ -60,7 +60,7 @@ iterations, and memory reads and writes
 `tests/stat-compare.sh` compares those numbers across optimization levels:
 
 ```shell
-sh tests/stat-compare.sh test/mandel.b
+sh tests/stat-compare.sh 3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
 ```
 
 # Usage
@@ -99,6 +99,20 @@ The LLVM emitter writes plain text and has no build-time or runtime dependency o
 `llvm-ir-wrapper.c` supplies the tape, `main()`, and byte I/O callbacks; Clang performs
 target selection and optimization only when the emitted IR is compiled. See
 [doc/llvm-ir.md](doc/llvm-ir.md) for the ABI and portability contract.
+
+# Programs
+
+[programs/](programs/README.md) is a corpus of Brainfuck programs from many authors, for
+testing and for measuring which patterns real programs use. Sources that have a git
+repository are submodules under `3rdparty/`:
+
+```shell
+git submodule update --init 3rdparty/awib 3rdparty/bfcorpus 3rdparty/rdebath-Brainfuck
+tools/corpus/corpus.py list --role workload --halts always --cell-bits 8 --unique
+```
+
+The programs keep their authors' licenses, not this repository's. See
+[programs/README.md](programs/README.md).
 
 # CPU core
 

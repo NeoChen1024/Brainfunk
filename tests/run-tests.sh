@@ -164,13 +164,21 @@ check_codegen overflow-src "$tmpdir/overflow-src.bf" "$tmpdir/empty.input"
 { repeat '>' 100; printf '+'; repeat '>' 524287; printf '.'; } >"$tmpdir/overflow-move.bf"
 check_codegen overflow-move "$tmpdir/overflow-move.bf" "$tmpdir/empty.input"
 
-# Real programs, when the corpus is present.  test/ is not part of the repository.
-CORPUS="${BF_CORPUS:-test}"
-for program in hello.b squares.b bench.b bottles.b sierpinski.bf hanoi.b long.b mandel.b; do
-    if [ -f "$CORPUS/$program" ]; then
-        check_codegen "corpus-$program" "$CORPUS/$program" "$tmpdir/empty.input"
+# Real programs from programs/ and the 3rdparty/ submodules, when checked out.
+for program in \
+    3rdparty/bfcorpus/cwfitzgerald/hello.b \
+    programs/brainfuck.org/squares.b \
+    programs/unattributed/bench.b \
+    3rdparty/bfcorpus/cwfitzgerald/bottles.b \
+    3rdparty/bfcorpus/nyyrikki/triangle.bf \
+    3rdparty/bfcorpus/copy/third_party/hanoi.bf \
+    3rdparty/rdebath-Brainfuck/testing/Long.b \
+    3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
+do
+    if [ -f "$program" ]; then
+        check_codegen "corpus-$(basename "$program")" "$program" "$tmpdir/empty.input"
     else
-        echo "SKIP: $CORPUS/$program not found" >&2
+        echo "SKIP: $program not found" >&2
     fi
 done
 

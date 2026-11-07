@@ -1,0 +1,18 @@
+# Programs whose author and license are unknown, kept on purpose. See SOURCE.md.
+
+[source]
+name = "unattributed"
+license = "NOASSERTION"
+license_files = ["SOURCE.md"]
+unknown_license_accepted = "A widely copied benchmark with no known author; kept so the corpus does not depend on one copy staying online."
+
+[defaults]
+origin = "unknown"
+role = "workload"
+halts = "always"
+cell_bits = 8
+
+[[program]]
+file = "bench.b"
+family = "unknown-bench"
+notes = "Prints OK after 3,133,506 instructions at -O0."
