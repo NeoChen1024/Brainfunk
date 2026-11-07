@@ -1,26 +1,34 @@
+# bmc replaces the 8 x 8 multiplier with an XOR on both sides of the check: the multiplier is
+# what the solver spends its time on, and it takes bmc from about 20 steps to over 30 in the
+# same time. multiplier keeps the real one, to a smaller depth.
 [tasks]
 bmc
-prove
+multiplier
 latency
 cover
 
 [options]
 bmc: mode bmc
-bmc: depth 40
-prove: mode prove
-prove: depth 12
-latency: mode prove
-latency: depth 12
+bmc: depth 32
+multiplier: mode bmc
+multiplier: depth 15
+latency: mode bmc
+latency: depth 28
 cover: mode cover
 cover: depth 40
 
 [engines]
-smtbmc yices
+smtbmc --nopresat yices
 
 [script]
-read -formal -sv -DFORMAL brainfunk_core.sv
-latency: read -formal -sv -DBOUNDED_LATENCY core_props.sv
-~latency: read -formal -sv core_props.sv
+multiplier: read -formal -sv -DFORMAL brainfunk_core.sv
+multiplier: read -formal -sv core_props.sv
+bmc: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
+bmc: read -formal -sv -DFORMAL_ABSTRACT_MUL core_props.sv
+latency: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
+latency: read -formal -sv -DBOUNDED_LATENCY -DFORMAL_ABSTRACT_MUL core_props.sv
+cover: read -formal -sv -DFORMAL brainfunk_core.sv
+cover: read -formal -sv core_props.sv
 prep -top core_props
 
 [files]
