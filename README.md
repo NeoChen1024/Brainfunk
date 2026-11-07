@@ -94,8 +94,8 @@ target selection and optimization only when the emitted IR is compiled. See
 
 # CPU core
 
-[rtl/](rtl) is a SystemVerilog core for the current instruction set, verified against the
-interpreter by lock-step cosimulation and formal proofs, with a build for the YADAN Board. See
+[rtl/](rtl) is a pipelined SystemVerilog core for the current instruction set, verified against the
+interpreter by lock-step cosimulation and formal checks, and run on a YADAN Board at 168 MHz. See
 [doc/rtl.md](doc/rtl.md).
 
 The Logisim circuit in [CPU/](CPU) implements an earlier 24-bit instruction format:

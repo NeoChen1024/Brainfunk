@@ -2,7 +2,7 @@
 # Cosimulation, UART and formal checks for rtl/.
 #
 #   sh tb/run-hw-tests.sh           random programs, images, and the short corpus programs
-#   HW_TEST_FULL=1 sh tb/...        also long.b and mandel.b, about 40 minutes
+#   HW_TEST_FULL=1 sh tb/...        also long.b and mandel.b, about 2 hours
 #
 # test/ is not part of the repository; programs that are absent are reported as skipped.
 set -eu
@@ -62,9 +62,10 @@ done
 "$cosim" --stall "$work/program.hex" --limit 100000 >/dev/null
 
 # ---- the board top over its UART pins ----
-./brainfunk -O2 -m bit -s ',+.,+.' | ./bit2bin >build/uart_tb.hex 2>/dev/null
+./brainfunk -O0 -m bit -s '+.,+.,+.' | ./bit2bin >build/uart_tb.hex 2>/dev/null
 verilator --binary --timing -j "${JOBS:-8}" --top-module uart_tb --Mdir build/uart_tb \
-    tb/uart_tb.sv rtl/board/yadan_top.sv rtl/board/uart.sv rtl/brainfunk_soc.sv rtl/brainfunk_core.sv \
+    tb/uart_tb.sv rtl/board/yadan_top.sv rtl/board/yadan_pll.sv rtl/board/uart.sv rtl/brainfunk_soc.sv \
+    rtl/brainfunk_mem.sv rtl/brainfunk_core.sv \
     -o uart_tb >/dev/null 2>&1
 build/uart_tb/uart_tb | grep -q 'uart_tb passed'
 

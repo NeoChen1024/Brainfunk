@@ -1,5 +1,5 @@
 # YADAN Board pins, from its documentation (chapter 1, table 1.1).
-set_pin_assignment { clk }            { LOCATION = P34; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { clk_24mhz }      { LOCATION = P34; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { reset_button_n } { LOCATION = P51; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { uart_rx_pin }    { LOCATION = P54; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { uart_tx_pin }    { LOCATION = P52; IOSTANDARD = LVCMOS33; }
