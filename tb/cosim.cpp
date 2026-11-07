@@ -298,7 +298,15 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
         switch (choice) {
         case 0: words.push_back(0x10000000u | field(cell(), 12) << 8 | data); break;
         case 1: words.push_back(0x20000000u | field(cell(), 12) << 8 | data); break;
-        case 2: words.push_back(0x30000000u | field(cell(), 8) << 20 | field(cell(), 12) << 8 | data); break;
+        case 2: {
+            // Factors of 1 and -1 read both cells at once, unless they share a bank of the cache in
+            // different lines, which a distance of 32 makes them.
+            const int dst = cell();
+            const int src = next(4) == 0 ? dst + (next(2) ? 32 : -32) : cell();
+            const auto factor = next(4) == 0 ? data : next(2) ? 1u : 255u;
+            words.push_back(0x30000000u | field(src, 8) << 20 | field(dst, 12) << 8 | factor);
+            break;
+        }
         case 3: words.push_back(0x80000001u | field(cell(), 12) << 8); break;
         default: words.push_back(0x80000000u | field(cell(), 12) << 8); break;
         }

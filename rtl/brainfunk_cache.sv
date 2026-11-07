@@ -124,6 +124,12 @@ endmodule
 // instruction that missed, and waits in A for dmem_busy to fall. Nothing is in the pipeline by
 // the time this module uses the read port or writes a tag.
 //
+// A second read port serves a MUL's source. Every cell of a line has a block RAM of its own, so the
+// one the second port reads takes its address, and the others the first port's; the core never asks
+// for two cells in the same bank and different lines, and nothing while this module has the read port.
+// The core decodes the bank, a cycle ahead, so that only a multiplexer comes before the block RAM.
+// The tags have a copy for it.
+//
 // A retried instruction must find everything it needs in the cache at once, or two lines could
 // evict each other for ever. MUL is the only one that touches two cells, whose addresses are at
 // most about 2 KiB apart, so they never share an index in a cache of this size.
@@ -139,6 +145,10 @@ module dcache #(
     output logic [7:0]            dmem_rdata,
     output logic                  dmem_hit,
     output logic [31:0]           dmem_zero,   // with dmem_rdata: which cells of its line are zero
+    input  logic [31:0]           dmem_bank2,    // which bank the second port reads, one-hot, or none
+    input  logic [ADDR_WIDTH-1:0] dmem_raddr2,
+    output logic [7:0]            dmem_rdata2,
+    output logic                  dmem_hit_both, // dmem_hit, and the second port hit if it was read
     input  logic                  dmem_we,
     input  logic [ADDR_WIDTH-1:0] dmem_waddr,
     input  logic [7:0]            dmem_wdata,
@@ -169,7 +179,7 @@ module dcache #(
     logic                  clearing;   // from a reset until the last zeroes have gone out
     logic [2:0]            drain;
 
-    logic [TAG_WIDTH:0]    tag_rdata;
+    logic [TAG_WIDTH:0]    tag_rdata, tag2_rdata;
     logic                  tag_we, tag_valid_in;
     logic                  dirty_rdata;
 
@@ -185,6 +195,16 @@ module dcache #(
         .en(1'b1),
         .raddr(raddr[13:5]),
         .rdata(tag_rdata),
+        .we(tag_we),
+        .waddr(index_q),
+        .wdata({tag_valid_in, tag_q})
+    );
+
+    ram_bank #(.WIDTH(TAG_WIDTH + 1), .ADDR_WIDTH(9)) tag2 (
+        .clk(clk),
+        .en(1'b1),
+        .raddr(dmem_raddr2[13:5]),
+        .rdata(tag2_rdata),
         .we(tag_we),
         .waddr(index_q),
         .wdata({tag_valid_in, tag_q})
@@ -219,7 +239,7 @@ module dcache #(
             ram_bank #(.WIDTH(8), .ADDR_WIDTH(9)) ram (
                 .clk(clk),
                 .en(1'b1),
-                .raddr(raddr[13:5]),
+                .raddr(dmem_bank2[i] ? dmem_raddr2[13:5] : raddr[13:5]),
                 .rdata(line_rdata[8*i +: 8]),
                 .we(filling ? fill_addr[2:0] == 3'(i / 4) : (dmem_we && dmem_waddr[4:0] == 5'(i))),
                 .waddr(filling ? fill_addr[11:3] : dmem_waddr[13:5]),
@@ -228,10 +248,18 @@ module dcache #(
         end
     endgenerate
 
-    logic [ADDR_WIDTH-1:0] addr_1, addr_2;
+    logic [ADDR_WIDTH-1:0] addr_1, addr_2, addr2_1, addr2_2;
+    logic                  re2_1, re2_2;
     always_ff @(posedge clk) begin
         addr_1     <= raddr;
         addr_2     <= addr_1;
+        addr2_1    <= dmem_raddr2;
+        addr2_2    <= addr2_1;
+        re2_1      <= |dmem_bank2;
+        re2_2      <= re2_1;
+        dmem_hit_both <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]} &&
+                         (!re2_2 || tag2_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]});
+        dmem_rdata2 <= line_rdata[8*addr2_2[4:0] +: 8];
         dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};
         dmem_rdata <= line_rdata[8*addr_2[4:0] +: 8];
         for (int i = 0; i < 32; i++) dmem_zero[i] <= line_rdata[8*i +: 8] == 8'd0;

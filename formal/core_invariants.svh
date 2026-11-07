@@ -35,6 +35,11 @@ function automatic logic [ADDR_WIDTH-1:0] long_sum_of(input logic [ADDR_WIDTH-1:
     long_sum_of = base + ADDR_WIDTH'($signed(instr[19:0]));
 endfunction
 
+// A MUL that reads its source on the second port, at the same time as its destination.
+`define PAIR_DECODE(s) \
+    assert (s``_pair == mul_pair_of(s``_instr)); \
+    if (s``_pair) assert (s``_is_mul_dst && s``_ea2 == short_ea_of(s``_base, s``_instr));
+
 // Everything a stage's decoded fields must say about its word.
 `define STAGE_DECODE(s) \
     if (s``_valid) begin \
@@ -67,6 +72,7 @@ endfunction
         if (s``_is_mul_src) assert (s``_ea == short_ea_of(s``_base, s``_instr)); \
         if (s``_is_mul_dst || (s``_instr[31:28] == OP_A || s``_instr[31:28] == OP_S) && word_legal(s``_instr)) assert (s``_ea == addr_ea_of(s``_base, s``_instr)); \
         if (!s``_is_scan) assert (s``_base_after == (s``_instr[31:28] == OP_M && word_legal(s``_instr) ? long_sum_of(s``_base, s``_instr) : s``_base)); \
+        `PAIR_DECODE(s) \
     end
 
 `define NOTHING_AFTER(s) \
@@ -83,6 +89,14 @@ endfunction
     if (m2_valid && ok_w && m2_ea == c && !m2_from_w_next && !m2_from_w && !m2_from_w1 && !m2_from_w2) assert (hit2 && value2 == cell); \
     if (x_valid && ok_w && x_ea == c && !(x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes) && !x_from_w) begin \
         if (x_from_early) assert (x_early == cell); \
+        else assert (hit3 && value3 == cell); \
+    end
+
+`define SOURCE_VALUE(c, cell, hit1, hit2, hit3, value1, value2, value3) \
+    if (m1_valid && ok_w && m1_pair && m1_ea2 == c && !(|m1_hit2)) assert (hit1 && value1 == cell); \
+    if (m2_valid && ok_w && m2_pair && m2_ea2 == c && !m2_s_from_w_next && !m2_s_from_w && !m2_s_from_w1 && !m2_s_from_w2) assert (hit2 && value2 == cell); \
+    if (x_valid && ok_w && x_pair && x_ea2 == c && !x_s_from_w) begin \
+        if (x_s_from_early) assert (x_s_early == cell); \
         else assert (hit3 && value3 == cell); \
     end
 
@@ -282,6 +296,7 @@ always_ff @(posedge clk) if (!rst) begin
         if (x_is_branch || x_is_mul_src) assert (x_ea == short_ea_of(x_base, x_instr));
         if (x_is_mul_dst || (x_instr[31:28] == OP_A || x_instr[31:28] == OP_S) && word_legal(x_instr)) assert (x_ea == addr_ea_of(x_base, x_instr));
         if (!x_is_scan) assert (x_base_after == (x_instr[31:28] == OP_M && word_legal(x_instr) ? long_sum_of(x_base, x_instr) : x_base));
+        `PAIR_DECODE(x)
     end
 
     if (w_valid) begin
@@ -354,6 +369,8 @@ always_ff @(posedge clk) if (!rst) begin
             assert (a_mul_source == ADDR_WIDTH'($signed(a_instr[27:20])));
             assert (a_mul_unit == (a_instr[7:0] == 8'd1 || a_instr[7:0] == 8'hFF));
             assert (a_mul_negate == (a_instr[7:0] == 8'hFF));
+            assert (a_mul_pair == mul_pair_of(a_instr));
+            if (a_mul_pair) assert (a_phase == 2'd2);
             case (a_phase)
                 2'd0: assert (a_go && !a_last && a_offset == ADDR_WIDTH'($signed(a_instr[27:20])));
                 2'd1: assert (!a_go && !a_last && a_offset == a_offset_2 && !a_mul_unit);
@@ -448,27 +465,50 @@ always_ff @(posedge clk) if (!rst) begin
     `CELL_VALUE(a, cell_a, a1_hit, a2_hit, a3_hit, a1_value, a2_value, a3_value)
     `CELL_VALUE(b, cell_b, b1_hit, b2_hit, b3_hit, b1_value, b2_value, b3_value)
 
+    // The same for the second port.
+    if (m1_valid && ok_w) begin
+        assert (m1_hit2[1] == (m2_valid && m2_writes && m2_ea == m1_ea2));
+        assert (m1_hit2[2] == (x_valid && x_writes && x_ea == m1_ea2));
+        assert (m1_hit2[3] == (w_valid && w_writes && w_ea == m1_ea2));
+        assert (m1_hit2[4] == (h1_we && h1_ea == m1_ea2));
+    end
+    if (m2_valid && ok_w) begin
+        assert (m2_s_from_w_next == (x_valid && x_writes && x_ea == m2_ea2));
+        assert (m2_s_from_w == (!m2_s_from_w_next && w_valid && w_writes && w_ea == m2_ea2));
+        assert (m2_s_from_w1 == (!m2_s_from_w_next && !m2_s_from_w && h1_we && h1_ea == m2_ea2));
+        assert (m2_s_from_w2 == (!m2_s_from_w_next && !m2_s_from_w && !m2_s_from_w1 && h2_we && h2_ea == m2_ea2));
+    end
+    if (x_valid && ok_w) assert (x_s_from_w == (w_valid && w_writes && w_ea == x_ea2));
+    // Which reads the second port serves, and served three edges behind.
+    assert ((|m0_bank2) == (m0_valid && m0_pair));
+    if (m0_valid && m0_pair) assert (m0_bank2 == (1 << LINE_BITS)'(1) << m0_ea2[LINE_BITS-1:0]);
+    if (m1_valid) assert (re2_1 == m1_pair);
+    if (m2_valid) assert (re2_2 == m2_pair);
+    if (x_valid) assert (re2_3 == x_pair);
+    `SOURCE_VALUE(a, cell_a, as1_hit, as2_hit, as3_hit, a1_value, a2_value, a3_value)
+    `SOURCE_VALUE(b, cell_b, bs1_hit, bs2_hit, bs3_hit, b1_value, b2_value, b3_value)
+
     // The multiplier: its source is taken in X. A destination with a factor of 1 or -1 can follow it
     // straight away; any other needs a cycle between, for the multiplier. A destination is told
     // nothing about which source it belongs to: only that the next one to reach X is for its cell.
     if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd1) assert (m0_valid && m0_is_mul_src && m0_pc == a_pc && m0_instr == a_instr && m0_base == base_ptr);
-    if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd2) begin
+    if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd2 && !a_mul_pair) begin
         if (!a_mul_unit) assert (!`SOURCE_IN(m0));
         assert (`PROVIDED_FROM_M0(short_ea_of(base_ptr, a_instr)));
     end
-    if (ok_m1 && m0_valid && m0_is_mul_dst) begin
+    if (ok_m1 && m0_valid && m0_is_mul_dst && !m0_pair) begin
         if (!m0_mul_unit) assert (!`SOURCE_IN(m1));
         assert (`PROVIDED_FROM_M1(short_ea_of(m0_base, m0_instr)));
     end
-    if (ok_m2 && m1_valid && m1_is_mul_dst) begin
+    if (ok_m2 && m1_valid && m1_is_mul_dst && !m1_pair) begin
         if (!m1_mul_unit) assert (!`SOURCE_IN(m2));
         assert (`PROVIDED_FROM_M2(short_ea_of(m1_base, m1_instr)));
     end
-    if (ok_x && m2_valid && m2_is_mul_dst) begin
+    if (ok_x && m2_valid && m2_is_mul_dst && !m2_pair) begin
         if (!m2_mul_unit) assert (!`SOURCE_IN(x));
         assert (`PROVIDED_FROM_X(short_ea_of(m2_base, m2_instr)));
     end
-    if (ok_w && x_valid && x_is_mul_dst) begin
+    if (ok_w && x_valid && x_is_mul_dst && !x_pair) begin
         assert (operand_holds(short_ea_of(x_base, x_instr)));
 `ifdef FORMAL_ABSTRACT_MUL
         if (!x_mul_unit) assert (product == (mul_operand ^ x_data));

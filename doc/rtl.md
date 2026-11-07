@@ -55,7 +55,7 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Event | Cycles |
 |---|---|
 | `A`, `S`, `M`, `JE`, `JN` | 1 |
-| `MUL` | 3: source, multiplier, destination; 2 with a factor of 1 or -1; 1 sharing the previous `MUL`'s source |
+| `MUL` | 1 with a factor of 1 or -1; otherwise 3: source, multiplier, destination, or 1 sharing the previous `MUL`'s source |
 | `F` | 1 per line reached, plus 7 to end, plus up to 4 waiting for an older write |
 | Branch predicted taken, in the next-fetch table | nothing more |
 | Branch predicted taken, not in it | 3 more |
@@ -130,8 +130,24 @@ which now takes its factor from the destination in `M2`, so that a shared source
 |---|---|---|---|
 | `mandel.b` | 3.57 cycles | 2.44 | 2.84 G → 2.47 G |
 
-Reading the source and destination together, when they share a line, would make most of the rest one
-cycle. That needs a second read of the cell store, as dual issue will, so it waits for that.
+A factor of 1 or -1 is now one cycle: the destination reads on the first port and the source on a
+second, and `X` adds the two, or adds the complement and a carry. The data cache's 32 byte banks each
+take their own address, so the second port costs a copy of the tags and a multiplexer per bank; the
+core decodes which bank the second port wants as it leaves `A`, so that the multiplexer is all that
+comes before the block RAM. Two cells in the same bank of different lines cannot go together, and `D`
+tells that from the offsets alone, because both are `base_ptr` plus a constant: those go the old way,
+and none of the corpus has any. The source has forwarding of its own, as wide as the first port's, and
+the cache gives one hit for both reads, so that `X`'s restart has no more to look at than before. A `MUL`
+that reads both cells shares its source with nothing, which leaves sharing to other factors.
+
+| Program | `MUL` before | `MUL` after | Cycles |
+|---|---|---|---|
+| `mandel.b` | 2.44 cycles | 1.85 | 2.47 G → 2.25 G |
+| `hanoi.b` | 2.21 cycles | 1.23 | 72.5 M → 71.1 M |
+
+This is the first part of dual issue, which a trace model of the core put at 1.5 to 1.7 times fewer
+cycles on these programs, with this as most of its gain on `mandel.b`. It cost 614 LUTs and one block
+RAM, at the same 168 MHz.
 
 ### Branch prediction
 

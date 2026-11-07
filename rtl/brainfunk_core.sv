@@ -7,9 +7,12 @@
 //   A       base_ptr + offset; M moves base_ptr here. MUL, F and IO stay for several cycles
 //
 // MUL is a read of its source and a read and write of its destination, three cycles apart so that
-// the multiplier has a cycle between X and X. A factor of 1 or -1 needs no multiplier, so its
-// destination follows straight after. A MUL right after another one with the same source, which
-// that one did not write, needs no read of its own: the source's value is still in mul_operand.
+// the multiplier has a cycle between X and X. A MUL right after another one with the same source,
+// which that one did not write, needs no read of its own: the source's value is still in mul_operand.
+// A factor of 1 or -1 needs no multiplier, and is one cycle: the destination reads on the first
+// port and the source on the second, and X adds or subtracts the two. The cache has a bank per
+// cell of a line, each with an address of its own, so that works unless the two cells are in the
+// same bank and different lines, which D can tell from the offsets alone: those take the long way.
 //   M0..M2  the data memory read, which takes three edges
 //   X       result, zero test; resolves branches and the end of F
 //   W       writes the data memory, retires
@@ -83,6 +86,12 @@ module brainfunk_core #(
     output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
     input  logic                  dmem_hit,        // arrives with dmem_rdata
+    // The second read port: a MUL's source, for a factor of 1 or -1. dmem_bank2 is which bank of the line
+    // it reads, one-hot, or none; never dmem_raddr's in another line.
+    output logic [(1 << LINE_BITS)-1:0] dmem_bank2,
+    output logic [ADDR_WIDTH-1:0] dmem_raddr2,
+    input  logic [7:0]            dmem_rdata2,
+    input  logic                  dmem_hit_both,   // with dmem_hit: and the second port's read hit, if there was one
     input  logic [(1 << LINE_BITS)-1:0] dmem_zero, // arrives with dmem_rdata: which cells of the line are zero
     output logic                  dmem_miss,       // one cycle; the instruction restarts
     output logic [ADDR_WIDTH-1:0] dmem_miss_addr,
@@ -228,7 +237,7 @@ module brainfunk_core #(
     logic                  a_is_add, a_is_set, a_is_mul, a_is_scan, a_is_move, a_is_branch, a_is_je;
     logic                  a_is_in, a_is_out, a_is_halt, a_multi;
     logic                  a_predict_taken;
-    logic                  a_mul_unit, a_mul_negate, a_mul_chained;
+    logic                  a_mul_unit, a_mul_negate, a_mul_chained, a_mul_pair;
     logic [ADDR_WIDTH-1:0] a_mul_source;
     logic [ADDR_WIDTH-1:0] a_offset, a_offset_2;
     logic [7:0]            a_data;
@@ -287,8 +296,9 @@ module brainfunk_core #(
         end
     endfunction
 
-    logic [ADDR_WIDTH-1:0] base_ptr, ea, moved;
+    logic [ADDR_WIDTH-1:0] base_ptr, ea, ea2, moved;
     assign ea    = base_ptr + a_offset;
+    assign ea2   = base_ptr + a_mul_source;
     assign moved = base_ptr + a_offset_2;
 
     // The next line of a scan, from the line now in M0.
@@ -315,15 +325,20 @@ module brainfunk_core #(
         if (rst || redirect) begin
             prev_mul <= 1'b0;
         end else if (a_valid && a_ready) begin
-            prev_mul        <= a_is_mul && !scan_done && a_mul_source != a_offset_2;
+            prev_mul        <= a_is_mul && !a_mul_pair && !scan_done && a_mul_source != a_offset_2;
             prev_mul_source <= a_mul_source;
         end
     end
 
-    logic d_mul_chained, d_mul_unit;
-    assign d_mul_chained = d_is_mul && (a_valid ? a_is_mul && a_mul_source != a_offset_2 && d_short[ADDR_WIDTH-1:0] == a_mul_source
-                                                : prev_mul && d_short[ADDR_WIDTH-1:0] == prev_mul_source);
+    // A MUL with both cells read at once: a factor of 1 or -1, and the cells not in the same bank of
+    // different lines. Their distance is the distance of the offsets.
+    logic d_mul_chained, d_mul_unit, d_mul_pair;
     assign d_mul_unit    = d_instr[7:0] == 8'd1 || d_instr[7:0] == 8'hFF;
+    assign d_mul_pair    = d_is_mul && d_mul_unit && !(d_short[LINE_BITS-1:0] == d_addr[LINE_BITS-1:0] &&
+                                                       d_short[ADDR_WIDTH-1:0] != d_addr[ADDR_WIDTH-1:0]);
+    assign d_mul_chained = d_is_mul && !d_mul_pair &&
+                           (a_valid ? a_is_mul && !a_mul_pair && a_mul_source != a_offset_2 && d_short[ADDR_WIDTH-1:0] == a_mul_source
+                                    : prev_mul && d_short[ADDR_WIDTH-1:0] == prev_mul_source);
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
@@ -372,6 +387,7 @@ module brainfunk_core #(
             a_mul_unit      <= d_mul_unit;
             a_mul_negate    <= d_instr[7:0] == 8'hFF;
             a_mul_chained   <= d_mul_chained;
+            a_mul_pair      <= d_mul_pair;
             a_mul_source    <= d_short[ADDR_WIDTH-1:0];
             a_next_taken    <= d_next_taken;
             a_fetched_next  <= i2_pc;
@@ -382,14 +398,14 @@ module brainfunk_core #(
             a_instr         <= d_instr;
             a_next_pc       <= d_is_halt ? d_pc : d_predict_taken ? d_target : d_seq;
             a_alt_pc        <= d_predict_taken ? d_seq : d_target;
-            a_phase         <= d_mul_chained ? 2'd2 : 2'd0;
-            a_last          <= d_mul_chained;
+            a_phase         <= d_mul_chained || d_mul_pair ? 2'd2 : 2'd0;
+            a_last          <= d_mul_chained || d_mul_pair;
             a_go            <= !d_is_scan || !(a_writes || older_writes);
             a_scan_wide     <= d_scan_wide;
             a_scan_back     <= d_instr[19];
             a_scan_stride   <= d_scan_wide ? d_stride : '0;
             a_scan_more     <= 1'b0;
-            a_offset        <= ((d_is_mul && !d_mul_chained) || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
+            a_offset        <= ((d_is_mul && !d_mul_chained && !d_mul_pair) || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
                                                                                           : d_addr[ADDR_WIDTH-1:0];
             a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
         end else if (a_is_mul) begin
@@ -451,7 +467,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m0_base, m0_base_after;
     logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
     logic [31:0]           m0_instr;
-    logic                  m0_next_taken, m0_target_wrong, m0_mul_unit, m0_mul_negate;
+    logic                  m0_next_taken, m0_target_wrong, m0_mul_unit, m0_mul_negate, m0_pair;
+    logic [ADDR_WIDTH-1:0] m0_ea2;
+    logic [(1 << LINE_BITS)-1:0] m0_bank2;
     logic [3:0]            m0_slot;
     logic [1:0]            m0_counter;
 
@@ -461,7 +479,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
     logic [PC_WIDTH-1:0]   m1_pc, m1_next_pc, m1_alt_pc;
     logic [31:0]           m1_instr;
-    logic                  m1_next_taken, m1_target_wrong, m1_mul_unit, m1_mul_negate;
+    logic                  m1_next_taken, m1_target_wrong, m1_mul_unit, m1_mul_negate, m1_pair;
+    logic [ADDR_WIDTH-1:0] m1_ea2;
+    logic [4:1]            m1_hit2;
     logic [3:0]            m1_slot;
     logic [1:0]            m1_counter;
     logic [4:1]            m1_hit;
@@ -476,6 +496,8 @@ module brainfunk_core #(
     logic [3:0]            m2_slot;
     logic [1:0]            m2_counter;
     logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
+    logic                  m2_pair, m2_s_from_w, m2_s_from_w1, m2_s_from_w2, m2_s_from_w_next;
+    logic [ADDR_WIDTH-1:0] m2_ea2;
 
     logic                  x_writes, x_retire, x_is_branch, x_is_je, x_predict_taken;
     logic                  x_is_scan, x_is_out_read, x_is_mul_src, x_is_mul_dst, x_is_halt, x_is_trap;
@@ -488,9 +510,12 @@ module brainfunk_core #(
     logic [1:0]            x_counter;
     logic                  x_from_w, x_from_early;
     logic [7:0]            x_early;
+    logic                  x_pair, x_s_from_w, x_s_from_early;
+    logic [7:0]            x_s_early;
+    logic [ADDR_WIDTH-1:0] x_ea2;
 
     logic                  w_writes, w_retire, w_is_halt, w_is_trap;
-    logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after;
+    logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after, w_miss_ea;
     logic [PC_WIDTH-1:0]   w_pc, w_next_pc, w_alt_pc;
     logic [31:0]           w_instr;
     logic                  w_is_branch, w_taken, w_wrong_guess;
@@ -499,7 +524,7 @@ module brainfunk_core #(
     logic [7:0]            w_data, w1_data, w2_data;
 
     // ---- X ----
-    logic [7:0] x_value, x_addend, mul_operand, product, x_sum;
+    logic [7:0] x_value, x_source, x_addend, x_operand, mul_operand, product, x_sum;
     logic       x_zero, x_taken, x_wrong_way, x_mispredict, x_scan_found, x_miss;
 
     // F: which cells the read in each stage looks at. Stride and direction stay in A while it lasts.
@@ -509,20 +534,23 @@ module brainfunk_core #(
     logic                  scan_found_1;
     logic [ADDR_WIDTH-1:0] scan_base;
 
-    assign x_value = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
+    assign x_value  = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
+    assign x_source = x_s_from_w ? w_data : x_s_from_early ? x_s_early : dmem_rdata2;
     assign x_zero  = x_value == 8'd0;
     assign x_taken = x_zero == x_is_je;
 
     // A miss restarts the instruction, which is the same as a misprediction back to itself.
-    assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit;
+    assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit_both;
     assign x_wrong_way  = x_taken != x_predict_taken;
     assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
     assign x_scan_zeros = dmem_zero & x_scan_mask;
     assign x_scan_found = x_valid && !flush && dmem_hit && x_is_scan && |x_scan_zeros;
 
-    // A factor of 1 or -1 takes the source's value as it is, straight from X a cycle before.
-    assign x_addend = !x_is_mul_dst ? x_data : !x_mul_unit ? product : x_mul_negate ? -mul_operand : mul_operand;
-    assign x_sum    = x_value + x_addend;
+    // A factor of 1 or -1 takes the source's value as it is: from the second port, or else straight
+    // from X a cycle before. Subtracting it is adding its complement and a carry.
+    assign x_addend  = !x_is_mul_dst ? x_data : !x_mul_unit ? product : x_mul_negate ? -mul_operand : mul_operand;
+    assign x_operand = !x_pair ? x_addend : x_mul_negate ? ~x_source : x_source;
+    assign x_sum     = x_value + x_operand + 8'(x_pair && x_mul_negate);
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -582,6 +610,10 @@ module brainfunk_core #(
         m0_next_taken    <= a_next_taken;
         m0_mul_unit      <= a_mul_unit;
         m0_mul_negate    <= a_mul_negate;
+        m0_pair          <= a_is_mul && a_mul_pair;
+        m0_ea2           <= ea2;
+        // as m0_valid, which the cache would otherwise have to decode on its way to the block RAM
+        m0_bank2         <= (!rst && a_issue && !flush && a_is_mul && a_mul_pair) ? (1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;
         m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
         m0_slot           <= a_slot;
         m0_counter       <= a_counter;
@@ -593,6 +625,10 @@ module brainfunk_core #(
         m1_hit[2] <= m2_valid && m2_writes && m0_ea == m2_ea;
         m1_hit[3] <= x_valid && x_writes && m0_ea == x_ea;
         m1_hit[4] <= w_valid && w_writes && m0_ea == w_ea;
+        m1_hit2[1] <= m1_valid && m1_writes && m0_ea2 == m1_ea;
+        m1_hit2[2] <= m2_valid && m2_writes && m0_ea2 == m2_ea;
+        m1_hit2[3] <= x_valid && x_writes && m0_ea2 == x_ea;
+        m1_hit2[4] <= w_valid && w_writes && m0_ea2 == w_ea;
 
         m1_ea            <= m0_ea;
         m1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;
@@ -620,6 +656,8 @@ module brainfunk_core #(
         m1_next_taken    <= m0_next_taken;
         m1_mul_unit      <= m0_mul_unit;
         m1_mul_negate    <= m0_mul_negate;
+        m1_pair          <= m0_pair;
+        m1_ea2           <= m0_ea2;
         m1_target_wrong  <= m0_target_wrong;
         m1_slot           <= m0_slot;
         m1_counter       <= m0_counter;
@@ -629,6 +667,10 @@ module brainfunk_core #(
         m2_from_w      <= !m1_hit[1] && m1_hit[2];
         m2_from_w1     <= !m1_hit[1] && !m1_hit[2] && m1_hit[3];
         m2_from_w2     <= !m1_hit[1] && !m1_hit[2] && !m1_hit[3] && m1_hit[4];
+        m2_s_from_w_next <= m1_hit2[1];
+        m2_s_from_w      <= !m1_hit2[1] && m1_hit2[2];
+        m2_s_from_w1     <= !m1_hit2[1] && !m1_hit2[2] && m1_hit2[3];
+        m2_s_from_w2     <= !m1_hit2[1] && !m1_hit2[2] && !m1_hit2[3] && m1_hit2[4];
 
         m2_ea            <= m1_ea;
         m2_scan_cell     <= m1_scan_cell;
@@ -656,6 +698,8 @@ module brainfunk_core #(
         m2_next_taken    <= m1_next_taken;
         m2_mul_unit      <= m1_mul_unit;
         m2_mul_negate    <= m1_mul_negate;
+        m2_pair          <= m1_pair;
+        m2_ea2           <= m1_ea2;
         m2_target_wrong  <= m1_target_wrong;
         m2_slot           <= m1_slot;
         m2_counter       <= m1_counter;
@@ -667,6 +711,9 @@ module brainfunk_core #(
         x_from_early <= m2_no_read || m2_from_w || m2_from_w1 || m2_from_w2;
         x_early      <= (m2_no_read || !m2_from_w) ? ((m2_no_read || !m2_from_w1) ?
                         ((m2_no_read || !m2_from_w2) ? 8'd0 : w2_data) : w1_data) : w_data;
+        x_s_from_w     <= m2_s_from_w_next;
+        x_s_from_early <= m2_s_from_w || m2_s_from_w1 || m2_s_from_w2;
+        x_s_early      <= m2_s_from_w ? w_data : m2_s_from_w1 ? w1_data : w2_data;
 
         x_ea            <= m2_ea;
         x_scan_mask     <= a_scan_back ? reversed(m2_scan_mask << m2_scan_cell[0]) : m2_scan_mask << m2_scan_cell[0];
@@ -692,6 +739,8 @@ module brainfunk_core #(
         x_next_taken    <= m2_next_taken;
         x_mul_unit      <= m2_mul_unit;
         x_mul_negate    <= m2_mul_negate;
+        x_pair          <= m2_pair;
+        x_ea2           <= m2_ea2;
         x_target_wrong  <= m2_target_wrong;
         x_slot           <= m2_slot;
         x_counter       <= m2_counter;
@@ -711,6 +760,7 @@ module brainfunk_core #(
         w_is_halt    <= x_is_halt;
         w_is_trap    <= x_is_trap;
         w_ea         <= x_ea;
+        w_miss_ea    <= !dmem_hit ? x_ea : x_ea2;
         w_base       <= x_base;
         w_base_after <= x_base_after;
         w_pc         <= x_pc;
@@ -773,10 +823,12 @@ module brainfunk_core #(
     assign dir_counter = w_agrees ? (w_counter == 2'd0 ? 2'd0 : w_counter - 2'd1)
                                   : (w_counter == 2'd3 ? 2'd3 : w_counter + 2'd1);
 
-    assign dmem_raddr = m0_ea;
+    assign dmem_raddr  = m0_ea;
+    assign dmem_bank2  = m0_bank2;
+    assign dmem_raddr2 = m0_ea2;
     assign dmem_waddr = w_ea;
     assign dmem_wdata = w_data;
-    assign dmem_miss_addr = w_ea;
+    assign dmem_miss_addr = w_miss_ea;
 
     assign retire_valid    = (w_valid && w_retire) || scan_done;
     assign retire_pc       = w_pc;

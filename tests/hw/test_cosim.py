@@ -44,10 +44,10 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
-# the design changes. Some are close because of what they are there to catch: mandel.b's, MULs that stop
-# sharing a source (1.741 as it is, 1.769 without); fib.b's, next-fetch false hits left in the table
-# (1.345 against 1.430).
-CPI_LIMITS = {"hanoi.b": 1.2, "mandel.b": 1.755, "LostKng.b": 12.0, "fib.b": 1.40}
+# the design changes. Some are close because of what they are there to catch: hanoi.b's, next-fetch false
+# hits left in the table (1.0539 as it is, 1.0565 with them); mandel.b's, unit MULs that stop reading both
+# cells at once (1.590 against 1.741).
+CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.65, "LostKng.b": 12.0, "fib.b": 1.33}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -82,17 +82,36 @@ LONG_SCAN_IMAGE = "".join(f"{word:08x}\n" for word in [
 
 
 # A MUL that writes its own source, then one with the same source, which must read it again. The second
-# image puts a line boundary between them, so that an instruction cache miss empties A in between.
+# image puts a line boundary between them, so that an instruction cache miss empties A in between. A factor
+# of 2, because MULs with factors of 1 and -1 read both cells at once and share nothing.
 MUL_SELF_WORDS = [0x20000005,   # [0] = 5
                   0x20000101,   # [1] = 1
-                  0x30000001,   # [0] += [0]: 10
-                  0x30000101,   # [1] += [0]: 11, not 6
+                  0x30000002,   # [0] += [0] * 2: 15
+                  0x30000102,   # [1] += [0] * 2: 31, not 11
                   0x80000101,   # output [1]
                   0x90000000]
 MUL_SELF_IMAGES = {
     "adjacent": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS),
     "across_a_line": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS[:2] + [0x20000200] * 5 + MUL_SELF_WORDS[2:]),
 }
+
+# MULs in a row with one source and factors other than 1 and -1, so that each takes it from the one before
+# and needs its own factor in the multiplier.
+MUL_CHAIN_WORDS = [0x20000003,  # [0] = 3
+                   0x20000101,  # [1] = 1
+                   0x20000201,  # [2] = 1
+                   0x30000102,  # [1] += [0] * 2: 7
+                   0x30000205,  # [2] += [0] * 5: 16
+                   0x30000307,  # [3] += [0] * 7: 21
+                   0x80000101, 0x80000201, 0x80000301,
+                   0x90000000]
+MUL_CHAIN_IMAGE = "".join(f"{word:08x}\n" for word in MUL_CHAIN_WORDS)
+
+
+def test_muls_sharing_a_source(tools, tmp_path):
+    image = tmp_path / "mul_chain.hex"
+    image.write_text(MUL_CHAIN_IMAGE)
+    assert cosim_json(image)["halted"]
 
 
 @pytest.mark.parametrize("layout", MUL_SELF_IMAGES)

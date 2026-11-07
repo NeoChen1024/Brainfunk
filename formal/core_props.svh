@@ -58,12 +58,14 @@ always_ff @(posedge clk) begin
     if (!rst && i3_hit && imem_hit) assume (imem_rdata == word);
 end
 
-// ---- data memory: two tracked cells, three edges of latency ----
+// ---- data memory: two tracked cells, three edges of latency, on both read ports ----
 (* anyconst *) logic [ADDR_WIDTH-1:0] a, b;
 (* anyconst *) logic [7:0]            a_init, b_init;
 logic [7:0] cell_a, cell_b;
 
 logic       a1_hit, a2_hit, a3_hit, b1_hit, b2_hit, b3_hit;
+logic       as1_hit, as2_hit, as3_hit, bs1_hit, bs2_hit, bs3_hit;  // the second port
+logic       re2_1, re2_2, re2_3;
 logic [7:0] a1_value, a2_value, a3_value, b1_value, b2_value, b3_value;
 // F reads the line, and sees which of its cells are zero.
 logic       a1_line, a2_line, a3_line, b1_line, b2_line, b3_line;
@@ -92,6 +94,20 @@ always_ff @(posedge clk) begin
 
     if (a3_hit && dmem_hit) assume (dmem_rdata == a3_value);
     if (b3_hit && dmem_hit) assume (dmem_rdata == b3_value);
+
+    as1_hit <= !rst && dmem_raddr2 == a && !(dmem_we && dmem_waddr == a);
+    as2_hit <= as1_hit;
+    as3_hit <= as2_hit;
+    bs1_hit <= !rst && dmem_raddr2 == b && !(dmem_we && dmem_waddr == b);
+    bs2_hit <= bs1_hit;
+    bs3_hit <= bs2_hit;
+    re2_1 <= !rst && |dmem_bank2;
+    re2_2 <= re2_1;
+    re2_3 <= re2_2;
+    if (dmem_hit_both) assume (dmem_hit);
+    if (!re2_3) assume (dmem_hit_both == dmem_hit);
+    if (re2_3 && as3_hit && dmem_hit_both) assume (dmem_rdata2 == a3_value);
+    if (re2_3 && bs3_hit && dmem_hit_both) assume (dmem_rdata2 == b3_value);
 
     a1_line <= !rst && dmem_raddr[ADDR_WIDTH-1:LINE_BITS] == a[ADDR_WIDTH-1:LINE_BITS] && !(dmem_we && dmem_waddr == a);
     a2_line <= a1_line;
@@ -151,6 +167,13 @@ always_comb begin
         default: legal = 1'b0;
     endcase
 end
+
+// A MUL that reads both cells at once: a factor of 1 or -1, and the cells not in one bank of two lines.
+function automatic logic mul_pair_of(input logic [31:0] instr);
+    mul_pair_of = instr[31:28] == OP_MUL && (instr[7:0] == 8'd1 || instr[7:0] == 8'hFF) &&
+                  !(instr[20 +: LINE_BITS] == instr[8 +: LINE_BITS] &&
+                    ADDR_WIDTH'($signed(instr[27:20])) != ADDR_WIDTH'($signed(instr[19:8])));
+endfunction
 
 logic is_input, is_output, writes;
 assign is_input  = op == OP_IO && data == 8'd0;
@@ -229,6 +252,12 @@ always_ff @(posedge clk) begin
         if ($past(retire_valid) && $past(op) == OP_H) assert (halted);
         if (halted && !$past(halted)) assert ($past(retire_valid) && $past(op) == OP_H);
 
+        // The cache can serve two reads at once only from different banks, or the same cell.
+        if (|dmem_bank2) begin
+            assert (dmem_bank2 == (1 << LINE_BITS)'(1) << dmem_raddr2[LINE_BITS-1:0]);
+            assert (dmem_raddr2[LINE_BITS-1:0] != dmem_raddr[LINE_BITS-1:0] || dmem_raddr2 == dmem_raddr);
+        end
+
         // A write is the retiring instruction's, at its effective address.
         if (dmem_we) begin
             assert (retire_valid && writes);
@@ -303,7 +332,7 @@ end
 
 `ifdef NO_MISSES
 // The pipeline alone, without the solver also having to consider every miss: it gets further.
-always_ff @(posedge clk) assume (imem_hit && dmem_hit && !imem_hold && !imem_refetch && !dmem_busy);
+always_ff @(posedge clk) assume (imem_hit && dmem_hit && dmem_hit_both && !imem_hold && !imem_refetch && !dmem_busy);
 `endif
 
 `ifdef BOUNDED_LATENCY
@@ -312,7 +341,7 @@ always_ff @(posedge clk) assume (imem_hit && dmem_hit && !imem_hold && !imem_ref
 logic [4:0] busy = '0;
 always_ff @(posedge clk) begin
     assume (imem_rdata[31:28] != OP_F && imem_rdata[31:28] != OP_IO);
-    assume (imem_hit && dmem_hit && !imem_hold && !imem_refetch && !dmem_busy);
+    assume (imem_hit && dmem_hit && dmem_hit_both && !imem_hold && !imem_refetch && !dmem_busy);
     if (rst || retire_valid || halted || trapped) busy <= '0;
     else if (busy != 5'h1F) busy <= busy + 5'd1;
     if (past_valid && !rst) assert (busy <= 5'd14);
@@ -332,6 +361,10 @@ always_ff @(posedge clk) begin
         cover (retire_valid && op == OP_S);
         cover (retire_valid && op == OP_MUL);
         cover (retire_valid && op == OP_MUL && addr_ea == a && short_ea == b && a != b);
+        cover (retire_valid && op == OP_MUL && addr_ea == a && short_ea == b && a != b && mul_pair_of(retire_instr));
+        cover (retire_valid && op == OP_MUL && data == 8'hFF && !mul_pair_of(retire_instr));
+        cover (retired >= 8'd2 && retire_valid && mul_pair_of(retire_instr) && short_ea == a && $past(retire_valid) &&
+               $past(dmem_we) && $past(dmem_waddr) == a);
         cover (retire_valid && op == OP_M);
         cover (retire_valid && op == OP_F && retire_base_ptr != expected_base);
         cover (retire_valid && op == OP_JE && retire_next_pc == target && target != sequential);
