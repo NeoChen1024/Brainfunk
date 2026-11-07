@@ -303,6 +303,41 @@ private:
 };
 
 /* ================================================================
+ * Program images (image.cpp); doc/bincode.txt is the normative format
+ * ================================================================ */
+
+/* A packed image starts with these four bytes. */
+inline constexpr std::array<std::uint8_t, 4> PACKED_MAGIC = {'B', 'F', 'I', 'M'};
+
+/* The farthest back a copy can reach: its distance is 16 bits. */
+inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
+
+/* Word-level LZ, the payload of a packed image.  Tokens: 0lllllll, then l + 1
+ * literal words; 1lllllll, then a 16-bit distance, for l + 2 words copied one
+ * at a time from that far back.  No copy reaches back more than max_distance. */
+[[nodiscard]] std::vector<std::uint8_t> lz_compress(std::span<const std::uint32_t> words,
+                                                    std::size_t max_distance = LZ_MAX_DISTANCE);
+
+/* Throws BrainfunkException on a token cut short or a copy from before the start. */
+[[nodiscard]] std::vector<std::uint32_t> lz_decompress(std::span<const std::uint8_t> payload);
+
+/* CRC-32 with the common reflected polynomial, as in the packed image header. */
+[[nodiscard]] std::uint32_t crc32(std::span<const std::uint8_t> bytes) noexcept;
+
+/* A whole packed image: magic, payload size, word count, CRC, then the payload. */
+[[nodiscard]] std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words);
+
+/* Throws BrainfunkException unless the magic, both sizes and the CRC are right. */
+[[nodiscard]] std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes);
+
+/* Reads a program image: one hexadecimal word per line, as bit2bin prints it,
+ * or a packed image, told apart by the magic. */
+[[nodiscard]] std::vector<std::uint32_t> read_image(std::istream& in);
+
+/* The same from a file; "-" is standard input. */
+[[nodiscard]] std::vector<std::uint32_t> read_image_file(const std::string& filename);
+
+/* ================================================================
  * Free helpers (exposed for testing / other translation units)
  * ================================================================ */
 

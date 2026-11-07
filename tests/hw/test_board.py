@@ -5,6 +5,7 @@ one resource, so these all run on one worker in the order written.
 
 Not automatic: pressing K_51 to reload from the flash. Hold it for a moment after --flash has run.
 """
+import glob
 import os
 import time
 
@@ -16,7 +17,16 @@ serial = pytest.importorskip("serial")
 
 pytestmark = [pytest.mark.board, pytest.mark.xdist_group("board")]
 
-PORT = os.environ.get("BOARD_PORT", "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0")
+
+def board_port():
+    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfload finds it."""
+    if os.environ.get("BOARD_PORT"):
+        return os.environ["BOARD_PORT"]
+    found = glob.glob("/dev/serial/by-id/*1a86*")
+    return found[0] if len(found) == 1 else None
+
+
+PORT = board_port()
 PROGRAM_BAUD = 115200
 LOAD_BAUD = 2000000
 
@@ -27,8 +37,8 @@ def board(tools):
         pytest.skip("TD_HOME is not set")
     if not (ROOT / "build" / "yadan" / "yadan.bit").exists():
         pytest.skip("no build/yadan/yadan.bit: run make yadan")
-    if not os.path.exists(PORT):
-        pytest.skip(f"{PORT} not found")
+    if PORT is None or not os.path.exists(PORT):
+        pytest.skip("no board serial port: set BOARD_PORT")
     run("sh", "synth/load-yadan.sh")
     # minicom leaves this off, and without it closing the port does not drop RTS, so nothing restarts.
     run("stty", "-F", PORT, "hupcl")
@@ -58,11 +68,11 @@ def expected_output(name, stdin=None, limit=None):
 
 
 def load_ram(image):
-    run(ROOT / "bfload", image, timeout=120)
+    run(ROOT / "bfload", "-p", PORT, image, timeout=120)
 
 
 def test_flash_identifies_itself(board):
-    assert run(ROOT / "bfload", "-i", timeout=20).stdout.strip() == "c84015"
+    assert run(ROOT / "bfload", "-m", "id", "-p", PORT, timeout=20).stdout.strip() == "c84015"
 
 
 def test_program_in_code_ram(board, tmp_path):
@@ -101,7 +111,7 @@ def test_lost_kingdom_plays(board, tmp_path):
 
 def test_corrupted_image_is_refused(board, tmp_path):
     packed = tmp_path / "program.bfi"
-    run(ROOT / "bfload", "-o", packed, assemble_text("+.", 0, tmp_path / "program.hex"))
+    run(ROOT / "bfload", "-m", "pack", "-o", packed, assemble_text("+.", 0, tmp_path / "program.hex"))
     data = bytearray(packed.read_bytes())
     data[-2] ^= 0xFF
     with serial.Serial(PORT, PROGRAM_BAUD, timeout=3, exclusive=True) as port:
@@ -119,7 +129,7 @@ def test_corrupted_image_is_refused(board, tmp_path):
 
 @pytest.mark.flash
 def test_flash_programs_and_boots(board, tmp_path):
-    run(ROOT / "bfload", "-r", assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
+    run(ROOT / "bfload", "-m", "flash", "-p", PORT, assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
     expected = expected_output("hanoi.b")
     assert read_output(len(expected), 30) == expected
 

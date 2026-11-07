@@ -8,7 +8,7 @@ LLVM_AS="${LLVM_AS:-llvm-as}"
 LLVM_OPT="${LLVM_OPT:-opt}"
 
 "$CXX" -std=c++20 -O2 -Wall -Wextra -pedantic -I. -Itests \
-    tests/test-libbrainfunk.cpp libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp \
+    tests/test-libbrainfunk.cpp libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp image.cpp \
     -o tests/test-libbrainfunk
 ./tests/test-libbrainfunk
 

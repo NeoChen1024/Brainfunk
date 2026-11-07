@@ -42,7 +42,7 @@ def pack(tmp_path, name, words):
     hexfile = tmp_path / f"{name}.hex"
     hexfile.write_text("".join(f"{word:08x}\n" for word in words))
     packed = tmp_path / f"{name}.bfi"
-    run(ROOT / "bfload", "-o", packed, hexfile)
+    run(ROOT / "bfload", "-m", "pack", "-o", packed, hexfile)
     data = packed.read_bytes()
     (tmp_path / f"{name}.bytes").write_text("".join(f"{byte:02x}\n" for byte in data))
     return hexfile, tmp_path / f"{name}.bytes", data

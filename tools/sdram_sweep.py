@@ -10,6 +10,7 @@ A clean run has no errors at latency index 2, four cycles after READ. Re-measure
 moves the SDRAM's clock or pads.
 """
 import argparse
+import glob
 import os
 import subprocess
 import sys
@@ -21,7 +22,17 @@ from pathlib import Path
 import serial
 
 ROOT = Path(__file__).resolve().parents[1]
-PORT = os.environ.get("BOARD_PORT", "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0")
+
+
+def board_port():
+    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfload finds it."""
+    if os.environ.get("BOARD_PORT"):
+        return os.environ["BOARD_PORT"]
+    found = glob.glob("/dev/serial/by-id/*1a86*")
+    return found[0] if len(found) == 1 else None
+
+
+PORT = board_port()
 READ_STEPS = {1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 20, 21, 23, 24}
 
 ADC = """set_pin_assignment { clk_24mhz }   { LOCATION = P34; IOSTANDARD = LVCMOS33; }
@@ -95,6 +106,8 @@ def main():
     what = parser.parse_args().what
     if "TD_HOME" not in os.environ:
         sys.exit("set TD_HOME")
+    if PORT is None:
+        sys.exit("no board serial port found: set BOARD_PORT")
     os.setpriority(os.PRIO_PROCESS, 0, 19)
     with tempfile.TemporaryDirectory(dir=ROOT / "build") as work:
         if what == "phase":

@@ -275,10 +275,15 @@ make yadan-load                          # JTAG to SRAM; the configuration flash
 
 ./brainfunk -O2 -m bit -f program.b | ./bit2bin > program.hex
 ./bfload program.hex                     # into Code RAM, and run it
-./bfload -r program.hex                  # into the user flash, and boot from it
-./bfload -c program.hex                  # either, then stay as a terminal for the program
-./bfload -i                              # the user flash's JEDEC ID
+./bfload -m flash program.hex            # into the user flash, and boot from it
+./bfload -t program.hex                  # either, then stay as a terminal for the program
+./bfload -m id                           # the user flash's JEDEC ID
+./bfload -m pack -o program.bfi program.hex   # only pack it; brainfunk -b runs packed images too
 ```
+
+`bfload` finds the board's serial port as the only one under `/dev/serial/by-id` from USB vendor
+`1a86`, the board's CH340; `-p` or `BOARD_PORT` picks one instead. The tests and
+`tools/sdram_sweep.py` find it the same way.
 
 `make yadan-load` needs access to the USB cable, `336c:1002`, which a udev rule can give:
 

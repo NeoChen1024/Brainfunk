@@ -1,6 +1,7 @@
 #include "libbrainfunk.hpp"
 #include "program_generator.hpp"
 
+#include <algorithm>
 #include <array>
 #include <initializer_list>
 #include <cstdint>
@@ -459,6 +460,60 @@ int main() {
         }
     }
     check(halted_programs > 1000, "differential test exercised enough programs");
+
+    /* ---- program images ---- */
+    {
+        /* Runs that copy from 1 word back to the farthest a copy can reach, overlapping themselves. */
+        std::uint32_t state = 1;
+        const auto next = [&state] { return state = state * 1664525u + 1013904223u; };
+        std::vector<std::uint32_t> words;
+        for (const std::size_t distance : {1u, 2u, 7u, 8u, 9u, 300u}) {
+            for (int k = 0; k < 20; ++k) words.push_back(next());
+            for (int k = 0; k < 140; ++k) words.push_back(words[words.size() - distance]);
+        }
+        while (words.size() < LZ_MAX_DISTANCE + 200) words.push_back(next());
+        for (int k = 0; k < 50; ++k) words.push_back(words[words.size() - LZ_MAX_DISTANCE]);
+
+        const auto payload = lz_compress(words);
+        check(lz_decompress(payload) == words, "LZ round trip");
+        check(payload.size() < words.size() * 4, "LZ makes the image smaller");
+        check(lz_decompress(lz_compress(words, 8)) == words, "LZ round trip with a short window");
+        check(lz_compress(words, 8).size() > payload.size(), "a shorter window packs worse");
+
+        const auto packed = pack_image(words);
+        check(std::equal(PACKED_MAGIC.begin(), PACKED_MAGIC.end(), packed.begin()), "packed image starts with the magic");
+        check(unpack_image(packed) == words, "packed image round trip");
+        {
+            std::istringstream in(std::string(packed.begin(), packed.end()));
+            check(read_image(in) == words, "read_image takes a packed image");
+        }
+        {
+            std::istringstream in("80000000\n 0000002a \n9FFFFFFF\n");
+            check(read_image(in) == std::vector<std::uint32_t>{0x80000000u, 0x2au, 0x9fffffffu}, "read_image takes hex words");
+        }
+
+        const auto rejects = [](auto&& action) {
+            try {
+                action();
+            } catch (const BrainfunkException&) {
+                return true;
+            }
+            return false;
+        };
+        auto corrupt = packed;
+        corrupt[corrupt.size() - 2] ^= 0xFF;
+        check(rejects([&] { (void)unpack_image(corrupt); }), "packed image with a wrong CRC is rejected");
+        auto truncated = packed;
+        truncated.pop_back();
+        check(rejects([&] { (void)unpack_image(truncated); }), "packed image cut short is rejected");
+        const std::vector<std::uint8_t> too_far = {0x00, 1, 2, 3, 4, 0x80, 0x02, 0x00};
+        check(rejects([&] { (void)lz_decompress(too_far); }), "copy from before the start is rejected");
+        check(rejects([] {
+                  std::istringstream in("1234567\n");
+                  (void)read_image(in);
+              }),
+              "malformed hex image is rejected");
+    }
 
     return failures == 0 ? 0 : 1;
 }

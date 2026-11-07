@@ -100,7 +100,8 @@ this output.
 Packed images
 -------------
 
-bfload packs an image for the board's loader, rtl/board/loader.sv:
+bfload packs an image for the board's loader, rtl/board/loader.sv, with pack_image() in
+image.cpp; brainfunk -b reads packed images as well as hexadecimal ones:
 
   "BFIM"        4 bytes
   payload size  3 bytes, little endian, in bytes

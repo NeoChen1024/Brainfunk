@@ -1,15 +1,12 @@
-#include "ctre.hpp"
 #include "libbrainfunk.hpp"
 #include <getopt.h>
 
-#include <charconv>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <vector>
 
 using std::cerr;
 using std::cout;
@@ -31,30 +28,6 @@ static void readcode(string& code, const std::string& filename) {
         if (is_brainfuck_instruction(c))
             code += c;
     }
-}
-
-// ------------------------------------------------------------------
-// read_image  -  one hexadecimal word per line, as printed by bit2bin
-// ------------------------------------------------------------------
-
-static std::vector<std::uint32_t> read_image(const std::string& filename) {
-    std::ifstream input(filename);
-    if (!input.is_open()) {
-        std::perror(filename.c_str());
-        std::exit(1);
-    }
-
-    std::vector<std::uint32_t> words;
-    std::string line;
-    while (std::getline(input, line)) {
-        const auto word = ctre::match<"\\s*+([0-9a-fA-F]{8})\\s*+">(line);
-        if (!word) throw BrainfunkException("Malformed program image: " + line);
-        const auto digits = word.get<1>().to_view();
-        std::uint32_t value = 0;
-        std::from_chars(digits.data(), digits.data() + digits.size(), value, 16);
-        words.push_back(value);
-    }
-    return words;
 }
 
 // ------------------------------------------------------------------
@@ -81,7 +54,8 @@ static void print_stats(std::ostream& os, const ExecutionStats& stats) {
     cerr << "Usage: " << argv[0]
          << " [-h] [-m bf|bit|bfc|llvm|stat] [-O level] [-s code string] [-f file] [-b image] [-o out]\n"
          << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n"
-         << "  -b image  load a bit2bin program image instead of source; -O does not apply\n";
+         << "  -b image  load a program image, from bit2bin or packed by bfload, instead of source;\n"
+         << "            -O does not apply\n";
     std::exit(status);
 }
 
@@ -157,7 +131,7 @@ int main(int argc, char** argv) {
     try {
         Brainfunk bf(MEMSIZE);
         if (!image.empty()) {
-            bf.load_bincode(read_image(image));
+            bf.load_bincode(read_image_file(image));
         } else {
             bf.translate(code);
             bf.optimize(opt_level);

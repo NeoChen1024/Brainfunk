@@ -23,11 +23,13 @@ make test
 # Program images
 
 `bit2bin` assembles bitcode into a program image, one hexadecimal word per line, which
-`$readmemh` can load. `brainfunk -b` runs an image directly:
+`$readmemh` can load. `bfload` packs an image with word-level LZ, and sends it to the YADAN
+board; see [doc/rtl.md](doc/rtl.md). `brainfunk -b` runs either kind directly:
 
 ```shell
 ./brainfunk -m bit -f program.b | ./bit2bin > program.hex
-./brainfunk -b program.hex
+./bfload -m pack -o program.bfi program.hex
+./brainfunk -b program.bfi
 ```
 
 # Optimization levels

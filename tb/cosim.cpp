@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -335,20 +334,6 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
     return words;
 }
 
-std::vector<std::uint32_t> read_image(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) throw Divergence{"cannot open " + filename};
-    std::vector<std::uint32_t> words;
-    std::string line;
-    while (std::getline(file, line)) {
-        std::uint32_t word = 0;
-        const auto result = std::from_chars(line.data(), line.data() + line.size(), word, 16);
-        if (result.ec != std::errc{} || line.size() != 8) throw Divergence{"malformed image line: " + line};
-        words.push_back(word);
-    }
-    return words;
-}
-
 /* Same encoding as bit2bin, for programs generated in-process. */
 std::vector<std::uint32_t> assemble(const Brainfunk& program) {
     std::vector<std::uint32_t> words;
@@ -516,7 +501,7 @@ int main(int argc, char** argv) {
             std::ifstream file(files[1], std::ios::binary);
             input.assign(std::istreambuf_iterator<char>(file), {});
         }
-        const auto result = cosim.run(read_image(files[0]), input, stall, limit, seed);
+        const auto result = cosim.run(read_image_file(files[0]), input, stall, limit, seed);
         if (json) print_json(result);
         else      print_result(result);
     } catch (const Divergence& divergence) {

@@ -43,7 +43,8 @@ def build_cosim(directory, sources):
     run("verilator", "--cc", "--exe", "--build", "-j", "2", "-O3", "--x-assign", "fast", "--x-initial", "fast",
         "--top-module", "brainfunk_soc", "-DBRAINFUNK_RETIRE_PORT", "--Mdir", directory / "obj",
         "-CFLAGS", f"-std=c++20 -O1 -I{ROOT} -I{ROOT}/tests", *sources, ROOT / "tb" / "sdram_model.sv",
-        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp", "-o", "cosim")
+        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp",
+        ROOT / "image.cpp", "-o", "cosim")
     return directory / "obj" / "cosim"
 
 

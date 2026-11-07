@@ -1,135 +1,98 @@
-// Packs a program image for the board's loader, and sends it.
-//
-//   bfload image.hex                        load into Code RAM over the serial port and run it
-//   bfload -r image.hex                     program the user flash and boot from it
-//   bfload -c image.hex                     either of those, then stay as a terminal for the program
-//   bfload -o image.bfi image.hex           write the packed image to a file instead
-//   bfload -i                               print the user flash's JEDEC ID
-//
-//   -p port       serial port (default /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0)
-//   -b baud       loader speed; must match LOAD_BAUD in rtl/board/yadan_top.sv (default 2000000)
-//
-// The format is in doc/bincode.txt.
-#include <algorithm>
+/* bfload -- packs a program image for the YADAN board's loader, and sends it over the serial port.
+ * The packed format is in doc/bincode.txt, the board's side in doc/rtl.md. */
+#include "libbrainfunk.hpp"
+
+#include <getopt.h>
+
 #include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <map>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <utility>
+#include <string_view>
 #include <vector>
 
 #include <fcntl.h>
-#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
 
 namespace {
 
-constexpr std::size_t WINDOW_WORDS = 65536; // as far back as a 16-bit distance reaches
-constexpr std::size_t MAX_LITERAL = 128, MIN_COPY = 2, MAX_COPY = 129, MAX_CHAIN = 64;
+constexpr int PROGRAM_BAUD = 115200;          // the program's own I/O, in rtl/board/yadan_top.sv
+constexpr int DEFAULT_LOAD_BAUD = 2000000;    // LOAD_BAUD there
+constexpr std::size_t CODE_RAM_WORDS = 1 << 20;
+constexpr std::string_view BOARD_USB_VENDOR = "1a86"; // the board's CH340
 
-using Bytes = std::vector<std::uint8_t>;
+enum class Mode { Run, Flash, Pack, Id };
 
-std::vector<std::uint32_t> read_image(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) throw std::runtime_error("cannot open " + filename);
-    std::vector<std::uint32_t> words;
-    std::string line;
-    while (std::getline(file, line)) {
-        std::size_t used = 0;
-        const unsigned long word = std::stoul(line, &used, 16);
-        if (used != 8) throw std::runtime_error("malformed image line: " + line);
-        words.push_back(static_cast<std::uint32_t>(word));
+void usage(std::ostream& os, const char* name) {
+    os << "Usage: " << name << " [-m run|flash] [-t] [-p port] [-b baud] image\n"
+       << "       " << name << " -m pack -o file image\n"
+       << "       " << name << " -m id [-p port] [-b baud]\n"
+       << "       " << name << " -h\n"
+       << "\n"
+       << "Packs a program image for the YADAN board's loader, and sends it over the serial port.\n"
+       << "The image is what bit2bin prints, one hexadecimal word per line, or an image already\n"
+       << "packed; '-' is standard input.\n"
+       << "\n"
+       << "  -m mode   what to do (default run):\n"
+       << "              run    load it into Code RAM and run it\n"
+       << "              flash  write it to the user flash, then boot from there\n"
+       << "              pack   only pack it, into -o\n"
+       << "              id     print the user flash's JEDEC ID\n"
+       << "  -t        after run or flash, stay as a terminal for the program, at " << PROGRAM_BAUD << " baud\n"
+       << "  -o file   where pack writes, '-' for standard output\n"
+       << "  -p port   the board's serial port (default $BOARD_PORT, or else the one port under\n"
+       << "            /dev/serial/by-id from USB vendor " << BOARD_USB_VENDOR << ", the board's CH340)\n"
+       << "  -b baud   the loader's speed, LOAD_BAUD in rtl/board/yadan_top.sv (default " << DEFAULT_LOAD_BAUD << ")\n"
+       << "  -h        show this help\n"
+       << "\n"
+       << "Examples:\n"
+       << "  brainfunk -m bit -f program.b | bit2bin > program.hex\n"
+       << "  " << name << " -t program.hex                    run it, and talk to it\n"
+       << "  " << name << " -m flash program.hex              boot it from now on\n"
+       << "  " << name << " -m pack -o program.bfi program.hex\n";
+}
+
+[[noreturn]] void usage_error(const char* name, const std::string& message) {
+    std::cerr << name << ": " << message << "\n\n";
+    usage(std::cerr, name);
+    std::exit(2);
+}
+
+std::optional<Mode> parse_mode(std::string_view text) {
+    if (text == "run") return Mode::Run;
+    if (text == "flash") return Mode::Flash;
+    if (text == "pack") return Mode::Pack;
+    if (text == "id") return Mode::Id;
+    return std::nullopt;
+}
+
+/* -p, else $BOARD_PORT, else the only serial port the board's USB bridge could be. */
+std::string find_port(const std::string& given) {
+    if (!given.empty()) return given;
+    if (const char* from_env = std::getenv("BOARD_PORT"); from_env && *from_env) return from_env;
+
+    const std::filesystem::path by_id = "/dev/serial/by-id";
+    std::vector<std::string> found;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(by_id, error)) {
+        if (entry.path().filename().string().find(BOARD_USB_VENDOR) != std::string::npos) found.push_back(entry.path().string());
     }
-    if (words.empty()) throw std::runtime_error("empty image");
-    return words;
-}
-
-void put_little(Bytes& out, std::uint32_t value, int bytes) {
-    for (int i = 0; i < bytes; ++i) out.push_back(static_cast<std::uint8_t>(value >> (8 * i)));
-}
-
-/* Tokens: 0lllllll, then l+1 literal words; 1lllllll, then a 16-bit distance, for l+2 copied words. */
-Bytes compress(std::span<const std::uint32_t> words) {
-    Bytes out;
-    std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<std::size_t>> seen;
-    std::size_t literal_start = 0;
-
-    const auto flush_literals = [&](std::size_t end) {
-        while (literal_start < end) {
-            const std::size_t run = std::min(end - literal_start, MAX_LITERAL);
-            out.push_back(static_cast<std::uint8_t>(run - 1));
-            for (std::size_t k = 0; k < run; ++k) put_little(out, words[literal_start + k], 4);
-            literal_start += run;
-        }
-    };
-    const auto remember = [&](std::size_t at) {
-        if (at + 1 < words.size()) seen[{words[at], words[at + 1]}].push_back(at);
-    };
-
-    std::size_t at = 0;
-    while (at < words.size()) {
-        std::size_t best = 0, best_distance = 0;
-        if (at + 1 < words.size()) {
-            const auto found = seen.find({words[at], words[at + 1]});
-            if (found != seen.end()) {
-                const auto& places = found->second;
-                std::size_t tried = 0;
-                for (auto place = places.rbegin(); place != places.rend() && tried < MAX_CHAIN; ++place, ++tried) {
-                    if (at - *place > WINDOW_WORDS - 1) break;
-                    std::size_t length = 0;
-                    while (at + length < words.size() && length < MAX_COPY && words[*place + length] == words[at + length]) ++length;
-                    if (length > best) {
-                        best = length;
-                        best_distance = at - *place;
-                    }
-                }
-            }
-        }
-        if (best >= MIN_COPY) {
-            flush_literals(at);
-            out.push_back(static_cast<std::uint8_t>(0x80 | (best - MIN_COPY)));
-            put_little(out, static_cast<std::uint32_t>(best_distance), 2);
-            for (std::size_t k = 0; k < best; ++k) remember(at + k);
-            at += best;
-            literal_start = at;
-        } else {
-            remember(at);
-            ++at;
-        }
-    }
-    flush_literals(at);
-    return out;
-}
-
-std::uint32_t crc32(std::span<const std::uint8_t> bytes) {
-    std::uint32_t crc = 0xFFFFFFFFu;
-    for (const auto byte : bytes) {
-        crc ^= byte;
-        for (int bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ ((crc & 1u) ? 0xEDB88320u : 0u);
-    }
-    return ~crc;
-}
-
-Bytes pack(std::span<const std::uint32_t> words) {
-    if (words.size() >= (std::size_t{1} << 20)) throw std::runtime_error("image larger than Code RAM");
-    const Bytes payload = compress(words);
-    if (payload.size() >= (std::size_t{1} << 24)) throw std::runtime_error("packed image too large");
-    Bytes out{'B', 'F', 'I', 'M'};
-    put_little(out, static_cast<std::uint32_t>(payload.size()), 3);
-    put_little(out, static_cast<std::uint32_t>(words.size()), 3);
-    put_little(out, crc32(payload), 4);
-    out.insert(out.end(), payload.begin(), payload.end());
-    return out;
+    if (found.size() == 1) return found.front();
+    std::string message = found.empty() ? "no serial port under " + by_id.string() + " looks like the board's"
+                                        : "more than one serial port looks like the board's:";
+    for (const auto& port : found) message += "\n  " + port;
+    throw std::runtime_error(message + "\ngive one with -p, or set BOARD_PORT");
 }
 
 speed_t speed_constant(int baud) {
@@ -179,17 +142,93 @@ void write_all(int fd, std::span<const std::uint8_t> bytes) {
     tcdrain(fd);
 }
 
-/* The byte the loader answers with, or 0 on timeout. */
-std::uint8_t wait_byte(int fd, int milliseconds) {
+/* The next byte from the board, or nothing within the time. */
+std::optional<std::uint8_t> wait_byte(int fd, int milliseconds) {
     fd_set read_set;
     FD_ZERO(&read_set);
     FD_SET(fd, &read_set);
     timeval timeout{milliseconds / 1000, (milliseconds % 1000) * 1000};
-    if (select(fd + 1, &read_set, nullptr, nullptr, &timeout) <= 0) return 0;
+    if (select(fd + 1, &read_set, nullptr, nullptr, &timeout) <= 0) return std::nullopt;
     std::uint8_t byte = 0;
-    return read(fd, &byte, 1) == 1 ? byte : std::uint8_t{0};
+    if (read(fd, &byte, 1) != 1) return std::nullopt;
+    return byte;
 }
 
+void expect(int fd, std::uint8_t answer, int milliseconds, const std::string& what) {
+    const auto got = wait_byte(fd, milliseconds);
+    if (!got) throw std::runtime_error("the board did not answer " + what);
+    if (*got != answer) throw std::runtime_error("the board answered " + what + " with '" + std::string(1, static_cast<char>(*got)) + "'");
+}
+
+/* The serial port, with the board's loader listening: a Break, then the loader's speed. */
+class Board {
+public:
+    Board(const std::string& name, int baud) {
+        // Without O_NONBLOCK this waits for a carrier that never comes if CLOCAL is off, as minicom leaves it.
+        fd_ = open(name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+        if (fd_ < 0) throw std::runtime_error(name + ": " + std::strerror(errno));
+        set_speed(fd_, PROGRAM_BAUD);
+        fcntl(fd_, F_SETFL, 0);
+        usleep(50000);
+        tcsendbreak(fd_, 0);
+        usleep(20000);
+        set_speed(fd_, baud);
+        tcflush(fd_, TCIOFLUSH);
+    }
+    Board(const Board&) = delete;
+    Board& operator=(const Board&) = delete;
+    ~Board() { close(fd_); }
+
+    /* Back to the program's speed, for whatever comes after the loader. */
+    void to_program() { set_speed(fd_, PROGRAM_BAUD); }
+    [[nodiscard]] int fd() const noexcept { return fd_; }
+
+private:
+    int fd_ = -1;
+};
+
+void load_into_ram(Board& board, std::span<const std::uint8_t> packed) {
+    const std::uint8_t command[] = {'R'};
+    write_all(board.fd(), command);
+    write_all(board.fd(), packed);
+    const auto answer = wait_byte(board.fd(), 3000);
+    board.to_program();
+    if (!answer) throw std::runtime_error("the board did not answer the image");
+    if (*answer == 'E') throw std::runtime_error("the board found the image corrupt");
+    if (*answer != 'K') throw std::runtime_error("the board answered the image with '" + std::string(1, static_cast<char>(*answer)) + "'");
+    std::fprintf(stderr, "loaded into Code RAM\n");
+}
+
+void write_to_flash(Board& board, std::span<const std::uint8_t> packed) {
+    const auto length = static_cast<std::uint32_t>(packed.size());
+    const std::uint8_t command[] = {'F', static_cast<std::uint8_t>(length), static_cast<std::uint8_t>(length >> 8),
+                                    static_cast<std::uint8_t>(length >> 16)};
+    write_all(board.fd(), command);
+    expect(board.fd(), 'R', 30000, "the erase");
+    std::vector<std::uint8_t> padded(packed.begin(), packed.end());
+    padded.resize((padded.size() + 255) / 256 * 256, 0xFF);
+    for (std::size_t page = 0; page < padded.size(); page += 256) {
+        write_all(board.fd(), std::span(padded).subspan(page, 256));
+        expect(board.fd(), '.', 2000, "page " + std::to_string(page / 256));
+    }
+    board.to_program();
+    std::fprintf(stderr, "flash written; the board checks it as it boots from it\n");
+}
+
+void print_flash_id(Board& board) {
+    const std::uint8_t command[] = {'I'};
+    write_all(board.fd(), command);
+    std::uint32_t id = 0;
+    for (int i = 0; i < 3; ++i) {
+        const auto byte = wait_byte(board.fd(), 1000);
+        if (!byte) throw std::runtime_error("the board did not send the flash's ID");
+        id = id << 8 | *byte;
+    }
+    board.to_program();
+    std::printf("%06x\n", id);
+}
+
+/* Passes the program's output to stdout and stdin to the program, until either ends. */
 void terminal(int port) {
     termios saved{};
     const bool is_tty = tcgetattr(STDIN_FILENO, &saved) == 0;
@@ -219,99 +258,90 @@ void terminal(int port) {
     if (is_tty) tcsetattr(STDIN_FILENO, TCSANOW, &saved);
 }
 
+void write_packed(const std::string& output, std::span<const std::uint8_t> packed) {
+    if (output == "-") {
+        std::cout.write(reinterpret_cast<const char*>(packed.data()), static_cast<std::streamsize>(packed.size()));
+        std::cout.flush();
+        if (!std::cout) throw std::runtime_error("cannot write standard output");
+        return;
+    }
+    std::ofstream file(output, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(packed.data()), static_cast<std::streamsize>(packed.size()));
+    if (!file) throw std::runtime_error("cannot write " + output);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string port_name = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", output, input;
-    int baud = 2000000;
-    bool stay = false, to_rom = false, ask_id = false;
-    try {
-        for (int i = 1; i < argc; ++i) {
-            const std::string arg = argv[i];
-            const auto value = [&]() -> std::string {
-                if (++i >= argc) throw std::runtime_error(arg + " needs a value");
-                return argv[i];
-            };
-            if (arg == "-p") port_name = value();
-            else if (arg == "-b") baud = std::stoi(value());
-            else if (arg == "-o") output = value();
-            else if (arg == "-c") stay = true;
-            else if (arg == "-r") to_rom = true;
-            else if (arg == "-i") ask_id = true;
-            else input = arg;
-        }
-        if (input.empty() && !ask_id) {
-            std::cerr << "usage: bfload [-r] [-c] [-p port] [-b baud] [-o packed] image.hex\n"
-                         "       bfload -i [-p port] [-b baud]\n";
+    const char* name = argv[0];
+    Mode mode = Mode::Run;
+    std::string port_name, output;
+    int baud = DEFAULT_LOAD_BAUD;
+    bool stay = false;
+
+    int opt;
+    while ((opt = ::getopt(argc, argv, "hm:p:b:to:")) != -1) {
+        switch (opt) {
+        case 'h':
+            usage(std::cout, name);
+            return 0;
+        case 'm':
+            if (const auto parsed = parse_mode(optarg)) mode = *parsed;
+            else usage_error(name, std::string("unknown mode: ") + optarg);
+            break;
+        case 'p':
+            port_name = optarg;
+            break;
+        case 'b':
+            try {
+                baud = std::stoi(optarg);
+            } catch (const std::exception&) {
+                usage_error(name, std::string("not a baud rate: ") + optarg);
+            }
+            break;
+        case 't':
+            stay = true;
+            break;
+        case 'o':
+            output = optarg;
+            break;
+        default:
+            usage(std::cerr, name);
             return 2;
         }
+    }
 
-        Bytes packed;
-        if (!ask_id) {
-            const auto words = read_image(input);
-            packed = pack(words);
+    const int images = argc - optind;
+    if (mode == Mode::Id ? images != 0 : images != 1)
+        usage_error(name, mode == Mode::Id ? "id takes no image" : images == 0 ? "no image given" : "more than one image given");
+    if (!output.empty() && mode != Mode::Pack) usage_error(name, "-o is for -m pack; the other modes send the image");
+    if (mode == Mode::Pack && output.empty()) usage_error(name, "-m pack needs -o");
+    if (stay && (mode == Mode::Pack || mode == Mode::Id)) usage_error(name, "-t is for -m run and -m flash");
+
+    try {
+        std::vector<std::uint8_t> packed;
+        if (mode != Mode::Id) {
+            const auto words = read_image_file(argv[optind]);
+            if (words.size() > CODE_RAM_WORDS)
+                throw std::runtime_error(std::to_string(words.size()) + " words is more than Code RAM's " + std::to_string(CODE_RAM_WORDS));
+            packed = pack_image(words);
             std::fprintf(stderr, "%zu words, %zu bytes packed from %zu\n", words.size(), packed.size(), words.size() * 4);
         }
-
-        if (!output.empty()) {
-            std::ofstream file(output, std::ios::binary);
-            file.write(reinterpret_cast<const char*>(packed.data()), static_cast<std::streamsize>(packed.size()));
-            if (!file) throw std::runtime_error("cannot write " + output);
+        if (mode == Mode::Pack) {
+            write_packed(output, packed);
             return 0;
         }
 
-        // Without O_NONBLOCK this waits for a carrier that never comes if CLOCAL is off, as minicom leaves it.
-        const int port = open(port_name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-        if (port < 0) throw std::runtime_error(port_name + ": " + std::strerror(errno));
-        set_speed(port, 115200);
-        fcntl(port, F_SETFL, 0);
-        usleep(50000);
-        tcsendbreak(port, 0);
-        usleep(20000);
-        set_speed(port, baud);
-        tcflush(port, TCIOFLUSH);
-
-        if (ask_id) {
-            const std::uint8_t command[] = {'I'};
-            write_all(port, command);
-            int id = 0;
-            for (int i = 0; i < 3; ++i) id = id << 8 | wait_byte(port, 1000);
-            set_speed(port, 115200);
-            std::printf("%06x\n", id);
-            close(port);
-            return 0;
+        Board board(find_port(port_name), baud);
+        switch (mode) {
+        case Mode::Run: load_into_ram(board, packed); break;
+        case Mode::Flash: write_to_flash(board, packed); break;
+        case Mode::Id: print_flash_id(board); break;
+        case Mode::Pack: break;
         }
-
-        if (to_rom) {
-            const std::uint32_t length = static_cast<std::uint32_t>(packed.size());
-            const std::uint8_t command[] = {'F', static_cast<std::uint8_t>(length), static_cast<std::uint8_t>(length >> 8),
-                                            static_cast<std::uint8_t>(length >> 16)};
-            write_all(port, command);
-            if (wait_byte(port, 30000) != 'R') throw std::runtime_error("the board did not erase the flash");
-            Bytes padded = packed;
-            padded.resize((padded.size() + 255) / 256 * 256, 0xFF);
-            for (std::size_t page = 0; page < padded.size(); page += 256) {
-                write_all(port, std::span(padded).subspan(page, 256));
-                if (wait_byte(port, 2000) != '.') throw std::runtime_error("the board did not write page " + std::to_string(page / 256));
-            }
-            set_speed(port, 115200);
-            std::fprintf(stderr, "flash programmed; the board verifies it by booting from it\n");
-        } else {
-            const std::uint8_t command[] = {'R'};
-            write_all(port, command);
-            write_all(port, packed);
-            const auto answer = wait_byte(port, 3000);
-            set_speed(port, 115200);
-            if (answer != 'K') {
-                std::fprintf(stderr, "the board %s\n", answer == 'E' ? "rejected the image" : "did not answer");
-                return 1;
-            }
-            std::fprintf(stderr, "loaded\n");
-        }
-        if (stay) terminal(port);
-        close(port);
+        if (stay) terminal(board.fd());
     } catch (const std::exception& error) {
-        std::cerr << "bfload: " << error.what() << '\n';
+        std::cerr << name << ": " << error.what() << '\n';
         return 1;
     }
     return 0;
