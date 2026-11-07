@@ -1,0 +1,264 @@
+// Decodes a program image from a byte stream into SDRAM. See doc/bincode.txt for the format.
+//
+// The copy window is 8192 words of block RAM, which also holds each line until it is written.
+// One word at a time: this only has to keep up with a serial port or SPI flash.
+module image_loader (
+    input  logic        clk,
+    input  logic        rst,
+    input  logic        start,      // one cycle
+    input  logic        strict,     // the image must be right at the start: flash, not a UART
+    output logic        busy,
+    output logic        done,       // one cycle, with failed if the image was bad
+    output logic        failed,
+
+    input  logic        in_valid,
+    input  logic [7:0]  in_data,
+    output logic        in_ready,
+
+    output logic        req_valid,
+    output logic [17:0] req_line,
+    input  logic        req_ready,
+    input  logic        wr_fetch,
+    output logic [31:0] wr_data
+);
+    typedef enum logic [3:0] {
+        ST_IDLE, ST_MAGIC, ST_HEADER, ST_TOKEN, ST_LITERAL, ST_LITERAL_PUT, ST_DISTANCE,
+        ST_COPY_READ, ST_COPY_PUT, ST_FLUSH_REQ, ST_FLUSH, ST_FINISH, ST_VERDICT
+    } state_t;
+    state_t state;
+
+    logic [2:0]  magic_pos;
+    logic [3:0]  header_pos;
+    logic [23:0] payload_left, words_total;
+    logic [31:0] crc_expected;
+    logic [8:0]  run_left;
+    logic [1:0]  byte_pos;
+    logic [31:0] word;
+    logic [15:0] distance;
+    logic [23:0] dest;
+    logic        is_copy, last_flush;
+    logic [2:0]  copy_wait;
+    logic [3:0]  flush_word;
+
+    // CRC-32, one bit a cycle.
+    logic [31:0] crc;
+    logic [7:0]  crc_byte;
+    logic [3:0]  crc_bits;
+    logic        crc_feed;
+    logic        crc_bit;
+    assign crc_bit = crc[0] ^ crc_byte[0];
+
+    // Comparisons a cycle late, which is fine: a byte is never taken within 8 cycles of another.
+    logic        payload_empty, image_bad, flushing;
+    logic [12:0] copy_raddr;
+
+    // A byte waits in a register, so that where it came from is not part of what it decides.
+    logic       byte_valid = 1'b0, byte_ready = 1'b0, take;
+    logic [7:0] byte_data;
+    assign in_ready = !byte_valid;
+    assign take     = byte_valid && byte_ready;
+    always_ff @(posedge clk) begin
+        if (rst || take) byte_valid <= 1'b0;
+        else if (in_valid && in_ready) begin
+            byte_valid <= 1'b1;
+            byte_data  <= in_data;
+        end
+    end
+
+    logic dest_right, payload_right, crc_right;
+
+    logic in_payload;
+    assign in_payload = state == ST_TOKEN || state == ST_LITERAL || state == ST_DISTANCE;
+    // A cycle late, which is safe: after a take, the next byte is two cycles away.
+    always_ff @(posedge clk) begin
+        byte_ready <= !rst && crc_bits == 4'd0 && (state == ST_MAGIC || state == ST_HEADER ||
+                      (in_payload && !payload_empty));
+    end
+    assign crc_feed   = take && in_payload;
+
+    logic [12:0] window_raddr;
+    logic [31:0] window_rdata;
+    logic        window_we;
+    logic [31:0] window_wdata;
+
+    banked_ram #(.WIDTH(32), .ADDR_WIDTH(13), .BANK_WIDTH(11)) window (
+        .clk(clk),
+        .en(1'b1),
+        .raddr(window_raddr),
+        .rdata(window_rdata),
+        .we(window_we),
+        .waddr(dest[12:0]),
+        .wdata(window_wdata)
+    );
+
+    // Writing a line reads it back out of the window; wr_fetch allows for the latency.
+    logic [20:0] flush_line;
+    assign window_raddr = flushing ? {flush_line[9:0], flush_word[2:0]} : copy_raddr;
+    assign wr_data      = window_rdata;
+    assign window_we    = state == ST_LITERAL_PUT || state == ST_COPY_PUT;
+    assign window_wdata = is_copy ? window_rdata : word;
+    assign req_valid    = state == ST_FLUSH_REQ;
+    assign req_line     = 18'(flush_line); // code is the bottom half of SDRAM
+    assign busy         = state != ST_IDLE;
+
+    localparam logic [31:0] MAGIC = "BFIM";
+
+    // After a word goes in: is its line complete, is the image complete?
+    logic [23:0] dest_next;
+    assign dest_next = dest + 24'd1;
+
+    always_ff @(posedge clk) begin
+        done          <= 1'b0;
+        payload_empty <= payload_left == 24'd0;
+        dest_right    <= dest == words_total;
+        payload_right <= payload_left == 24'd0;
+        crc_right     <= ~crc == crc_expected;
+        image_bad     <= !(dest_right && payload_right && crc_right);
+        copy_raddr    <= dest[12:0] - distance[12:0];
+        flushing      <= state == ST_FLUSH_REQ || state == ST_FLUSH;
+
+        if (crc_feed) begin
+            crc_byte <= byte_data;
+            crc_bits <= 4'd8;
+        end else if (crc_bits != 4'd0) begin
+            crc_byte <= {1'b0, crc_byte[7:1]};
+            crc_bits <= crc_bits - 4'd1;
+            crc      <= (crc >> 1) ^ (crc_bit ? 32'hEDB88320 : 32'd0);
+        end
+        if (take && in_payload) payload_left <= payload_left - 24'd1;
+
+        if (rst) begin
+            state    <= ST_IDLE;
+            crc_bits <= '0;
+            failed   <= 1'b0;
+        end else begin
+            unique case (state)
+                ST_IDLE: if (start) begin
+                    state      <= ST_MAGIC;
+                    magic_pos  <= '0;
+                    failed     <= 1'b0;
+                    last_flush <= 1'b0;
+                end
+
+                // Whatever was on a serial line before the image is skipped.
+                ST_MAGIC: if (take) begin
+                    if (byte_data == MAGIC[31 - 8*magic_pos[1:0] -: 8]) begin
+                        magic_pos <= magic_pos + 3'd1;
+                        if (magic_pos == 3'd3) begin
+                            header_pos <= '0;
+                            state      <= ST_HEADER;
+                        end
+                    end else if (strict) begin
+                        failed <= 1'b1;
+                        done   <= 1'b1;
+                        state  <= ST_IDLE;
+                    end else begin
+                        magic_pos <= byte_data == MAGIC[31:24] ? 3'd1 : 3'd0;
+                    end
+                end
+
+                ST_HEADER: if (take) begin
+                    // Little endian: payload bytes (3), words (3), CRC (4).
+                    if (header_pos < 4'd3)      payload_left <= {byte_data, payload_left[23:8]};
+                    else if (header_pos < 4'd6) words_total  <= {byte_data, words_total[23:8]};
+                    else                        crc_expected <= {byte_data, crc_expected[31:8]};
+                    header_pos <= header_pos + 4'd1;
+                    if (header_pos == 4'd9) begin
+                        state <= ST_TOKEN;
+                        dest  <= '0;
+                        crc   <= '1;
+                    end
+                end
+
+                ST_TOKEN: begin
+                    if (take) begin
+                        byte_pos <= '0;
+                        if (byte_data[7]) begin
+                            is_copy  <= 1'b1;
+                            run_left <= {2'b00, byte_data[6:0]} + 9'd2;
+                            state    <= ST_DISTANCE;
+                        end else begin
+                            is_copy  <= 1'b0;
+                            run_left <= {2'b00, byte_data[6:0]} + 9'd1;
+                            state    <= ST_LITERAL;
+                        end
+                    end else if (payload_empty && crc_bits == 4'd0) begin
+                        state <= ST_FINISH;
+                    end
+                end
+
+                ST_LITERAL: if (take) begin
+                    word     <= {byte_data, word[31:8]};
+                    byte_pos <= byte_pos + 2'd1;
+                    if (byte_pos == 2'd3) state <= ST_LITERAL_PUT;
+                end
+
+                ST_LITERAL_PUT: begin
+                    dest     <= dest_next;
+                    run_left <= run_left - 9'd1;
+                    state    <= dest_next[2:0] == 3'd0 ? ST_FLUSH_REQ : (run_left == 9'd1 ? ST_TOKEN : ST_LITERAL);
+                    flush_line <= 21'(dest[23:3]);
+                end
+
+                ST_DISTANCE: if (take) begin
+                    distance <= {byte_data, distance[15:8]};
+                    byte_pos <= byte_pos + 2'd1;
+                    if (byte_pos == 2'd1) begin
+                        state     <= ST_COPY_READ;
+                        copy_wait <= '0;
+                    end
+                end
+
+                ST_COPY_READ: begin // the address takes a cycle, and the window three edges
+                    copy_wait <= copy_wait + 3'd1;
+                    if (copy_wait == 3'd5) state <= ST_COPY_PUT;
+                end
+
+                ST_COPY_PUT: begin
+                    dest     <= dest_next;
+                    run_left <= run_left - 9'd1;
+                    copy_wait <= '0;
+                    state    <= dest_next[2:0] == 3'd0 ? ST_FLUSH_REQ : (run_left == 9'd1 ? ST_TOKEN : ST_COPY_READ);
+                    flush_line <= 21'(dest[23:3]);
+                end
+
+                ST_FLUSH_REQ: begin
+                    flush_word <= '0;
+                    if (req_ready) state <= ST_FLUSH;
+                end
+
+                ST_FLUSH: begin
+                    if (wr_fetch) flush_word <= flush_word + 4'd1;
+                    if (flush_word == 4'd8) begin
+                        copy_wait <= '0;
+                        // Back to whichever run this line ended in.
+                        if (last_flush)         state <= ST_FINISH;
+                        else if (run_left == 9'd0) state <= ST_TOKEN;
+                        else                    state <= is_copy ? ST_COPY_READ : ST_LITERAL;
+                    end
+                end
+
+                ST_FINISH: begin // the last, partial line
+                    copy_wait <= '0;
+                    if (!last_flush && dest[2:0] != 3'd0) begin
+                        flush_line <= 21'(dest[23:3]);
+                        last_flush <= 1'b1;
+                        state      <= ST_FLUSH_REQ;
+                    end else begin
+                        state      <= ST_VERDICT;
+                    end
+                end
+
+                default: begin // ST_VERDICT: image_bad settles first
+                    copy_wait <= copy_wait + 3'd1;
+                    if (copy_wait == 3'd3) begin
+                        last_flush <= 1'b0;
+                        failed     <= image_bad;
+                        done       <= 1'b1;
+                        state      <= ST_IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule

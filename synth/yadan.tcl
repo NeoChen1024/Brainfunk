@@ -7,7 +7,8 @@ report_area -file rtl.area
 read_sdc yadan.sdc
 optimize_gate
 legalize_phy_inst
-place
+# Finishes, then raises an error with an empty message on a design with the SDRAM in it.
+catch {place}
 route
 report_area -io_info -file phy.area
 report_timing -file timing.rpt

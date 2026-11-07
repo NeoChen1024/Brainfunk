@@ -4,3 +4,9 @@ set_pin_assignment { reset_button_n } { LOCATION = P51; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { uart_rx_pin }    { LOCATION = P54; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { uart_tx_pin }    { LOCATION = P52; IOSTANDARD = LVCMOS33; }
 set_pin_assignment { led }            { LOCATION = P23; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_cs_n }     { LOCATION = P71; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_miso }     { LOCATION = P72; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_wp_n }     { LOCATION = P74; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_hold_n }   { LOCATION = P75; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_clk }      { LOCATION = P76; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { flash_mosi }     { LOCATION = P77; IOSTANDARD = LVCMOS33; }

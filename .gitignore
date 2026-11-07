@@ -13,3 +13,4 @@ compile_commands.json
 .vscode
 *.bin.txt
 /build
+/bfload
