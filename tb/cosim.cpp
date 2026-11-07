@@ -5,9 +5,10 @@
 //
 // Exit status is non-zero on the first divergence.
 #include "Vbrainfunk_soc.h"
-#include "Vbrainfunk_soc___024root.h"
+#include "Vbrainfunk_soc__Dpi.h"
 #include "libbrainfunk.hpp"
 #include "program_generator.hpp"
+#include "svdpi.h"
 #include "verilated.h"
 
 #include <algorithm>
@@ -25,6 +26,8 @@ namespace {
 
 constexpr std::size_t TAPE_SIZE = std::size_t{1} << 16;
 constexpr std::size_t ROM_SIZE  = std::size_t{1} << 18;
+constexpr std::size_t TAPE_BANK = std::size_t{1} << 12; // brainfunk_soc: DMEM_BANK_WIDTH
+constexpr std::size_t ROM_BANK  = std::size_t{1} << 11; // brainfunk_soc: IMEM_BANK_WIDTH
 
 struct Divergence {
     std::string what;
@@ -66,15 +69,17 @@ std::string describe(const std::string& what, std::uint64_t retired, std::uint32
 
 class Cosim {
 public:
-    Cosim() : top_(&context_) {}
+    Cosim() : top_(&context_) {
+        top_.eval(); // so that scopes exist
+        for (std::size_t bank = 0; bank < TAPE_SIZE / TAPE_BANK; ++bank) tape_.push_back(bank_scope("dmem", bank));
+        for (std::size_t bank = 0; bank < ROM_SIZE / ROM_BANK; ++bank) rom_.push_back(bank_scope("imem", bank));
+        for (std::size_t i = 0; i < TAPE_SIZE; ++i) poke_tape(i, 0);
+    }
 
     Result run(const std::vector<std::uint32_t>& image, const std::string& input, bool stall,
                std::uint64_t retire_limit, std::uint32_t stall_seed) {
         if (image.size() > ROM_SIZE) throw Divergence{"program image larger than the RTL ROM"};
 
-        // A previous program leaves state behind in the memories.
-        for (std::size_t i = 0; i < image.size(); ++i) top_.rootp->brainfunk_soc__DOT__imem[i] = image[i];
-        for (std::size_t i = 0; i < TAPE_SIZE; ++i) top_.rootp->brainfunk_soc__DOT__dmem[i] = 0;
 
         Brainfunk iss(TAPE_SIZE);
         iss.load_bincode(image);
@@ -91,6 +96,15 @@ public:
         top_.io_out_ready = 0;
         for (int i = 0; i < 4; ++i) tick();
         top_.rst = 0;
+
+        // A previous program leaves its tape behind, and the rest of its image past the end
+        // of this one, where speculative fetch may go. Its last write can land during reset.
+        for (std::size_t i = 0; i < image.size(); ++i) {
+            svSetScope(rom_[i / ROM_BANK]);
+            ram_poke(static_cast<int>(i % ROM_BANK), image[i]);
+        }
+        for (const auto cell : written_) poke_tape(cell, 0);
+        written_.clear();
 
         Result result;
         std::uint64_t cycles_since_retire = 0;
@@ -136,6 +150,7 @@ public:
             const std::uint32_t retire_base_ptr = top_.retire_base_ptr;
 
             if (wrote && !retire) throw Divergence{"write outside a retiring cycle"};
+            if (wrote) written_.push_back(write_addr);
 
             tick_high();
             ++result.cycles;
@@ -175,7 +190,8 @@ public:
         /* The whole architectural state, once more. */
         const auto memory = iss.memory();
         for (std::size_t i = 0; i < TAPE_SIZE; ++i) {
-            if (top_.rootp->brainfunk_soc__DOT__dmem[i] != memory[i]) {
+            svSetScope(tape_[i / TAPE_BANK]);
+            if (static_cast<std::uint8_t>(ram_peek(static_cast<int>(i % TAPE_BANK))) != memory[i]) {
                 throw Divergence{"final tape differs at cell " + std::to_string(i)};
             }
         }
@@ -185,10 +201,25 @@ public:
 private:
     VerilatedContext context_;
     Vbrainfunk_soc   top_;
+    std::vector<svScope> tape_, rom_;
+    std::vector<std::uint32_t> written_;
+
+    static svScope bank_scope(const char* memory, std::size_t bank) {
+        const auto name = std::string("TOP.brainfunk_soc.") + memory + ".g_bank[" + std::to_string(bank) + "].bank";
+        const svScope scope = svGetScopeFromName(name.c_str());
+        if (scope == nullptr) throw Divergence{"no such scope: " + name};
+        return scope;
+    }
+
+    void poke_tape(std::size_t cell, std::uint8_t value) {
+        svSetScope(tape_[cell / TAPE_BANK]);
+        ram_poke(static_cast<int>(cell % TAPE_BANK), value);
+    }
 
     void tick() {
         top_.clk = 0;
         top_.eval();
+        if (top_.dmem_we_o) written_.push_back(top_.dmem_addr_o);
         tick_high();
     }
 

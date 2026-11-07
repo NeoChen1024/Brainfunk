@@ -1,11 +1,27 @@
-// Brainfunk core: multi-cycle FSM implementing doc/bitcode.txt.
+// Brainfunk core: scalar pipeline implementing doc/bitcode.txt, built for clock speed.
 //
-// One instruction at a time. A single effective-address adder serves every memory
-// access and every base_ptr update. All writes happen in the cycle an instruction
-// retires, so a retiring instruction's whole effect is visible at the retire port.
+//   IF  I1 I2  D   A   M0 M1 M2  X   W
 //
-// Instruction memory and data memory are synchronous: data arrives the cycle after
-// the address, and dmem_rdata must hold until the next read.
+//   IF      fetch_pc addresses the instruction memory, which takes three edges
+//   D       decode; predict JE and JN backward taken, forward not taken; redirect fetch
+//   A       base_ptr + offset; M moves base_ptr here. MUL, F and IO stay for several cycles
+//   M0..M2  the data memory read, which takes three edges
+//   X       result, zero test; resolves branches and the end of F
+//   W       writes the data memory, retires
+//
+// Nothing past A ever stalls, so an instruction's distance from older ones is settled by
+// M0. That is where it compares addresses, so X only has a multiplexer to work through.
+//
+// Speculation: anything younger than an unresolved JE, JN or F is speculative. It can move
+// base_ptr, which is restored, and read memory, which is harmless. It cannot write, because
+// the flush reaches X before anything younger gets to W. Input waits for an empty pipeline;
+// output acts in X, by which time everything older has been resolved.
+//
+// F issues one read per cycle, assuming each cell is non-zero, with base_ptr stepping ahead.
+// The read that finds a zero ends it, and flushes the reads behind it.
+//
+// The memories are synchronous; see brainfunk_mem.sv. dmem_rdata arrives three edges after
+// dmem_raddr, and imem_rdata three edges after imem_addr, if imem_en holds.
 //
 // The fused instructions (MULC, DJN, MJN, SRUN) are not implemented yet and trap.
 module brainfunk_core #(
@@ -15,14 +31,15 @@ module brainfunk_core #(
     input  logic                  clk,
     input  logic                  rst,
 
+    output logic                  imem_en,
     output logic [PC_WIDTH-1:0]   imem_addr,
     input  logic [31:0]           imem_rdata,
 
-    output logic                  dmem_en,
-    output logic                  dmem_we,
-    output logic [ADDR_WIDTH-1:0] dmem_addr,
-    output logic [7:0]            dmem_wdata,
+    output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
+    output logic                  dmem_we,
+    output logic [ADDR_WIDTH-1:0] dmem_waddr,
+    output logic [7:0]            dmem_wdata,
 
     input  logic                  io_in_valid,
     input  logic [7:0]            io_in_data,
@@ -34,266 +51,445 @@ module brainfunk_core #(
     output logic                  halted,
     output logic                  trapped,
 
-    // Valid in the cycle an instruction finishes; next_pc and base_ptr are the values
-    // after it. H retires once, with next_pc equal to pc. An illegal word does not retire.
+    // Valid in the cycle an instruction finishes, in program order; next_pc and base_ptr are
+    // the values after it, and a write it makes is on the dmem write port in the same cycle.
+    // H retires once, with next_pc equal to pc. An illegal word does not retire.
     output logic                  retire_valid,
     output logic [PC_WIDTH-1:0]   retire_pc,
     output logic [31:0]           retire_instr,
     output logic [PC_WIDTH-1:0]   retire_next_pc,
     output logic [ADDR_WIDTH-1:0] retire_base_ptr
+`ifdef FORMAL
+    ,
+    // Something is in W, retiring or not; the retire_ outputs describe it either way.
+    output logic                  formal_w_valid
+`endif
 );
 
     localparam logic [3:0] OP_A = 4'd1, OP_S = 4'd2, OP_MUL = 4'd3, OP_F = 4'd4, OP_M = 4'd5,
                            OP_JE = 4'd6, OP_JN = 4'd7, OP_IO = 4'd8, OP_H = 4'd9;
 
-    typedef enum logic [3:0] {
-        ST_FETCH,        // imem_addr = pc
-        ST_DECODE,       // imem_rdata holds the instruction; first memory access
-        ST_ADD_WRITE,    // A: dmem_rdata holds the old cell
-        ST_MUL_READ_DST, // MUL: dmem_rdata holds the source
-        ST_MUL_WRITE,    // MUL: dmem_rdata holds the old destination
-        ST_SCAN_TEST,    // F: dmem_rdata holds the tested cell
-        ST_SCAN_READ,    // F: base_ptr has moved, read the next cell
-        ST_BRANCH_TEST,  // JE, JN: dmem_rdata holds the tested cell
-        ST_INPUT,        // IO: wait for an input byte
-        ST_OUTPUT_LATCH, // IO: dmem_rdata holds the output byte
-        ST_OUTPUT,       // IO: wait for the output to be taken
-        ST_HALTED,
-        ST_TRAPPED
-    } state_t;
+    // Flushes, registered in X, so they act in the cycle the instruction is in W. Everything
+    // younger is then in A or earlier, or in M0..X and killed on its way to the next stage.
+    logic redirect;  // branch mispredicted: fetch from w_alt_pc
+    logic scan_exit; // F found its zero: only the reads behind it go
+    logic flush;
+    assign flush = redirect || scan_exit;
 
-    state_t state, state_d;
-    logic [PC_WIDTH-1:0]   pc, pc_d;
-    logic [ADDR_WIDTH-1:0] base_ptr, base_ptr_d;
-    logic [31:0]           instr_q;
-    logic [7:0]            operand_q; // MUL source, output byte
+    // ---- fetch ----
+    logic                front_en;
+    logic                d_predict_taken;
+    logic [PC_WIDTH-1:0] d_target;
+    logic [PC_WIDTH-1:0] fetch_pc, i1_pc, i2_pc, d_pc;
+    logic                i1_valid, i2_valid, d_valid;
 
-    // Valid from ST_DECODE on: the memory holds the word only in that cycle.
-    logic [31:0] instr;
-    assign instr = (state == ST_DECODE) ? imem_rdata : instr_q;
-
-    logic [3:0]         opcode;
-    logic [7:0]         low_byte;
-    logic [7:0]         top_byte;
-    logic signed [31:0] narrow_offset, addr_offset, long_offset;
-    assign opcode        = instr[31:28];
-    assign low_byte      = instr[7:0];
-    assign top_byte      = instr[27:20];
-    assign narrow_offset = 32'($signed(instr[27:20]));
-    assign addr_offset   = 32'($signed(instr[19:8]));
-    assign long_offset   = 32'($signed(instr[19:0]));
-
-    // doc/bincode.txt: a word this does not accept traps when executed.
-    logic legal;
-    always_comb begin
-        unique case (opcode)
-            OP_A, OP_S: legal = top_byte == 8'd0;
-            OP_MUL, OP_F, OP_JE, OP_JN: legal = 1'b1;
-            OP_M:  legal = top_byte == 8'd0;
-            OP_IO: legal = top_byte == 8'd0 && low_byte[7:1] == 7'd0;
-            OP_H:  legal = instr[27:0] == 28'd0;
-            default: legal = 1'b0;
-        endcase
-    end
-
-    // The effective-address adder.
-    /* verilator lint_off UNUSEDSIGNAL */
-    logic signed [31:0]    ea_offset;   // only its low bits matter: addresses wrap
-    /* verilator lint_on UNUSEDSIGNAL */
-    logic [ADDR_WIDTH-1:0] ea;
-    assign ea = base_ptr + ea_offset[ADDR_WIDTH-1:0];
-
-    logic [PC_WIDTH-1:0] pc_next, pc_target;
-    assign pc_next   = pc + PC_WIDTH'(1);
-    assign pc_target = pc_next + long_offset[PC_WIDTH-1:0];
-
-    logic [7:0] product;
-    assign product = 8'(operand_q * low_byte);
-
-    always_comb begin
-        state_d      = state;
-        pc_d         = pc;
-        base_ptr_d   = base_ptr;
-        ea_offset    = addr_offset;
-        dmem_en      = 1'b0;
-        dmem_we      = 1'b0;
-        dmem_wdata   = 8'd0;
-        io_in_ready  = 1'b0;
-        io_out_valid = 1'b0;
-        retire_valid = 1'b0;
-
-        unique case (state)
-            ST_FETCH: state_d = ST_DECODE;
-
-            ST_DECODE: begin
-                if (!legal) begin
-                    state_d = ST_TRAPPED;
-                end else begin
-                    unique case (opcode)
-                        OP_A: begin
-                            dmem_en = 1'b1;
-                            state_d = ST_ADD_WRITE;
-                        end
-                        OP_S: begin
-                            dmem_en      = 1'b1;
-                            dmem_we      = 1'b1;
-                            dmem_wdata   = low_byte;
-                            pc_d         = pc_next;
-                            retire_valid = 1'b1;
-                            state_d      = ST_FETCH;
-                        end
-                        OP_MUL: begin
-                            ea_offset = narrow_offset;
-                            dmem_en   = 1'b1;
-                            state_d   = ST_MUL_READ_DST;
-                        end
-                        OP_F: begin
-                            ea_offset = narrow_offset;
-                            dmem_en   = 1'b1;
-                            state_d   = ST_SCAN_TEST;
-                        end
-                        OP_M: begin
-                            ea_offset    = long_offset;
-                            base_ptr_d   = ea;
-                            pc_d         = pc_next;
-                            retire_valid = 1'b1;
-                            state_d      = ST_FETCH;
-                        end
-                        OP_JE, OP_JN: begin
-                            ea_offset = narrow_offset;
-                            dmem_en   = 1'b1;
-                            state_d   = ST_BRANCH_TEST;
-                        end
-                        OP_IO: begin
-                            if (low_byte[0]) begin
-                                dmem_en = 1'b1;
-                                state_d = ST_OUTPUT_LATCH;
-                            end else begin
-                                state_d = ST_INPUT;
-                            end
-                        end
-                        default: begin // OP_H: legal guarantees nothing else reaches here
-                            retire_valid = 1'b1;
-                            state_d      = ST_HALTED;
-                        end
-                    endcase
-                end
-            end
-
-            ST_ADD_WRITE: begin
-                dmem_en      = 1'b1;
-                dmem_we      = 1'b1;
-                dmem_wdata   = dmem_rdata + low_byte;
-                pc_d         = pc_next;
-                retire_valid = 1'b1;
-                state_d      = ST_FETCH;
-            end
-
-            ST_MUL_READ_DST: begin
-                dmem_en = 1'b1;
-                state_d = ST_MUL_WRITE;
-            end
-
-            ST_MUL_WRITE: begin
-                dmem_en      = 1'b1;
-                dmem_we      = 1'b1;
-                dmem_wdata   = dmem_rdata + product;
-                pc_d         = pc_next;
-                retire_valid = 1'b1;
-                state_d      = ST_FETCH;
-            end
-
-            ST_SCAN_TEST: begin
-                if (dmem_rdata == 8'd0) begin
-                    pc_d         = pc_next;
-                    retire_valid = 1'b1;
-                    state_d      = ST_FETCH;
-                end else begin
-                    ea_offset  = long_offset;
-                    base_ptr_d = ea;
-                    state_d    = ST_SCAN_READ;
-                end
-            end
-
-            ST_SCAN_READ: begin
-                ea_offset = narrow_offset;
-                dmem_en   = 1'b1;
-                state_d   = ST_SCAN_TEST;
-            end
-
-            ST_BRANCH_TEST: begin
-                pc_d         = ((dmem_rdata == 8'd0) == (opcode == OP_JE)) ? pc_target : pc_next;
-                retire_valid = 1'b1;
-                state_d      = ST_FETCH;
-            end
-
-            ST_INPUT: begin
-                io_in_ready = 1'b1;
-                if (io_in_valid) begin
-                    dmem_en      = 1'b1;
-                    dmem_we      = 1'b1;
-                    dmem_wdata   = io_in_data;
-                    pc_d         = pc_next;
-                    retire_valid = 1'b1;
-                    state_d      = ST_FETCH;
-                end
-            end
-
-            ST_OUTPUT_LATCH: state_d = ST_OUTPUT;
-
-            ST_OUTPUT: begin
-                io_out_valid = 1'b1;
-                if (io_out_ready) begin
-                    pc_d         = pc_next;
-                    retire_valid = 1'b1;
-                    state_d      = ST_FETCH;
-                end
-            end
-
-            default: ; // ST_HALTED, ST_TRAPPED: sticky
-        endcase
-    end
+    assign imem_en   = front_en;
+    assign imem_addr = fetch_pc;
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            state    <= ST_FETCH;
-            pc       <= '0;
-            base_ptr <= '0;
-        end else begin
-            state    <= state_d;
-            pc       <= pc_d;
-            base_ptr <= base_ptr_d;
-            if (state == ST_DECODE) instr_q <= imem_rdata;
-            if (state == ST_MUL_READ_DST || state == ST_OUTPUT_LATCH) operand_q <= dmem_rdata;
+            fetch_pc <= '0;
+            i1_valid <= 1'b0;
+            i2_valid <= 1'b0;
+            d_valid  <= 1'b0;
+        end else if (redirect) begin
+            fetch_pc <= w_alt_pc;
+            i1_valid <= 1'b0;
+            i2_valid <= 1'b0;
+            d_valid  <= 1'b0;
+        end else if (front_en) begin
+            fetch_pc <= d_predict_taken ? d_target : fetch_pc + PC_WIDTH'(1);
+            i1_valid <= !d_predict_taken;
+            i2_valid <= !d_predict_taken && i1_valid;
+            d_valid  <= !d_predict_taken && i2_valid;
+        end
+        if (front_en) begin
+            i1_pc <= fetch_pc;
+            i2_pc <= i1_pc;
+            d_pc  <= i2_pc;
         end
     end
 
-`ifdef FORMAL
-    // Which instruction each state can be executing.  Implied by reset and the state
-    // machine; stating it lets induction reject states that are not reachable.
+    // ---- decode ----
+    logic [31:0] d_instr;
+    logic [3:0]  d_op;
+    assign d_instr = imem_rdata;
+    assign d_op    = d_instr[31:28];
+
+    // doc/bincode.txt: a word this does not accept traps when executed.
+    logic d_top_zero, d_legal;
+    assign d_top_zero = d_instr[27:20] == 8'd0;
+    always_comb begin
+        unique case (d_op)
+            OP_A, OP_S, OP_M: d_legal = d_top_zero;
+            OP_MUL, OP_F, OP_JE, OP_JN: d_legal = 1'b1;
+            OP_IO: d_legal = d_top_zero && d_instr[7:1] == 7'd0;
+            OP_H:  d_legal = d_instr[27:0] == 28'd0;
+            default: d_legal = 1'b0;
+        endcase
+    end
+
+    logic d_is_branch, d_is_mul, d_is_scan, d_is_io, d_is_halt, d_multi;
+    assign d_is_branch = d_op == OP_JE || d_op == OP_JN;
+    assign d_is_mul    = d_op == OP_MUL;
+    assign d_is_scan   = d_op == OP_F;
+    assign d_is_io     = d_op == OP_IO;
+    assign d_is_halt   = d_op == OP_H;
+    assign d_multi     = d_is_mul || d_is_scan || d_is_io || d_is_halt || !d_legal;
+
+    assign d_predict_taken = d_valid && d_is_branch && d_instr[19];
+    assign d_target        = d_pc + d_instr[PC_WIDTH-1:0] + PC_WIDTH'(1);
+
+    logic [PC_WIDTH-1:0] d_seq;
+    assign d_seq = d_pc + PC_WIDTH'(1);
+
+    // Which offset goes where: a_offset is added to form the address, and a_offset_2 to move
+    // base_ptr, or for MUL to form the second address.
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic signed [31:0] d_short, d_addr, d_long; // only their low bits matter: addresses wrap
+    /* verilator lint_on UNUSEDSIGNAL */
+    assign d_short = 32'($signed(d_instr[27:20]));
+    assign d_addr  = 32'($signed(d_instr[19:8]));
+    assign d_long  = 32'($signed(d_instr[19:0]));
+
+    // ---- A: address generation ----
+    logic                  a_valid, a_legal;
+    logic                  a_is_add, a_is_set, a_is_mul, a_is_scan, a_is_move, a_is_branch, a_is_je;
+    logic                  a_is_in, a_is_out, a_is_halt, a_multi;
+    logic                  a_predict_taken;
+    logic [ADDR_WIDTH-1:0] a_offset, a_offset_2;
+    logic [7:0]            a_data;
+    logic [PC_WIDTH-1:0]   a_pc, a_next_pc, a_alt_pc;
+    logic [31:0]           a_instr;
+
+    // A multi-cycle instruction issues when a_go is set, and moves on after issuing with a_last.
+    logic       a_go, a_last;
+    logic [1:0] a_phase;
+
+    logic [ADDR_WIDTH-1:0] base_ptr, ea, moved;
+    assign ea    = base_ptr + a_offset;
+    assign moved = base_ptr + a_offset_2;
+
+    logic a_issue, a_flag_mul_dst;
+    assign a_issue        = a_valid && (!a_multi || a_go);
+    assign a_flag_mul_dst = a_is_mul && a_last;
+
+    assign front_en = !a_valid || !a_multi || a_last || scan_exit;
+
+    logic drained;
+    logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
+    assign drained = !(m0_valid || m1_valid || m2_valid || x_valid || w_valid);
+
+    logic out_pending;
+    assign io_in_ready = a_valid && a_is_in && a_phase == 2'd0 && drained;
+
     always_ff @(posedge clk) begin
-        if (!rst) begin
-            if (state == ST_ADD_WRITE) assert (opcode == OP_A && legal);
-            if (state == ST_MUL_READ_DST || state == ST_MUL_WRITE) assert (opcode == OP_MUL);
-            if (state == ST_SCAN_TEST || state == ST_SCAN_READ) assert (opcode == OP_F);
-            if (state == ST_BRANCH_TEST) assert (opcode == OP_JE || opcode == OP_JN);
-            if (state == ST_INPUT) assert (opcode == OP_IO && low_byte == 8'd0 && legal);
-            if (state == ST_OUTPUT_LATCH || state == ST_OUTPUT)
-                assert (opcode == OP_IO && low_byte == 8'd1 && legal);
-            if (state == ST_HALTED) assert (opcode == OP_H && legal);
-            if (state == ST_TRAPPED) assert (!legal);
+        if (rst || redirect) begin
+            a_valid <= 1'b0;
+        end else if (front_en) begin
+            a_valid <= d_valid;
+        end
+
+        if (rst) begin
+            base_ptr <= '0;
+        end else if (flush) begin
+            base_ptr <= w_base;
+        end else if (a_issue && (a_is_move || a_is_scan)) begin
+            base_ptr <= moved;
+        end
+
+        if (front_en) begin
+            a_legal         <= d_legal;
+            a_is_add        <= d_op == OP_A && d_legal;
+            a_is_set        <= d_op == OP_S && d_legal;
+            a_is_mul        <= d_is_mul;
+            a_is_scan       <= d_is_scan;
+            a_is_move       <= d_op == OP_M && d_legal;
+            a_is_branch     <= d_is_branch;
+            a_is_je         <= d_op == OP_JE;
+            a_is_in         <= d_is_io && d_legal && !d_instr[0];
+            a_is_out        <= d_is_io && d_legal && d_instr[0];
+            a_is_halt       <= d_is_halt && d_legal;
+            a_multi         <= d_multi;
+            a_predict_taken <= d_instr[19];
+            a_data          <= d_instr[7:0];
+            a_pc            <= d_pc;
+            a_instr         <= d_instr;
+            a_next_pc       <= d_is_halt ? d_pc : d_predict_taken ? d_target : d_seq;
+            a_alt_pc        <= d_instr[19] ? d_seq : d_target;
+            a_phase         <= 2'd0;
+            a_last          <= 1'b0;
+            a_go            <= !(d_is_io && d_legal && !d_instr[0]);
+            a_offset        <= (d_is_mul || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
+                                                                      : d_addr[ADDR_WIDTH-1:0];
+            a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
+        end else if (a_is_mul) begin
+            unique case (a_phase)
+                2'd0: begin // source issues now, then a gap for the multiplier
+                    a_go     <= 1'b0;
+                    a_offset <= a_offset_2;
+                    a_phase  <= 2'd1;
+                end
+                default: begin
+                    a_go    <= 1'b1;
+                    a_last  <= 1'b1;
+                    a_phase <= 2'd2;
+                end
+            endcase
+        end else if (a_is_in) begin
+            if (a_phase == 2'd0 && drained && io_in_valid) begin
+                a_data  <= io_in_data;
+                a_go    <= 1'b1;
+                a_last  <= 1'b1;
+                a_phase <= 2'd2;
+            end
+        end else if (a_is_out) begin
+            a_go <= 1'b0; // the read issues now, and sets out_pending from X if it is not flushed
+            if (a_phase == 2'd0) a_phase <= 2'd1;
+            else if (drained && !out_pending) begin
+                a_go   <= 1'b1;
+                a_last <= 1'b1;
+            end
+        end else if (!a_is_scan) begin // H or an illegal word: issued, and stays until flushed
+            a_go <= 1'b0;
         end
     end
+
+    // ---- M0: compares against everything that has not written yet ----
+    // Each stage's fields, as one uop. pc, instr and base_after are only for the retire port.
+    logic                  m0_writes, m0_retire, m0_no_read, m0_is_branch, m0_is_je, m0_predict_taken;
+    logic                  m0_is_scan, m0_is_out_read, m0_is_mul_src, m0_is_mul_dst, m0_is_halt, m0_is_trap;
+    logic [7:0]            m0_data;
+    logic [ADDR_WIDTH-1:0] m0_ea, m0_base, m0_base_after;
+    logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
+    logic [31:0]           m0_instr;
+
+    logic                  m1_writes, m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
+    logic                  m1_is_scan, m1_is_out_read, m1_is_mul_src, m1_is_mul_dst, m1_is_halt, m1_is_trap;
+    logic [7:0]            m1_data;
+    logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
+    logic [PC_WIDTH-1:0]   m1_pc, m1_next_pc, m1_alt_pc;
+    logic [31:0]           m1_instr;
+    logic [4:1]            m1_hit;
+
+    logic                  m2_writes, m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
+    logic                  m2_is_scan, m2_is_out_read, m2_is_mul_src, m2_is_mul_dst, m2_is_halt, m2_is_trap;
+    logic [7:0]            m2_data;
+    logic [ADDR_WIDTH-1:0] m2_ea, m2_base, m2_base_after;
+    logic [PC_WIDTH-1:0]   m2_pc, m2_next_pc, m2_alt_pc;
+    logic [31:0]           m2_instr;
+    logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
+
+    logic                  x_writes, x_retire, x_is_branch, x_is_je, x_predict_taken;
+    logic                  x_is_scan, x_is_out_read, x_is_mul_src, x_is_mul_dst, x_is_halt, x_is_trap;
+    logic [7:0]            x_data;
+    logic [ADDR_WIDTH-1:0] x_ea, x_base, x_base_after;
+    logic [PC_WIDTH-1:0]   x_pc, x_next_pc, x_alt_pc;
+    logic [31:0]           x_instr;
+    logic                  x_from_w, x_from_early;
+    logic [7:0]            x_early;
+
+    logic                  w_writes, w_retire, w_is_halt, w_is_trap;
+    logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after;
+    logic [PC_WIDTH-1:0]   w_pc, w_next_pc, w_alt_pc;
+    logic [31:0]           w_instr;
+    logic [7:0]            w_data, w1_data, w2_data;
+
+    // ---- X ----
+    logic [7:0] x_value, x_addend, mul_operand, mul_factor, product, x_sum;
+    logic       x_zero, x_taken, x_mispredict, x_scan_exit;
+
+    assign x_value = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
+    assign x_zero  = x_value == 8'd0;
+    assign x_taken = x_zero == x_is_je;
+
+    assign x_mispredict = x_valid && !flush && x_is_branch && x_taken != x_predict_taken;
+    assign x_scan_exit  = x_valid && !flush && x_is_scan && x_zero;
+
+    assign x_addend = x_is_mul_dst ? product : x_data;
+    assign x_sum    = x_value + x_addend;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            m0_valid  <= 1'b0;
+            m1_valid  <= 1'b0;
+            m2_valid  <= 1'b0;
+            x_valid   <= 1'b0;
+            w_valid   <= 1'b0;
+            redirect  <= 1'b0;
+            scan_exit <= 1'b0;
+        end else begin
+            m0_valid  <= a_issue && !flush;
+            m1_valid  <= m0_valid && !flush;
+            m2_valid  <= m1_valid && !flush;
+            x_valid   <= m2_valid && !flush;
+            w_valid   <= x_valid && !flush;
+            redirect  <= x_mispredict;
+            scan_exit <= x_scan_exit;
+        end
+
+        // A to M0
+        m0_ea            <= ea;
+        m0_base          <= base_ptr;
+        m0_base_after    <= a_is_move ? moved : base_ptr;
+        m0_writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
+        m0_retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
+        m0_no_read       <= a_is_set || a_is_in;
+        m0_is_branch     <= a_is_branch;
+        m0_is_je         <= a_is_je;
+        m0_predict_taken <= a_predict_taken;
+        m0_is_scan       <= a_is_scan;
+        m0_is_out_read   <= a_is_out && !a_last;
+        m0_is_mul_src    <= a_is_mul && !a_last;
+        m0_is_mul_dst    <= a_flag_mul_dst;
+        m0_is_halt       <= a_is_halt;
+        m0_is_trap       <= !a_legal;
+        m0_data          <= a_data;
+        m0_pc            <= a_pc;
+        m0_next_pc       <= a_next_pc;
+        m0_alt_pc        <= a_alt_pc;
+        m0_instr         <= a_instr;
+
+        // M0 to M1: which older instructions write this cell, nearest first.
+        // m1 is one ahead, m2 two, x three, w four; the older the instruction, the later its
+        // result reaches a register this one can use.
+        m1_hit[1] <= m1_valid && m1_writes && m0_ea == m1_ea;
+        m1_hit[2] <= m2_valid && m2_writes && m0_ea == m2_ea;
+        m1_hit[3] <= x_valid && x_writes && m0_ea == x_ea;
+        m1_hit[4] <= w_valid && w_writes && m0_ea == w_ea;
+
+        m1_ea            <= m0_ea;
+        m1_base          <= m0_base;
+        m1_base_after    <= m0_base_after;
+        m1_writes        <= m0_writes;
+        m1_retire        <= m0_retire;
+        m1_no_read       <= m0_no_read;
+        m1_is_branch     <= m0_is_branch;
+        m1_is_je         <= m0_is_je;
+        m1_predict_taken <= m0_predict_taken;
+        m1_is_scan       <= m0_is_scan;
+        m1_is_out_read   <= m0_is_out_read;
+        m1_is_mul_src    <= m0_is_mul_src;
+        m1_is_mul_dst    <= m0_is_mul_dst;
+        m1_is_halt       <= m0_is_halt;
+        m1_is_trap       <= m0_is_trap;
+        m1_data          <= m0_data;
+        m1_pc            <= m0_pc;
+        m1_next_pc       <= m0_next_pc;
+        m1_alt_pc        <= m0_alt_pc;
+        m1_instr         <= m0_instr;
+
+        // M1 to M2: only the nearest writer counts.
+        m2_from_w_next <= m1_hit[1];
+        m2_from_w      <= !m1_hit[1] && m1_hit[2];
+        m2_from_w1     <= !m1_hit[1] && !m1_hit[2] && m1_hit[3];
+        m2_from_w2     <= !m1_hit[1] && !m1_hit[2] && !m1_hit[3] && m1_hit[4];
+
+        m2_ea            <= m1_ea;
+        m2_base          <= m1_base;
+        m2_base_after    <= m1_base_after;
+        m2_writes        <= m1_writes;
+        m2_retire        <= m1_retire;
+        m2_no_read       <= m1_no_read;
+        m2_is_branch     <= m1_is_branch;
+        m2_is_je         <= m1_is_je;
+        m2_predict_taken <= m1_predict_taken;
+        m2_is_scan       <= m1_is_scan;
+        m2_is_out_read   <= m1_is_out_read;
+        m2_is_mul_src    <= m1_is_mul_src;
+        m2_is_mul_dst    <= m1_is_mul_dst;
+        m2_is_halt       <= m1_is_halt;
+        m2_is_trap       <= m1_is_trap;
+        m2_data          <= m1_data;
+        m2_pc            <= m1_pc;
+        m2_next_pc       <= m1_next_pc;
+        m2_alt_pc        <= m1_alt_pc;
+        m2_instr         <= m1_instr;
+
+        // M2 to X. Results that are already in registers are picked up here; only the
+        // instruction right ahead has to be taken at X itself. A cell that is written
+        // without being read adds its data to zero.
+        x_from_w     <= !m2_no_read && m2_from_w_next;
+        x_from_early <= m2_no_read || m2_from_w || m2_from_w1 || m2_from_w2;
+        x_early      <= (m2_no_read || !m2_from_w) ? ((m2_no_read || !m2_from_w1) ?
+                        ((m2_no_read || !m2_from_w2) ? 8'd0 : w2_data) : w1_data) : w_data;
+
+        x_ea            <= m2_ea;
+        x_base          <= m2_base;
+        x_base_after    <= m2_base_after;
+        x_writes        <= m2_writes;
+        x_retire        <= m2_retire;
+        x_is_branch     <= m2_is_branch;
+        x_is_je         <= m2_is_je;
+        x_predict_taken <= m2_predict_taken;
+        x_is_scan       <= m2_is_scan;
+        x_is_out_read   <= m2_is_out_read;
+        x_is_mul_src    <= m2_is_mul_src;
+        x_is_mul_dst    <= m2_is_mul_dst;
+        x_is_halt       <= m2_is_halt;
+        x_is_trap       <= m2_is_trap;
+        x_data          <= m2_data;
+        x_pc            <= m2_pc;
+        x_next_pc       <= m2_next_pc;
+        x_alt_pc        <= m2_alt_pc;
+        x_instr         <= m2_instr;
+
+        // Multiplier: operand at the end of X, product a cycle later, used by the
+        // destination's X one cycle after that.
+        if (x_valid && x_is_mul_src) begin
+            mul_operand <= x_value;
+            mul_factor  <= x_data;
+        end
+`ifdef FORMAL_ABSTRACT_MUL
+        product <= mul_operand ^ mul_factor;
+`else
+        product <= 8'(mul_operand * mul_factor);
 `endif
 
-    assign imem_addr       = pc;
-    assign dmem_addr       = ea;
-    assign io_out_data     = operand_q;
-    assign halted          = state == ST_HALTED;
-    assign trapped         = state == ST_TRAPPED;
-    assign retire_pc       = pc;
-    assign retire_instr    = instr;
-    assign retire_next_pc  = pc_d;
-    assign retire_base_ptr = base_ptr_d;
+        // X to W. A scan read only retires if it found the zero.
+        w_writes     <= x_writes;
+        w_retire     <= x_is_scan ? x_zero : x_retire;
+        w_is_halt    <= x_is_halt;
+        w_is_trap    <= x_is_trap;
+        w_ea         <= x_ea;
+        w_base       <= x_base;
+        w_base_after <= x_base_after;
+        w_pc         <= x_pc;
+        w_next_pc    <= x_mispredict ? x_alt_pc : x_next_pc;
+        w_alt_pc     <= x_alt_pc;
+        w_instr      <= x_instr;
+        w_data       <= x_sum;
+        w1_data      <= w_data;
+        w2_data      <= w1_data;
+
+        if (rst) begin
+            out_pending <= 1'b0;
+            halted      <= 1'b0;
+            trapped     <= 1'b0;
+        end else begin
+            if (x_valid && !flush && x_is_out_read) out_pending <= 1'b1;
+            else if (out_pending && io_out_ready)   out_pending <= 1'b0;
+            if (w_valid && w_is_halt) halted <= 1'b1;
+            if (w_valid && w_is_trap) trapped <= 1'b1;
+        end
+        if (x_valid && x_is_out_read) io_out_data <= x_value;
+    end
+
+    assign io_out_valid = out_pending;
+
+    assign dmem_raddr = m0_ea;
+    assign dmem_we    = w_valid && w_writes;
+    assign dmem_waddr = w_ea;
+    assign dmem_wdata = w_data;
+
+    assign retire_valid    = w_valid && w_retire;
+    assign retire_pc       = w_pc;
+    assign retire_instr    = w_instr;
+    assign retire_next_pc  = w_next_pc;
+    assign retire_base_ptr = w_base_after;
+
+`ifdef FORMAL
+    assign formal_w_valid = w_valid;
+`endif
 
 endmodule
