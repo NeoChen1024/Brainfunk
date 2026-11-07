@@ -35,7 +35,7 @@ cases = [{ expect = "systest/endoffile.out" }]
 [[program]]
 file = "systest/factor.b"
 author = "Brian Raiter"
-family = "raiter"
+family = "breadbox"
 role = "workload"
 halts = "with-input"
 cases = [{ input = "systest/factor.in", expect = "systest/factor.out" }]

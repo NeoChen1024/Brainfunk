@@ -13,7 +13,7 @@ license_files = ["LICENSE", "SOURCE.md"]
 
 [defaults]
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 origin = "handwritten"
 role = "workload"
 halts = "always"

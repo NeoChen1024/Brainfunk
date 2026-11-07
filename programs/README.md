@@ -61,7 +61,7 @@ cases = [{ input = "inputs/dbfi/hello.in", expect = "inputs/dbfi/hello.out" }]
 | Field | Values | Meaning |
 |---|---|---|
 | `family` | free text | The author or the generator. Statistics weight families equally, so one prolific author or tool cannot dominate. |
-| `origin` | `handwritten`, `macro`, `compiled`, `textgen` | How the Brainfuck was produced. Generated code has very different patterns from handwritten code. |
+| `origin` | `handwritten`, `macro`, `compiled`, `textgen`, `unknown` | How the Brainfuck was produced. Generated code has very different patterns from handwritten code. |
 | `role` | `workload`, `conformance`, `stress`, `fragment` | A real program; a test of implementation behaviour; a program meant to run (almost) forever; or a snippet that is not a program by itself. |
 | `halts` | `always`, `with-input`, `interactive`, `never` | Halts with no input; needs input to do anything useful; needs a scripted session; does not finish in reasonable time. |
 | `cell_bits` | `8`, `16`, `32`, `"any"` | The cell width the program is written for. Brainfunk has 8-bit cells. |
@@ -69,6 +69,8 @@ cases = [{ input = "inputs/dbfi/hello.in", expect = "inputs/dbfi/hello.out" }]
 | `tape_left` | boolean | Whether the program moves left of its starting cell. |
 | `tape_cells` | integer | Cells the program needs, when that is more than usual. |
 | `cases` | list of `{input, expect, expect_cell_bits}` | Inputs and expected outputs, relative to the source root. `expect_cell_bits` marks an expected output that only matches with wider cells. |
+| `license_note` | text | A license statement copied verbatim from the source, when it is not a plain SPDX identifier. |
+| `reviewed` | boolean | `false` on drafted entries whose metadata nobody has checked yet. |
 | `license`, `author`, `notes`, `url`, `generated_from` | | Per-program details. |
 
 ## Tools
@@ -78,7 +80,16 @@ tools/corpus/corpus.py index     # regenerate programs/index.tsv after any chang
 tools/corpus/corpus.py verify    # check manifests, files, licenses and the index
 tools/corpus/corpus.py fetch programs/<source>/programs.toml   # download files with a url
 tools/corpus/corpus.py list --role workload --halts always --cell-bits 8 --unique
+tools/corpus/corpus.py summary   # counts by source, role and origin
+tools/corpus/corpus.py draft 3rdparty/<repo>/<dir> programs/<source>/<name>.toml
+tools/corpus/setfield.py programs/<source>/<name>.toml family '"cristofd"' path/to/file.b
 ```
+
+`draft` writes a manifest for a directory of a submodule, running each program once on empty
+input to guess `halts`. Its entries say `reviewed = false` until someone checks them, and
+`origin` stays `unknown`. When duplicates are clustered, reviewed entries name the cluster.
+`verify` warns when a cluster mixes families, which usually means a program was attributed
+to whoever collected it rather than whoever wrote it.
 
 `index` normalizes every program to its eight commands and hashes it with BLAKE3. Programs
 with the same normalized hash are exact duplicates. Programs whose run-length token 8-grams

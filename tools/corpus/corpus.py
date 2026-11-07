@@ -9,6 +9,7 @@ programs it contributes. This tool hashes and deduplicates them into programs/in
     tools/corpus/corpus.py verify          check manifests, files and the index
     tools/corpus/corpus.py fetch MANIFEST  download programs that have a url but no file
     tools/corpus/corpus.py list [filters]  print program paths, for other scripts
+    tools/corpus/corpus.py draft DIR OUT   draft a manifest for a submodule directory
 """
 
 from __future__ import annotations
@@ -17,6 +18,10 @@ import dataclasses
 import datetime
 import fnmatch
 import itertools
+import concurrent.futures
+import json
+import os
+import subprocess
 import sys
 import tomllib
 import urllib.request
@@ -30,12 +35,13 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[2]
 PROGRAMS = REPO / "programs"
 INDEX = PROGRAMS / "index.tsv"
+BRAINFUNK = REPO / "brainfunk"
 
 COMMANDS = frozenset(b"+-<>[],.")
 SHINGLE = 8           # tokens per shingle for near-duplicate detection
 NEAR = 0.9            # Jaccard similarity at or above which two programs are near-duplicates
 
-ORIGINS = {"handwritten", "macro", "compiled", "textgen"}
+ORIGINS = {"handwritten", "macro", "compiled", "textgen", "unknown"}
 ROLES = {"workload", "conformance", "stress", "fragment"}
 HALTS = {"always", "with-input", "interactive", "never"}
 EOFS = {"0", "255", "keep"}
@@ -92,10 +98,12 @@ def load(manifest: Path) -> tuple[dict, list[Program]]:
 
 
 def load_all() -> list[Program]:
+    """Every listed program. Reviewed entries come first, so that a duplicate cluster is
+    named after, and `list --unique` keeps, a program whose metadata someone checked."""
     programs = []
     for manifest in manifests():
         programs.extend(load(manifest)[1])
-    return programs
+    return sorted(programs, key=lambda p: (p.meta.get("reviewed", True) is False, p.rel))
 
 
 # -------------------------------------------------------------------- hashing
@@ -355,6 +363,122 @@ def list_programs(role, halts, eof, cell_bits, unique, pattern) -> None:
         if unique and rows.get(program.rel, {}).get("duplicate"):
             continue
         click.echo(program.rel)
+
+
+@cli.command()
+def summary() -> None:
+    """Count programs by source, role and halting kind, from programs/index.tsv."""
+    if not INDEX.is_file():
+        fail("run tools/corpus/corpus.py index first")
+    lines = INDEX.read_text().splitlines()
+    header = lines[0].split("\t")
+    rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
+    unique = [r for r in rows if not r["duplicate"]]
+    size = sum(int(r["bytes"]) for r in rows)
+    click.echo(f"{len(rows)} programs, {len(unique)} after removing duplicates, "
+               f"{len({r['family'] for r in unique})} families, {size / 2**20:.1f} MiB")
+    for title, key in (("source", lambda r: r["source"]),
+                       ("role / halts", lambda r: f"{r['role']} / {r['halts']}"),
+                       ("origin", lambda r: r["origin"])):
+        counts: dict[str, int] = {}
+        for row in unique:
+            counts[key(row)] = counts.get(key(row), 0) + 1
+        click.echo(f"\nunique programs by {title}:")
+        for name, count in sorted(counts.items(), key=lambda item: -item[1]):
+            click.echo(f"  {count:5}  {name}")
+
+
+# ------------------------------------------------------------------- draft
+
+def probe(path: Path, timeout: float) -> tuple[str, int]:
+    """Run a program once on empty input. Returns ("ok" | "timeout" | "error", output bytes)."""
+    try:
+        result = subprocess.run(["nice", "-n", "19", str(BRAINFUNK), "-O3", "-f", str(path)],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        return "timeout", len(e.stdout or b"")
+    return ("ok" if result.returncode == 0 else "error"), len(result.stdout)
+
+
+def nearest_license(path: Path, top: Path) -> str:
+    """The first "License:" line of the nearest README.md between path and top."""
+    for directory in [path.parent, *path.parent.parents]:
+        readme = directory / "README.md"
+        if readme.is_file():
+            for line in readme.read_text(errors="replace").splitlines():
+                if line.lower().startswith(("license:", "licenses:")):
+                    return line.split(":", 1)[1].strip()
+        if directory == top:
+            break
+    return ""
+
+
+def toml_value(value) -> str:
+    return json.dumps(value, ensure_ascii=False) if isinstance(value, str) else \
+        str(value).lower() if isinstance(value, bool) else str(value)
+
+
+@cli.command()
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("out", type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--timeout", default=5.0, show_default=True, help="Seconds per probe run.")
+@click.option("--jobs", default=os.cpu_count(), show_default=True)
+@click.option("--force", is_flag=True, help="Overwrite OUT.")
+def draft(directory: Path, out: Path, timeout: float, jobs: int, force: bool) -> None:
+    """Draft a manifest for the programs under DIRECTORY, inside a submodule.
+
+    Each program runs once on empty input to guess `halts`; a program that contains `,`
+    is assumed to need input. The family is the first directory below DIRECTORY, and the
+    nearest README.md's License: line is kept verbatim as license_note. Every entry is
+    marked reviewed = false: check it before relying on it.
+    """
+    if out.exists() and not force:
+        fail(f"{out} exists; pass --force to overwrite it")
+    if not BRAINFUNK.is_file():
+        fail("build ./brainfunk first")
+    directory = directory.resolve()
+    submodule = next((p for p in [directory, *directory.parents]
+                      if (p / ".git").is_file() and p.is_relative_to(REPO) and p != REPO),
+                     None)
+    if submodule is None:
+        fail(f"{directory} is not inside a submodule")
+    files = sorted(p for pattern in ("*.b", "*.bf") for p in directory.rglob(pattern)
+                   if p.is_file() and not p.is_symlink() and ".git" not in p.parts)
+    with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
+        results = list(tqdm(pool.map(lambda p: probe(p, timeout), files), total=len(files),
+                            desc="probe", disable=not sys.stderr.isatty()))
+
+    lines = [f"# Drafted by tools/corpus/corpus.py draft from {directory.relative_to(REPO)}.",
+             f"# halts was guessed from one run on empty input with a {timeout:g} s limit.",
+             "", "[source]",
+             f"name = {toml_value(submodule.name)}",
+             f"submodule = {toml_value(submodule.relative_to(REPO).as_posix())}",
+             'license = "NOASSERTION"', "",
+             "[defaults]", 'origin = "unknown"', 'role = "workload"', "cell_bits = 8", ""]
+    for path, (status, _output) in zip(files, results):
+        reads = b"," in normalize(path.read_bytes())
+        entry: dict[str, str | bool] = {"file": path.relative_to(submodule).as_posix(),
+                 "family": path.relative_to(directory).parts[0] if path.parent != directory
+                 else directory.name}
+        if "third_party" in path.relative_to(directory).parts:
+            # Collected from someone else: the directory says who copied it, not who wrote it.
+            entry["family"] = f"unknown-{path.stem}"
+        if status == "error":
+            entry |= {"role": "fragment", "halts": "always",
+                      "notes": "brainfunk rejects it, probably unbalanced brackets."}
+        elif status == "ok":
+            entry["halts"] = "with-input" if reads else "always"
+        else:
+            entry["halts"] = "with-input" if reads else "never"
+        note = nearest_license(path, directory)
+        if note:
+            entry["license_note"] = note
+        entry["reviewed"] = False
+        lines.append("[[program]]")
+        lines += [f"{key} = {toml_value(value)}" for key, value in entry.items()]
+        lines.append("")
+    out.write_text("\n".join(lines))
+    click.echo(f"wrote {out}: {len(files)} programs", err=True)
 
 
 if __name__ == "__main__":

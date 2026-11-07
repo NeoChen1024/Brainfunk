@@ -262,28 +262,28 @@ notes = "Author not named in the file."
 [[program]]
 file = "testing/Collatz.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 halts = "with-input"
 cases = [{ input = "testing/Collatz.in", expect = "testing/Collatz.out" }]
 
 [[program]]
 file = "testing/cristofd-30000.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 notes = "From Cristofani's tests.b."
 
 [[program]]
 file = "testing/cristofd-close.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 notes = "Unbalanced ]: implementations should reject it."
 
 [[program]]
 file = "testing/cristofd-endtest.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 halts = "with-input"
 cases = [{ input = "testing/cristofd-endtest.in" }]
@@ -291,7 +291,7 @@ cases = [{ input = "testing/cristofd-endtest.in" }]
 [[program]]
 file = "testing/cristofd-leftmargin.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 tape_left = true
 notes = "Walks left of the start; prints 2 MB on a wrapping tape."
@@ -299,20 +299,20 @@ notes = "Walks left of the start; prints 2 MB on a wrapping tape."
 [[program]]
 file = "testing/cristofd-misctest.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 
 [[program]]
 file = "testing/cristofd-open.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 notes = "Unbalanced [: implementations should reject it."
 
 [[program]]
 file = "testing/cristofd-rightmargin.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 role = "conformance"
 
 [[program]]
@@ -342,7 +342,7 @@ notes = "From eevee/project-euler (heteroglot)."
 [[program]]
 file = "testing/Factor.b"
 author = "Brian Raiter"
-family = "raiter"
+family = "breadbox"
 halts = "with-input"
 cases = [{ input = "testing/Factor.in", expect = "testing/Factor.out" }]
 
@@ -353,7 +353,7 @@ cases = [{ expect = "testing/fibint.out", expect_cell_bits = 32 }]
 
 [[program]]
 file = "testing/Golden.b"
-family = "cristofani"
+family = "cristofd"
 cases = [{ expect = "testing/Golden.out" }]
 
 [[program]]
@@ -367,7 +367,7 @@ notes = "Written in Clifford Wolf's bfc language, compiled to Brainfuck."
 [[program]]
 file = "testing/Impeccable.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 cases = [{ expect = "testing/Impeccable.out" }]
 notes = "36 s at -O3."
 
@@ -386,7 +386,8 @@ cases = [{ input = "testing/Life.in", expect = "testing/Life.out" }]
 
 [[program]]
 file = "testing/Long.b"
-family = "unknown-long"
+author = "Oleg Mazonka"
+family = "mazonka"
 cases = [{ expect = "testing/Long.out" }]
 
 [[program]]
@@ -401,30 +402,30 @@ notes = "Lost Kingdom, a text adventure written in BFBASIC."
 [[program]]
 file = "testing/Mandelbrot.b"
 author = "Erik Bosman"
-family = "bosman"
+family = "ebosman"
 cases = [{ expect = "testing/Mandelbrot.out" }]
 
 [[program]]
 file = "testing/Mandelbrot-extreme.b"
 author = "Erik Bosman"
-family = "bosman"
+family = "ebosman"
 halts = "never"
 notes = "Larger render; over 60 s at -O3."
 
 [[program]]
 file = "testing/Mandelbrot-r64.b"
 author = "Erik Bosman"
-family = "bosman"
+family = "ebosman"
 
 [[program]]
 file = "testing/Mandelbrot-tiny.b"
 author = "Erik Bosman"
-family = "bosman"
+family = "ebosman"
 
 [[program]]
 file = "testing/numwarp.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 halts = "with-input"
 cases = [{ input = "testing/numwarp.in", expect = "testing/numwarp.out" }]
 
@@ -472,7 +473,7 @@ family = "pidigits"
 
 [[program]]
 file = "testing/Prime.b"
-family = "mueller"
+family = "umueller"
 halts = "with-input"
 cases = [
   { input = "testing/Prime.in", expect = "testing/Prime.out", expect_cell_bits = 32 },
@@ -482,19 +483,19 @@ notes = "Urban Müller's prime.b, reformatted. Prime8.b is a symlink to it."
 
 [[program]]
 file = "testing/Prime-multi.b"
-family = "mueller"
+family = "umueller"
 notes = "Variant of Urban Müller's prime.b."
 
 [[program]]
 file = "testing/Prime-orig.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 halts = "with-input"
 
 [[program]]
 file = "testing/SelfInt.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 halts = "with-input"
 cases = [{ input = "testing/SelfInt.in", expect = "testing/SelfInt.out" }]
 notes = "dbfi.b, a Brainfuck interpreter in Brainfuck."
@@ -509,7 +510,7 @@ cases = [{ expect = "testing/squaresums.out", expect_cell_bits = 32 }]
 [[program]]
 file = "testing/utm.b"
 author = "Daniel B. Cristofani"
-family = "cristofani"
+family = "cristofd"
 halts = "with-input"
 cases = [{ input = "testing/utm.in" }]
 
@@ -524,13 +525,15 @@ notes = "LISP interpreter. Output differs with EOF as 0; check other EOF modes."
 
 [[program]]
 file = "extras/bf2c_v1.b"
-family = "unknown-bf2c"
+author = "Robert de Bath"
+family = "rdebath"
 halts = "with-input"
 notes = "Brainfuck to C translator; loops forever on EOF as 0."
 
 [[program]]
 file = "extras/bf2c_v2.b"
-family = "unknown-bf2c"
+author = "Robert de Bath"
+family = "rdebath"
 halts = "with-input"
 notes = "Brainfuck to C translator; loops forever on EOF as 0."
 
@@ -545,35 +548,35 @@ notes = "Output of the txtbf text generator."
 [[program]]
 file = "umueller/src/hello.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 
 [[program]]
 file = "umueller/src/prime.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 halts = "with-input"
 
 [[program]]
 file = "umueller/src/atoi.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 role = "fragment"
 halts = "with-input"
 
 [[program]]
 file = "umueller/src/div10.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 role = "fragment"
 
 [[program]]
 file = "umueller/src/mul10.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 role = "fragment"
 
 [[program]]
 file = "umueller/src/varia.b"
 author = "Urban Müller"
-family = "mueller"
+family = "umueller"
 role = "fragment"
