@@ -11,7 +11,7 @@ OBJS	= brainfunk.o $(LIBOBJS)
 PRGS	= brainfunk bf bit2bin bfstrip visualbrainfunk
 DEPS	= brainfunk.d libbrainfunk.d optimizer.d llvm_codegen.d bf.d bit2bin.d bfstrip.d visualbrainfunk.d
 
-.PHONY: all clean countline test
+.PHONY: all clean countline test hw-test formal yadan
 
 all: $(PRGS)
 
@@ -27,7 +27,17 @@ countline:
 test: all
 	sh tests/run-tests.sh
 
+hw-test: all
+	sh tb/run-hw-tests.sh
+
+formal:
+	sh formal/run.sh
+
+yadan:
+	sh synth/build-yadan.sh $(IMAGE)
+
 clean:
 	rm -f $(OBJS) $(PRGS) $(DEPS) tests/test-libbrainfunk
+	rm -rf build
 
 -include $(DEPS)

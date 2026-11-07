@@ -94,8 +94,11 @@ target selection and optimization only when the emitted IR is compiled. See
 
 # CPU core
 
-The ultimate Brainfuck CPU. The circuit implements an earlier 24-bit instruction format; see
-[doc/bincode.txt](doc/bincode.txt) for the current one.
+[rtl/](rtl) is a SystemVerilog core for the current instruction set, verified against the
+interpreter by lock-step cosimulation and formal proofs, with a build for the YADAN Board. See
+[doc/rtl.md](doc/rtl.md).
+
+The Logisim circuit in [CPU/](CPU) implements an earlier 24-bit instruction format:
 
 ![CPU core](https://github.com/NeoChen1024/Brainfunk/raw/master/CPU/CPU.png)
 
