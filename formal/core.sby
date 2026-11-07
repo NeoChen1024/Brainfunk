@@ -1,0 +1,28 @@
+[tasks]
+bmc
+prove
+latency
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 40
+prove: mode prove
+prove: depth 12
+latency: mode prove
+latency: depth 12
+cover: mode cover
+cover: depth 40
+
+[engines]
+smtbmc yices
+
+[script]
+read -formal -sv -DFORMAL brainfunk_core.sv
+latency: read -formal -sv -DBOUNDED_LATENCY core_props.sv
+~latency: read -formal -sv core_props.sv
+prep -top core_props
+
+[files]
+../rtl/brainfunk_core.sv
+core_props.sv
