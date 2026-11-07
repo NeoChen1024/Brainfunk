@@ -3,7 +3,7 @@ from conftest import ROOT, assemble_text, run
 
 SOURCES = ["tb/uart_tb.sv", "tb/spi_flash_model.sv", "rtl/board/yadan_top.sv", "rtl/board/yadan_pll.sv", "rtl/board/uart.sv",
            "rtl/board/loader.sv", "rtl/board/flash.sv", "rtl/brainfunk_soc.sv", "rtl/brainfunk_cache.sv", "rtl/sdram_ctrl.sv",
-           "tb/sdram_model.sv", "rtl/brainfunk_mem.sv", "rtl/brainfunk_core.sv"]
+           "tb/sdram_model.sv", "rtl/brainfunk_mem.sv", "rtl/brainfunk_core.sv", "rtl/brainfunk_predict.sv"]
 
 
 def test_uart_testbench(tools, tmp_path):

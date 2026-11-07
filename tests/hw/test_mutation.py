@@ -8,11 +8,12 @@ import shutil
 import pytest
 
 from conftest import CORPUS, ROOT, assemble, run
-from mutants import FORMAL_MUTANTS, MUTANTS
+from mutants import FORMAL_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
+from test_cosim import CPI_LIMITS, program_cpi
 
 pytestmark = pytest.mark.mutation
 
-RTL = ["brainfunk_core.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "brainfunk_soc.sv", "brainfunk_mem.sv"]
+RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "brainfunk_soc.sv", "brainfunk_mem.sv"]
 TIMEOUT = 90
 
 
@@ -36,17 +37,29 @@ def caught(command):
         return True
 
 
+def build_cosim(directory, sources):
+    run("verilator", "--cc", "--exe", "--build", "-j", "2", "-O3", "--x-assign", "fast", "--x-initial", "fast",
+        "--top-module", "brainfunk_soc", "-DBRAINFUNK_RETIRE_PORT", "--Mdir", directory / "obj",
+        "-CFLAGS", f"-std=c++20 -O1 -I{ROOT} -I{ROOT}/tests", *sources, ROOT / "tb" / "sdram_model.sv",
+        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp", "-o", "cosim")
+    return directory / "obj" / "cosim"
+
+
+@pytest.mark.parametrize("name,file,text,replacement", PERFORMANCE_MUTANTS, ids=[mutant[0] for mutant in PERFORMANCE_MUTANTS])
+def test_cycle_counts_catch(tools, tmp_path, name, file, text, replacement):
+    cosim = build_cosim(tmp_path, mutated(tmp_path, file, text, replacement))
+    costs = {program: program_cpi(cosim, program, tmp_path) for program in CPI_LIMITS}
+    assert any(costs[program] >= CPI_LIMITS[program] for program in CPI_LIMITS), f"nothing caught: {name}: {costs}"
+
+
 @pytest.mark.parametrize("name,file,text,replacement", MUTANTS, ids=[mutant[0] for mutant in MUTANTS])
 def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
     sources = mutated(tmp_path, file, text, replacement)
-    run("verilator", "--cc", "--exe", "--build", "-j", "2", "-O3", "--x-assign", "fast", "--x-initial", "fast",
-        "--top-module", "brainfunk_soc", "-DBRAINFUNK_RETIRE_PORT", "--Mdir", tmp_path / "obj",
-        "-CFLAGS", f"-std=c++20 -O1 -I{ROOT} -I{ROOT}/tests", *sources, ROOT / "tb" / "sdram_model.sv",
-        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp", "-o", "cosim")
-    cosim = tmp_path / "obj" / "cosim"
+    cosim = build_cosim(tmp_path, sources)
 
     commands = [[cosim, "--evict", 200, "--seed", 1], [cosim, "--evict", 200, "--seed", 5000, "--stall"],
-                [cosim, "--random", 600, "--seed", 1, "--stall"]]
+                [cosim, "--random", 600, "--seed", 1, "--stall"], [cosim, "--random", 100, "--seed", 1, "--chaos"],
+                [cosim, "--evict", 100, "--seed", 1, "--chaos"]]
     for word in ("10100000", "80000002", "90000001", "e0000000"):
         trap = tmp_path / f"trap_{word}.hex"
         trap.write_text(f"10000005\n{word}\n90000000\n")

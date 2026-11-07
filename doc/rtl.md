@@ -9,6 +9,7 @@ them, so programs must come from `-O2` or lower.
 
 ```text
 rtl/brainfunk_core.sv    the core
+rtl/brainfunk_predict.sv next-fetch and direction tables, which only guess
 rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines
 rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
 rtl/sdram_ctrl.sv        SDRAM controller
@@ -29,7 +30,7 @@ IF  I1 I2  D   A   M0 M1 M2  X   W
 | Stage | Work |
 |---|---|
 | `IF`, `I1`, `I2` | Instruction memory read, three clock edges |
-| `D` | Decode; predict `JE` and `JN` backward taken, forward not taken |
+| `D` | Decode; check the next-fetch guess, predict `JE` and `JN`, redirect fetch |
 | `A` | `base_ptr` + offset; `M` moves `base_ptr` here |
 | `M0`, `M1`, `M2` | Data memory read, three clock edges; `M0` compares addresses with older writes |
 | `X` | Result and zero test; resolves branches and the end of `F` |
@@ -56,8 +57,10 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | `A`, `S`, `M`, `JE`, `JN` | 1 |
 | `MUL` | 3: source, multiplier, destination |
 | `F` | 1 per cell read, plus 5 to end |
-| Branch predicted taken | 3 more |
-| Branch mispredicted | 9 more |
+| Branch predicted taken, in the next-fetch table | nothing more |
+| Branch predicted taken, not in it | 3 more |
+| A word that is not a branch, wrongly in the next-fetch table | 3 more |
+| Branch mispredicted, or the table's target wrong | 9 more |
 | `IO` | about 8, plus waiting for the byte |
 | Cache miss, instruction | about 20, holding the front end |
 | Cache miss, data | about 30 to restart the instruction, about 20 more to write back a dirty line |
@@ -65,16 +68,52 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 `F` assumes each cell is non-zero and reads one per cycle, with `base_ptr` stepping ahead. The
 read that finds a zero flushes the reads behind it.
 
-Compared with the earlier multi-cycle core on the same images at `-O2`:
+On the same images at `-O2`:
 
-| Program | Multi-cycle | Pipeline | CPI |
-|---|---|---|---|
-| `mandel.b` | 4.96 G cycles | 3.94 G cycles | 3.50 → 2.78 |
-| `hanoi.b` | 183.2 M cycles | 141.2 M cycles | 2.68 → 2.07 |
+| Program | Multi-cycle | Pipeline, static prediction | With `brainfunk_predict.sv` | CPI |
+|---|---|---|---|---|
+| `mandel.b` | 4.96 G cycles | 3.94 G cycles | 3.09 G cycles | 3.50 → 2.78 → 2.18 |
+| `long.b` | | 1.18 G cycles | 0.91 G cycles | 1.76 → 1.36 |
+| `hanoi.b` | 183.2 M cycles | 141.2 M cycles | 74.0 M cycles | 2.68 → 2.07 → 1.08 |
 
-In `mandel.b`, 46% of the cycles are charged to `MUL` and 16% to `F`. The charge includes the
-misprediction before an instruction, which is why `MUL` averages 5.4 cycles. These programs fit
-their caches, which cost them almost nothing. `LostKng.b` does not, and its CPI is about 14.
+In `mandel.b`, 38% of the cycles are charged to `MUL` and 18% to `F`. The charge includes the
+misprediction before an instruction, which is why `MUL` averages 3.6 cycles. These programs fit
+their caches, which cost them almost nothing. `LostKng.b` does not, and its CPI is about 11.
+
+### Branch prediction
+
+Both tables only guess. The core checks every guess, so a wrong one costs time and nothing else,
+which is why formal gives it free guesses and `cosim --chaos` random ones.
+
+The largest cost was not wrong directions but taken branches being right: 0.55 of the 0.74 CPI that
+branches cost `mandel.b` with a direction table alone. A table that only improved direction would
+save 0.14 CPI there; removing the gap saves 0.67.
+
+The next-fetch table has 16 entries, in logic rather than block RAM so it can answer in one cycle.
+It is looked up with the address fetched one slot before the word it predicts, so its answer is in
+registers by the time that word is fetched, and the fetch after it goes to the target with no gap.
+That slot can be anything, a word on a wrong path included, because the same path through a program
+gives the same slots. A hit is taken as taken, without asking the direction table. `D` then learns
+what the word is. If it is not a branch, what follows is fetched again. If it is, `A` compares the
+target, and `X` treats a wrong one as a misprediction, which keeps the comparison off the path to
+`fetch_pc`. Entries match on 8 address bits above the index; a false match only costs its check.
+
+Entries go in when `D` redirects fetch to a taken branch, and come out when a guess proves wrong.
+Keeping them would be better for `bottles.b` (CPI 1.79 against 2.08) and `e.b`, where the same
+branch is taken again soon, and much worse for `fib.b` (2.83 against 1.42) and `squares.b` (2.40
+against 1.91). Two-bit hysteresis might get both, at the cost of updating the entry on every hit.
+
+The direction table has 4096 2-bit counters in one block RAM, read to arrive with the word in `D`.
+It decides when the next-fetch table has no opinion. Each counter counts how far the branch disagrees
+with backward taken, forward not taken, so zeros start out as that guess, and counters that are
+shared tend to agree. The static guess was wrong 92% of the time on `LostKng.b`, whose branches are
+mostly forward and taken; with the table, 2.6%.
+
+Modelled on the corpus, global and local history gave no clear gain over this: `gshare` with the
+history it could really have at fetch was worse on `mandel.b` (9.9% wrong against 9.0%). The tables
+are also small against `LostKng.b`, where the model shows 4096 next-fetch entries cutting branch cost
+from 1.24 to 0.47 CPI. That would need block RAM and a slower answer, for 7% of a CPI of 11 that is
+mostly instruction cache misses.
 
 ## Memory
 

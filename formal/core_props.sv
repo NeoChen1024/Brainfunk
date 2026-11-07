@@ -19,6 +19,10 @@ module core_props #(
     input logic        imem_hit,
     input logic        imem_hold,
     input logic        imem_refetch,
+    // Free: a guess can be anything, and the core has to get everything right anyway.
+    input logic                next_taken,
+    input logic [PC_WIDTH-1:0] next_target,
+    input logic [1:0]          d_counter,
     input logic [7:0]  dmem_rdata,
     input logic        dmem_hit,
     input logic        dmem_busy,
@@ -32,6 +36,9 @@ module core_props #(
     logic [ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr, retire_base_ptr;
     logic [7:0]            dmem_wdata, io_out_data;
     logic [31:0]           retire_instr;
+    logic                  pred_front_en, next_we, next_valid, dir_we;
+    logic [PC_WIDTH-1:0]   pred_fetch_pc, pred_i1_pc, next_key, next_new_target, dir_pc;
+    logic [1:0]            dir_counter;
 
     brainfunk_core #(.PC_WIDTH(PC_WIDTH), .ADDR_WIDTH(ADDR_WIDTH)) core (.*);
 

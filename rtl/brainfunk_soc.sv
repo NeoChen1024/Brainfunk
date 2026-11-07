@@ -29,6 +29,7 @@ module brainfunk_soc #(
     output logic        sdram_ready
 `ifdef BRAINFUNK_RETIRE_PORT
     ,
+    input  logic                       predict_chaos,
     output logic                       retire_valid,
     output logic [IMEM_ADDR_WIDTH-1:0] retire_pc,
     output logic [31:0]                retire_instr,
@@ -134,6 +135,20 @@ module brainfunk_soc #(
 `ifdef BRAINFUNK_RETIRE_PORT
     assign core_ready = !core_rst;
 `endif
+
+    logic                       pred_front_en, next_taken, next_we, next_valid, dir_we;
+    logic [IMEM_ADDR_WIDTH-1:0] pred_fetch_pc, pred_i1_pc, next_target, next_key, next_new_target, dir_pc;
+    logic [1:0]                 d_counter, dir_counter;
+
+    branch_predictor #(.PC_WIDTH(IMEM_ADDR_WIDTH)) predictor (
+        .clk(clk), .rst(core_rst), .front_en(pred_front_en), .fetch_pc(pred_fetch_pc), .i1_pc(pred_i1_pc),
+`ifdef BRAINFUNK_RETIRE_PORT
+        .chaos(predict_chaos),
+`endif
+        .next_taken_o(next_taken), .next_target_o(next_target), .d_counter_o(d_counter),
+        .next_we(next_we), .next_key(next_key), .next_valid(next_valid), .next_new_target(next_new_target),
+        .dir_we(dir_we), .dir_pc(dir_pc), .dir_counter(dir_counter)
+    );
 
     brainfunk_core #(
         .PC_WIDTH(IMEM_ADDR_WIDTH),

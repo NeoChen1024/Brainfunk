@@ -83,7 +83,7 @@ def test_mandel_takes_the_time_its_cycles_say(board, tmp_path):
     expected = expected_output("mandel.b")
     start = time.monotonic()
     assert read_output(len(expected), 60) == expected
-    assert 20 < time.monotonic() - start < 30
+    assert 16 < time.monotonic() - start < 22
 
 
 def test_lost_kingdom_plays(board, tmp_path):

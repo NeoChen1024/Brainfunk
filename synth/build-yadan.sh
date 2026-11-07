@@ -13,7 +13,7 @@ rm -rf "$work"
 mkdir -p "$work"
 
 # read_verilog elaborates each file as it reads it, so one file must hold them all.
-cat "$root"/rtl/brainfunk_core.sv "$root"/rtl/brainfunk_mem.sv "$root"/rtl/brainfunk_cache.sv "$root"/rtl/sdram_ctrl.sv \
+cat "$root"/rtl/brainfunk_core.sv "$root"/rtl/brainfunk_predict.sv "$root"/rtl/brainfunk_mem.sv "$root"/rtl/brainfunk_cache.sv "$root"/rtl/sdram_ctrl.sv \
     "$root"/rtl/brainfunk_soc.sv "$root"/rtl/board/sdram_phy.sv "$root"/rtl/board/uart.sv "$root"/rtl/board/loader.sv "$root"/rtl/board/flash.sv \
     "$root"/rtl/board/yadan_pll.sv "$root"/rtl/board/yadan_top.sv >"$work/yadan_all.sv"
 cp "$root"/synth/yadan.adc "$root"/synth/yadan.sdc "$root"/synth/yadan.tcl "$work"/

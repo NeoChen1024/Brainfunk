@@ -3,7 +3,7 @@
 //   IF  I1 I2  D   A   M0 M1 M2  X   W
 //
 //   IF      fetch_pc addresses the instruction memory, which takes three edges
-//   D       decode; predict JE and JN backward taken, forward not taken; redirect fetch
+//   D       decode; check the next-fetch guess, predict JE and JN, redirect fetch
 //   A       base_ptr + offset; M moves base_ptr here. MUL, F and IO stay for several cycles
 //   M0..M2  the data memory read, which takes three edges
 //   X       result, zero test; resolves branches and the end of F
@@ -28,6 +28,14 @@
 // writes by then, because writes come after the last read of the same instruction; input reads
 // its cell first for that reason, because a byte taken cannot be asked for again.
 //
+// Prediction, in brainfunk_predict.sv, is two guesses, neither of them trusted:
+//   - next_taken says where to fetch after a word, before that word has been seen. D finds out what
+//     the word really is. A word that is not a branch has what follows it fetched again; a branch
+//     is taken to be taken, and its target is compared in A, for X to act on as a misprediction.
+//   - with no such guess, the direction table says whether a branch is taken, and D redirects fetch
+//     to the target if so, and puts it in the next-fetch table for next time.
+// A next-fetch guess that turns out wrong takes its entry out of the table.
+//
 // The fused instructions (MULC, DJN, MJN, SRUN) are not implemented yet and trap.
 module brainfunk_core #(
     parameter int PC_WIDTH   = 20,
@@ -44,6 +52,20 @@ module brainfunk_core #(
     output logic [PC_WIDTH-1:0]   imem_miss_addr,
     input  logic                  imem_hold,       // the cache is writing a tag: do not read
     input  logic                  imem_refetch,    // a fill finished: look up what missed again
+
+    output logic                  pred_front_en,
+    output logic [PC_WIDTH-1:0]   pred_fetch_pc,
+    output logic [PC_WIDTH-1:0]   pred_i1_pc,
+    input  logic                  next_taken,      // for the word imem_addr addresses
+    input  logic [PC_WIDTH-1:0]   next_target,
+    input  logic [1:0]            d_counter,       // for the word imem_rdata brings
+    output logic                  next_we,
+    output logic [PC_WIDTH-1:0]   next_key,
+    output logic                  next_valid,
+    output logic [PC_WIDTH-1:0]   next_new_target,
+    output logic                  dir_we,
+    output logic [PC_WIDTH-1:0]   dir_pc,
+    output logic [1:0]            dir_counter,
 
     output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
@@ -92,10 +114,11 @@ module brainfunk_core #(
 
     // ---- fetch ----
     logic                front_en;
-    logic                d_predict_taken;
-    logic [PC_WIDTH-1:0] d_target;
-    logic [PC_WIDTH-1:0] fetch_pc, i1_pc, i2_pc, d_pc;
+    logic                d_steer;      // what follows this word is not what is being fetched
+    logic [PC_WIDTH-1:0] d_steer_pc;
+    logic [PC_WIDTH-1:0] fetch_pc, i1_pc, i2_pc, d_pc, d_prev_pc;
     logic                i1_valid, i2_valid, d_valid;
+    logic                i1_next_taken, i2_next_taken, d_next_taken;
 
     assign imem_en        = front_en;
     assign imem_addr      = fetch_pc;
@@ -119,15 +142,19 @@ module brainfunk_core #(
             i2_valid <= 1'b0;
             d_valid  <= 1'b0;
         end else if (front_en) begin
-            fetch_pc <= d_predict_taken ? d_target : fetch_pc + PC_WIDTH'(1);
-            i1_valid <= !d_predict_taken;
-            i2_valid <= !d_predict_taken && i1_valid;
-            d_valid  <= !d_predict_taken && i2_valid;
+            fetch_pc <= d_steer ? d_steer_pc : next_taken ? next_target : fetch_pc + PC_WIDTH'(1);
+            i1_valid <= !d_steer;
+            i2_valid <= !d_steer && i1_valid;
+            d_valid  <= !d_steer && i2_valid;
         end
         if (front_en) begin
-            i1_pc <= fetch_pc;
-            i2_pc <= i1_pc;
-            d_pc  <= i2_pc;
+            i1_pc         <= fetch_pc;
+            i2_pc         <= i1_pc;
+            d_pc          <= i2_pc;
+            d_prev_pc     <= d_pc;
+            i1_next_taken <= next_taken;
+            i2_next_taken <= i1_next_taken;
+            d_next_taken  <= i2_next_taken;
         end
     end
 
@@ -158,11 +185,17 @@ module brainfunk_core #(
     assign d_is_halt   = d_op == OP_H;
     assign d_multi     = d_is_mul || d_is_scan || d_is_io || d_is_halt || !d_legal;
 
-    assign d_predict_taken = d_valid && imem_hit && d_is_branch && d_instr[19];
-    assign d_target        = d_pc + d_instr[PC_WIDTH-1:0] + PC_WIDTH'(1);
+    // The direction table counts disagreement with backward taken, forward not taken.
+    logic d_predict_taken, d_steer_taken, d_steer_seq;
+    assign d_predict_taken = d_is_branch && (d_next_taken || (d_counter[1] != d_instr[19]));
+    assign d_steer_taken   = d_valid && imem_hit && d_is_branch && !d_next_taken && d_predict_taken;
+    assign d_steer_seq     = d_valid && imem_hit && !d_is_branch && d_next_taken;
+    assign d_steer         = d_steer_taken || d_steer_seq;
 
-    logic [PC_WIDTH-1:0] d_seq;
-    assign d_seq = d_pc + PC_WIDTH'(1);
+    logic [PC_WIDTH-1:0] d_target, d_seq;
+    assign d_target   = d_pc + d_instr[PC_WIDTH-1:0] + PC_WIDTH'(1);
+    assign d_seq      = d_pc + PC_WIDTH'(1);
+    assign d_steer_pc = d_is_branch ? d_target : d_seq;
 
     // Which offset goes where: a_offset is added to form the address, and a_offset_2 to move
     // base_ptr, or for MUL to form the second address.
@@ -180,8 +213,11 @@ module brainfunk_core #(
     logic                  a_predict_taken;
     logic [ADDR_WIDTH-1:0] a_offset, a_offset_2;
     logic [7:0]            a_data;
-    logic [PC_WIDTH-1:0]   a_pc, a_next_pc, a_alt_pc;
+    logic [PC_WIDTH-1:0]   a_pc, a_next_pc, a_alt_pc, a_fetched_next;
     logic [31:0]           a_instr;
+    logic                  a_next_taken;
+    logic [3:0]            a_slot;
+    logic [1:0]            a_counter;
 
     // A multi-cycle instruction issues when a_go is set, and moves on after issuing with a_last.
     logic       a_go, a_last;
@@ -235,12 +271,16 @@ module brainfunk_core #(
             a_is_out        <= d_is_io && d_legal && d_instr[0];
             a_is_halt       <= d_is_halt && d_legal;
             a_multi         <= d_multi;
-            a_predict_taken <= d_instr[19];
+            a_predict_taken <= d_predict_taken;
+            a_next_taken    <= d_next_taken;
+            a_fetched_next  <= i2_pc;
+            a_slot          <= d_prev_pc[3:0];
+            a_counter       <= d_counter;
             a_data          <= d_instr[7:0];
             a_pc            <= d_pc;
             a_instr         <= d_instr;
             a_next_pc       <= d_is_halt ? d_pc : d_predict_taken ? d_target : d_seq;
-            a_alt_pc        <= d_instr[19] ? d_seq : d_target;
+            a_alt_pc        <= d_predict_taken ? d_seq : d_target;
             a_phase         <= 2'd0;
             a_last          <= 1'b0;
             a_go            <= 1'b1;
@@ -296,6 +336,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m0_ea, m0_base, m0_base_after;
     logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
     logic [31:0]           m0_instr;
+    logic                  m0_next_taken, m0_target_wrong;
+    logic [3:0]            m0_slot;
+    logic [1:0]            m0_counter;
 
     logic                  m1_writes, m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
     logic                  m1_is_scan, m1_is_out_read, m1_is_mul_src, m1_is_mul_dst, m1_is_halt, m1_is_trap;
@@ -303,6 +346,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
     logic [PC_WIDTH-1:0]   m1_pc, m1_next_pc, m1_alt_pc;
     logic [31:0]           m1_instr;
+    logic                  m1_next_taken, m1_target_wrong;
+    logic [3:0]            m1_slot;
+    logic [1:0]            m1_counter;
     logic [4:1]            m1_hit;
 
     logic                  m2_writes, m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
@@ -311,6 +357,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] m2_ea, m2_base, m2_base_after;
     logic [PC_WIDTH-1:0]   m2_pc, m2_next_pc, m2_alt_pc;
     logic [31:0]           m2_instr;
+    logic                  m2_next_taken, m2_target_wrong;
+    logic [3:0]            m2_slot;
+    logic [1:0]            m2_counter;
     logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
 
     logic                  x_writes, x_retire, x_is_branch, x_is_je, x_predict_taken;
@@ -319,6 +368,9 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] x_ea, x_base, x_base_after;
     logic [PC_WIDTH-1:0]   x_pc, x_next_pc, x_alt_pc;
     logic [31:0]           x_instr;
+    logic                  x_next_taken, x_target_wrong;
+    logic [3:0]            x_slot;
+    logic [1:0]            x_counter;
     logic                  x_from_w, x_from_early;
     logic [7:0]            x_early;
 
@@ -326,11 +378,14 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after;
     logic [PC_WIDTH-1:0]   w_pc, w_next_pc, w_alt_pc;
     logic [31:0]           w_instr;
+    logic                  w_is_branch, w_taken, w_wrong_guess;
+    logic [3:0]            w_slot;
+    logic [1:0]            w_counter;
     logic [7:0]            w_data, w1_data, w2_data;
 
     // ---- X ----
     logic [7:0] x_value, x_addend, mul_operand, mul_factor, product, x_sum;
-    logic       x_zero, x_taken, x_mispredict, x_scan_exit, x_miss;
+    logic       x_zero, x_taken, x_wrong_way, x_mispredict, x_scan_exit, x_miss;
 
     assign x_value = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
     assign x_zero  = x_value == 8'd0;
@@ -338,7 +393,8 @@ module brainfunk_core #(
 
     // A miss restarts the instruction, which is the same as a misprediction back to itself.
     assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit;
-    assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && x_taken != x_predict_taken;
+    assign x_wrong_way  = x_taken != x_predict_taken;
+    assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
     assign x_scan_exit  = x_valid && !flush && dmem_hit && x_is_scan && x_zero;
 
     assign x_addend = x_is_mul_dst ? product : x_data;
@@ -390,6 +446,10 @@ module brainfunk_core #(
         m0_next_pc       <= a_next_pc;
         m0_alt_pc        <= a_alt_pc;
         m0_instr         <= a_instr;
+        m0_next_taken    <= a_next_taken;
+        m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
+        m0_slot           <= a_slot;
+        m0_counter       <= a_counter;
 
         // M0 to M1: which older instructions write this cell, nearest first.
         // m1 is one ahead, m2 two, x three, w four; the older the instruction, the later its
@@ -420,6 +480,10 @@ module brainfunk_core #(
         m1_next_pc       <= m0_next_pc;
         m1_alt_pc        <= m0_alt_pc;
         m1_instr         <= m0_instr;
+        m1_next_taken    <= m0_next_taken;
+        m1_target_wrong  <= m0_target_wrong;
+        m1_slot           <= m0_slot;
+        m1_counter       <= m0_counter;
 
         // M1 to M2: only the nearest writer counts.
         m2_from_w_next <= m1_hit[1];
@@ -448,6 +512,10 @@ module brainfunk_core #(
         m2_next_pc       <= m1_next_pc;
         m2_alt_pc        <= m1_alt_pc;
         m2_instr         <= m1_instr;
+        m2_next_taken    <= m1_next_taken;
+        m2_target_wrong  <= m1_target_wrong;
+        m2_slot           <= m1_slot;
+        m2_counter       <= m1_counter;
 
         // M2 to X. Results that are already in registers are picked up here; only the
         // instruction right ahead has to be taken at X itself. A cell that is written
@@ -477,6 +545,10 @@ module brainfunk_core #(
         x_next_pc       <= m2_next_pc;
         x_alt_pc        <= m2_alt_pc;
         x_instr         <= m2_instr;
+        x_next_taken    <= m2_next_taken;
+        x_target_wrong  <= m2_target_wrong;
+        x_slot           <= m2_slot;
+        x_counter       <= m2_counter;
 
         // Multiplier: operand at the end of X, product a cycle later, used by the
         // destination's X one cycle after that.
@@ -499,9 +571,14 @@ module brainfunk_core #(
         w_base       <= x_base;
         w_base_after <= x_base_after;
         w_pc         <= x_pc;
-        w_next_pc    <= x_mispredict ? x_alt_pc : x_next_pc;
-        w_alt_pc     <= x_miss ? x_pc : x_alt_pc;
+        w_next_pc    <= (x_is_branch && x_wrong_way) ? x_alt_pc : x_next_pc;
+        w_alt_pc     <= x_miss ? x_pc : (x_is_branch && x_wrong_way) ? x_alt_pc : x_next_pc;
         w_instr      <= x_instr;
+        w_is_branch  <= x_is_branch;
+        w_taken      <= x_taken;
+        w_wrong_guess <= x_mispredict && x_next_taken;
+        w_slot        <= x_slot;
+        w_counter    <= x_counter;
         w_data       <= x_sum;
         w1_data      <= w_data;
         w2_data      <= w1_data;
@@ -520,6 +597,34 @@ module brainfunk_core #(
     end
 
     assign io_out_valid = out_pending;
+
+    // ---- what the predictor learns ----
+    assign pred_front_en = front_en;
+    assign pred_fetch_pc = fetch_pc;
+    assign pred_i1_pc    = i1_pc;
+
+    // A guess proved wrong comes out; D's redirect goes in. Both act in registers, so that neither
+    // lengthens the path they start from.
+    logic                d_learn, w_forget;
+    logic                d_seq_forget;
+    assign d_learn      = front_en && !redirect && d_steer_taken;
+    assign d_seq_forget = front_en && !redirect && d_steer_seq;
+    assign w_forget     = w_valid && w_wrong_guess;
+    always_ff @(posedge clk) begin
+        next_we         <= !rst && (w_forget || d_learn || d_seq_forget);
+        next_key        <= d_prev_pc;
+        if (w_forget) next_key[3:0] <= w_slot;
+        next_valid      <= !w_forget && d_learn;
+        next_new_target <= d_target;
+    end
+
+    // Counts how far this branch disagrees with its static guess.
+    logic w_agrees;
+    assign w_agrees    = w_taken == w_instr[19];
+    assign dir_we      = w_valid && w_is_branch;
+    assign dir_pc      = w_pc;
+    assign dir_counter = w_agrees ? (w_counter == 2'd0 ? 2'd0 : w_counter - 2'd1)
+                                  : (w_counter == 2'd3 ? 2'd3 : w_counter + 2'd1);
 
     assign dmem_raddr = m0_ea;
     assign dmem_waddr = w_ea;

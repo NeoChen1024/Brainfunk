@@ -3,6 +3,7 @@
 //   cosim [--stall] [--limit N] image.hex [input-file]   run one program image
 //   cosim --random N [--seed S] [--stall]                run N random programs at -O0..-O2
 //   cosim --evict N [--seed S] [--stall]                 run N random images built to force evictions
+// --chaos makes the branch predictor guess at random, which must not change what a program does.
 //
 // Exit status is non-zero on the first divergence. --json prints the results as one JSON object.
 #include "Vbrainfunk_soc.h"
@@ -78,10 +79,13 @@ public:
         for (std::size_t word = 0; word < TAPE_SIZE / 4; ++word) sdram_poke(static_cast<int>(SDRAM_TAPE + word), 0);
 
         top_.por = 1;
+        top_.predict_chaos = chaos;
         top_.rst = 1;
         for (int i = 0; i < 4; ++i) tick();
         top_.por = 0;
     }
+
+    bool chaos = false;
 
     Result run(const std::vector<std::uint32_t>& image, const std::string& input, bool stall,
                std::uint64_t retire_limit, std::uint32_t stall_seed) {
@@ -97,6 +101,7 @@ public:
         std::size_t input_pos = 0;
         Rng rng(stall_seed);
 
+        top_.predict_chaos = chaos;
         top_.rst = 1;
         top_.io_in_valid = 0;
         top_.io_in_data = 0;
@@ -425,13 +430,14 @@ void print_result(const Result& result) {
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
 
-    bool stall = false, json = false;
+    bool stall = false, json = false, chaos = false;
     std::uint64_t limit = 0;
     std::uint32_t random_count = 0, evict_count = 0, seed = 1;
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--stall") stall = true;
+        else if (arg == "--chaos") chaos = true;
         else if (arg == "--json") json = true;
         else if (arg == "--limit") limit = std::stoull(argv[++i]);
         else if (arg == "--random") random_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
@@ -442,6 +448,7 @@ int main(int argc, char** argv) {
 
     try {
         Cosim cosim;
+        cosim.chaos = chaos;
         if (evict_count != 0) {
             std::uint64_t halted = 0, truncated = 0, trapped = 0, retired = 0;
             for (std::uint32_t n = 0; n < evict_count; ++n) {
@@ -499,7 +506,7 @@ int main(int argc, char** argv) {
         }
 
         if (files.empty()) {
-            std::cerr << "usage: cosim [--json] [--stall] [--limit N] image.hex [input-file]\n"
+            std::cerr << "usage: cosim [--json] [--stall] [--chaos] [--limit N] image.hex [input-file]\n"
                          "       cosim --random N [--seed S] [--stall]\n"
                          "       cosim --evict N [--seed S] [--stall]\n";
             return 2;

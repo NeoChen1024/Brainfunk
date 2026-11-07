@@ -8,7 +8,7 @@ verilator --cc --exe --build -j "${JOBS:-$(nproc)}" -O3 --x-assign fast --x-init
     --top-module brainfunk_soc -DBRAINFUNK_RETIRE_PORT \
     --Mdir "$root/build/cosim" \
     -CFLAGS "-std=c++20 -O2 -I$root -I$root/tests" \
-    "$root/rtl/brainfunk_core.sv" "$root/rtl/brainfunk_mem.sv" "$root/rtl/brainfunk_cache.sv" \
+    "$root/rtl/brainfunk_core.sv" "$root/rtl/brainfunk_predict.sv" "$root/rtl/brainfunk_mem.sv" "$root/rtl/brainfunk_cache.sv" \
     "$root/rtl/sdram_ctrl.sv" "$root/tb/sdram_model.sv" "$root/rtl/brainfunk_soc.sv" \
     "$root/tb/cosim.cpp" "$root/libbrainfunk.cpp" "$root/optimizer.cpp" "$root/llvm_codegen.cpp" \
     -o cosim
