@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <bit>
+#include <charconv>
+#include <cstdio>
 #include <iostream>
 #include <iterator>
 #include <numeric>
@@ -333,13 +335,11 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
         // clang-format on
     }
 
-    for (addr_t pc = 0; pc < bitcode_.size(); ++pc) {
-        if (format == Format::BIT)
-            os << pc << ":\t" << bitcode_[pc].to_string(BitcodeFormat::Plain)
-               << '\n';
-        else
-            os << '\t' << bitcode_[pc].to_string(BitcodeFormat::C) << '\n';
+    if (format == Format::BIT) {
+        write_listing(os, bitcode_);
+        return;
     }
+    for (const auto& instruction : bitcode_) os << '\t' << instruction.to_string(BitcodeFormat::C) << '\n';
 
     if (format == Format::C) {
         os << "}\n";
@@ -658,7 +658,14 @@ std::string Bitcode::to_string(BitcodeFormat format) const {
     if (format == BitcodeFormat::C) {
         return std::string(opcode_name(opcode_)) + "(" + operand.str() + ");";
     }
-    return std::string(opcode_name(opcode_)) + "\t" + operand.str();
+    if (opcode_ == Opcode::X && wide_ != 0) {
+        /* The illegal word it was decoded from. */
+        char word[16];
+        std::snprintf(word, sizeof word, "0x%08x", static_cast<std::uint32_t>(wide_));
+        operand << word;
+    }
+    const auto text = operand.str();
+    return std::string(opcode_name(opcode_)) + (text.empty() ? "" : "\t" + text);
 }
 
 // ------------------------------------------------------------------
@@ -669,20 +676,22 @@ namespace {
 
 std::int8_t narrow_field(offset_t value, unsigned bits, const char* name) {
     if (!fits_signed(value, bits)) {
-        throw BrainfunkException(std::string(name) + " out of range");
+        throw BrainfunkException(std::string(name) + " " + std::to_string(value) + " does not fit in " +
+                                 std::to_string(bits) + " bits");
     }
     return static_cast<std::int8_t>(value);
 }
 
 std::int32_t wide_field(offset_t value, unsigned bits, const char* name) {
     if (!fits_signed(value, bits)) {
-        throw BrainfunkException(std::string(name) + " out of range");
+        throw BrainfunkException(std::string(name) + " " + std::to_string(value) + " does not fit in " +
+                                 std::to_string(bits) + " bits");
     }
     return static_cast<std::int32_t>(value);
 }
 
 /* Moves and jumps may exceed their 20-bit binary field in a program that is only
- * interpreted; bit2bin is what rejects those. */
+ * interpreted; Bitcode::encode() is what rejects those. */
 constexpr unsigned IN_MEMORY_WIDE_BITS = 32;
 
 } // anonymous namespace
@@ -736,7 +745,7 @@ Bitcode Bitcode::move_branch(offset_t test_offset, offset_t move_offset, offset_
 
 Bitcode Bitcode::fill(offset_t addr_offset, memory_t data, unsigned count) {
     if (count == 0 || count > 255) {
-        throw BrainfunkException("count out of range");
+        throw BrainfunkException("count " + std::to_string(count) + " is not from 1 to 255");
     }
     auto bitcode = data_op(Opcode::SRUN, addr_offset, data);
     bitcode.narrow_ = static_cast<std::int8_t>(static_cast<std::uint8_t>(count));
@@ -767,7 +776,8 @@ namespace {
 } // anonymous namespace
 
 Bitcode Bitcode::decode(std::uint32_t word) {
-    const auto illegal = none(Opcode::X);
+    auto illegal = none(Opcode::X);
+    illegal.wide_ = static_cast<std::int32_t>(word);
 
     const auto op = word >> 28;
     if (op >= static_cast<std::uint32_t>(Opcode::Count)) return illegal;
@@ -801,6 +811,130 @@ Bitcode Bitcode::decode(std::uint32_t word) {
         return top_byte == 0 ? illegal : fill(addr, low_byte, top_byte);
     }
     return illegal;
+}
+
+// ------------------------------------------------------------------
+//  encode  -  the inverse of decode
+// ------------------------------------------------------------------
+
+std::uint32_t Bitcode::encode() const {
+    const auto field = [](std::int64_t value, unsigned bits, const char* name) -> std::uint32_t {
+        if (!fits_signed(value, bits)) {
+            throw BrainfunkException(std::string(name) + " " + std::to_string(value) + " does not fit in " +
+                                     std::to_string(bits) + " bits");
+        }
+        return static_cast<std::uint32_t>(value) & ((std::uint32_t{1} << bits) - 1);
+    };
+
+    std::uint32_t word = static_cast<std::uint32_t>(opcode_) << 28;
+    switch (opcode_layout(opcode_)) {
+    case OperandLayout::None:
+        if (opcode_ == Opcode::X) word = static_cast<std::uint32_t>(wide_);
+        break;
+    case OperandLayout::Data:
+        word |= field(addr_offset(), ADDR_OFFSET_BITS, "addr_offset") << 8 | data_;
+        break;
+    case OperandLayout::Mul:
+        word |= field(src_offset(), SRC_OFFSET_BITS, "src_offset") << 20 |
+                field(addr_offset(), ADDR_OFFSET_BITS, "addr_offset") << 8 | data_;
+        break;
+    case OperandLayout::Branch:
+        word |= field(test_offset(), TEST_OFFSET_BITS, "test_offset") << 20 |
+                field(jump_offset(), LONG_OFFSET_BITS, "jump_offset");
+        break;
+    case OperandLayout::Scan:
+        word |= field(test_offset(), TEST_OFFSET_BITS, "test_offset") << 20 | field(step(), LONG_OFFSET_BITS, "step");
+        break;
+    case OperandLayout::Move:
+        word |= field(move_offset(), LONG_OFFSET_BITS, "move_offset");
+        break;
+    case OperandLayout::MoveBranch:
+        word |= field(test_offset(), TEST_OFFSET_BITS, "test_offset") << 20 |
+                field(move_offset(), MJN_MOVE_BITS, "move_offset") << 12 |
+                field(jump_offset(), MJN_JUMP_BITS, "jump_offset");
+        break;
+    case OperandLayout::Fill:
+        word |= std::uint32_t{static_cast<std::uint8_t>(narrow_)} << 20 |
+                field(addr_offset(), ADDR_OFFSET_BITS, "addr_offset") << 8 | data_;
+        break;
+    }
+    /* What the fields cannot say, such as IO with a data of 2, has no word. */
+    if (decode(word) != *this) throw BrainfunkException(to_string() + " has no encoding");
+    return word;
+}
+
+// ------------------------------------------------------------------
+//  parse  -  the inverse of to_string
+// ------------------------------------------------------------------
+
+Bitcode Bitcode::parse(std::string_view text) {
+    const auto parts = ctre::match<"\\s*+([A-Z]++)\\s*+(.*?)\\s*+">(text);
+    if (!parts) throw BrainfunkException("not an instruction: " + std::string(text));
+    const auto name = parts.get<1>().to_view();
+    const auto operands = parts.get<2>().to_view();
+
+    std::optional<Opcode> found;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(Opcode::Count); ++i) {
+        if (opcode_name(static_cast<Opcode>(i)) == name) found = static_cast<Opcode>(i);
+    }
+    if (!found) throw BrainfunkException("unknown opcode " + std::string(name));
+    const auto opcode = *found;
+
+    if (opcode == Opcode::X && !operands.empty()) {
+        const auto raw = ctre::match<"0x([0-9a-fA-F]{1,8})">(operands);
+        if (!raw) throw BrainfunkException("X takes nothing, or the illegal word as 0x...: " + std::string(text));
+        const auto digits = raw.get<1>().to_view();
+        std::uint32_t word = 0;
+        std::from_chars(digits.data(), digits.data() + digits.size(), word, 16);
+        const auto decoded = decode(word);
+        if (decoded.opcode() != Opcode::X || word == 0)
+            throw BrainfunkException("not an illegal word: " + std::string(text));
+        return decoded;
+    }
+
+    /* Decimal operands, separated by commas. */
+    std::vector<std::int64_t> values;
+    for (std::string_view rest = operands; !rest.empty();) {
+        const auto comma = rest.find(',');
+        auto item = rest.substr(0, comma);
+        while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) item.remove_prefix(1);
+        while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) item.remove_suffix(1);
+        std::int64_t value = 0;
+        const auto result = std::from_chars(item.data(), item.data() + item.size(), value);
+        if (item.empty() || result.ec != std::errc{} || result.ptr != item.data() + item.size())
+            throw BrainfunkException("bad operand in " + std::string(text));
+        values.push_back(value);
+        if (comma == std::string_view::npos) break;
+        rest.remove_prefix(comma + 1);
+        if (rest.empty()) throw BrainfunkException("bad operand in " + std::string(text));
+    }
+
+    const auto layout = opcode_layout(opcode);
+    constexpr std::array<std::size_t, 8> arity = {0, 2, 3, 2, 2, 1, 3, 3};
+    if (values.size() != arity[static_cast<std::size_t>(layout)])
+        throw BrainfunkException(std::string(name) + " takes " + std::to_string(arity[static_cast<std::size_t>(layout)]) +
+                                 " operands: " + std::string(text));
+    const auto byte = [&](std::int64_t value, const char* what) {
+        if (value < 0 || value > 255) throw BrainfunkException(std::string(what) + " " + std::to_string(value) + " is not a byte");
+        return static_cast<memory_t>(value);
+    };
+
+    Bitcode bitcode;
+    switch (layout) {
+    case OperandLayout::None: bitcode = none(opcode); break;
+    case OperandLayout::Data: bitcode = data_op(opcode, values[0], byte(values[1], "data")); break;
+    case OperandLayout::Mul: bitcode = mul(opcode, values[0], values[1], byte(values[2], "factor")); break;
+    case OperandLayout::Branch: bitcode = branch(opcode, values[0], values[1]); break;
+    case OperandLayout::Scan: bitcode = scan(values[0], values[1]); break;
+    case OperandLayout::Move: bitcode = move(values[0]); break;
+    case OperandLayout::MoveBranch: bitcode = move_branch(values[0], values[1], values[2]); break;
+    case OperandLayout::Fill:
+        if (values[2] < 1 || values[2] > 255) throw BrainfunkException("count " + std::to_string(values[2]) + " is not from 1 to 255");
+        bitcode = fill(values[0], byte(values[1], "data"), static_cast<unsigned>(values[2]));
+        break;
+    }
+    (void)bitcode.encode(); // the fields that only the binary width limits
+    return bitcode;
 }
 
 // ------------------------------------------------------------------

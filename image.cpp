@@ -1,11 +1,12 @@
-/* Program images: bit2bin's hexadecimal words, and packed images with their word-level LZ.
- * doc/bincode.txt describes both. */
+/* Program images: bincode as words, as text, as a listing, and packed with word-level LZ.
+ * doc/bincode.txt describes them. */
 #include "libbrainfunk.hpp"
 #include "ctre.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <map>
 #include <string>
@@ -148,6 +149,79 @@ std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes) {
     return words;
 }
 
+std::vector<std::uint32_t> encode_bincode(std::span<const Bitcode> code) {
+    std::vector<std::uint32_t> words;
+    words.reserve(code.size());
+    for (std::size_t pc = 0; pc < code.size(); ++pc) {
+        try {
+            words.push_back(code[pc].encode());
+        } catch (const BrainfunkException& error) {
+            throw BrainfunkException("at pc " + std::to_string(pc) + ": " + error.what());
+        }
+    }
+    return words;
+}
+
+std::vector<Bitcode> decode_bincode(std::span<const std::uint32_t> words) {
+    std::vector<Bitcode> code;
+    code.reserve(words.size());
+    for (const auto word : words) code.push_back(Bitcode::decode(word));
+    return code;
+}
+
+void write_listing(std::ostream& os, std::span<const Bitcode> code) {
+    for (std::size_t pc = 0; pc < code.size(); ++pc) os << pc << ":\t" << code[pc].to_string() << '\n';
+}
+
+namespace {
+
+/* Calls take(line number, line) for each line, the last one without a newline too. */
+template <typename Take>
+void for_each_line(std::string_view text, Take take) {
+    std::size_t number = 0;
+    for (std::size_t start = 0; start < text.size();) {
+        const auto end = std::min(text.find('\n', start), text.size());
+        take(++number, text.substr(start, end - start));
+        start = end + 1;
+    }
+}
+
+bool blank(std::string_view line) {
+    return line.find_first_not_of(" \t\r") == std::string_view::npos;
+}
+
+} // namespace
+
+std::vector<Bitcode> parse_listing(std::string_view text) {
+    std::vector<Bitcode> code;
+    for_each_line(text, [&](std::size_t number, std::string_view line) {
+        if (blank(line)) return;
+        const auto parts = ctre::match<"\\s*+([0-9]++)\\s*+:(.*)">(line);
+        if (!parts) throw BrainfunkException("listing, line " + std::to_string(number) + ": no pc: " + std::string(line));
+        const auto digits = parts.get<1>().to_view();
+        std::size_t pc = 0;
+        std::from_chars(digits.data(), digits.data() + digits.size(), pc);
+        if (pc != code.size())
+            throw BrainfunkException("listing, line " + std::to_string(number) + ": pc " + std::to_string(pc) + " where " +
+                                     std::to_string(code.size()) + " comes next");
+        try {
+            code.push_back(Bitcode::parse(parts.get<2>().to_view()));
+        } catch (const BrainfunkException& error) {
+            throw BrainfunkException("listing, line " + std::to_string(number) + ": " + error.what());
+        }
+    });
+    if (code.empty()) throw BrainfunkException("empty listing");
+    return code;
+}
+
+void write_hex(std::ostream& os, std::span<const std::uint32_t> words) {
+    const auto flags = os.flags();
+    const auto fill = os.fill('0');
+    for (const auto word : words) os << std::hex << std::setw(8) << word << '\n';
+    os.flags(flags);
+    os.fill(fill);
+}
+
 std::vector<std::uint32_t> read_image(std::istream& in) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     if (text.starts_with(std::string_view(reinterpret_cast<const char*>(PACKED_MAGIC.data()), PACKED_MAGIC.size()))) {
@@ -155,20 +229,19 @@ std::vector<std::uint32_t> read_image(std::istream& in) {
         return unpack_image(std::span(data, text.size()));
     }
 
+    /* A listing has a pc and a colon on every line, a hexadecimal image never. */
+    const auto first = text.substr(0, text.find('\n'));
+    if (first.find(':') != std::string::npos) return encode_bincode(parse_listing(text));
+
     std::vector<std::uint32_t> words;
-    std::size_t line_number = 0;
-    for (std::size_t start = 0; start < text.size();) {
-        const auto end = std::min(text.find('\n', start), text.size());
-        const std::string_view line(text.data() + start, end - start);
-        start = end + 1;
-        ++line_number;
+    for_each_line(text, [&](std::size_t number, std::string_view line) {
         const auto word = ctre::match<"\\s*+([0-9a-fA-F]{8})\\s*+">(line);
-        if (!word) throw BrainfunkException("malformed image, line " + std::to_string(line_number) + ": " + std::string(line));
+        if (!word) throw BrainfunkException("hexadecimal image, line " + std::to_string(number) + ": " + std::string(line));
         const auto digits = word.get<1>().to_view();
         std::uint32_t value = 0;
         std::from_chars(digits.data(), digits.data() + digits.size(), value, 16);
         words.push_back(value);
-    }
+    });
     if (words.empty()) throw BrainfunkException("empty image");
     return words;
 }

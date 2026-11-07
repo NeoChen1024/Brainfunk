@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -35,20 +36,23 @@ constexpr std::string_view BOARD_USB_VENDOR = "1a86"; // the board's CH340
 enum class Mode { Run, Flash, Pack, Id };
 
 void usage(std::ostream& os, const char* name) {
-    os << "Usage: " << name << " [-m run|flash] [-t] [-p port] [-b baud] image\n"
-       << "       " << name << " -m pack -o file image\n"
+    os << "Usage: " << name << " [-m run|flash] [-t] [-p port] [-b baud] (image | -f file | -s code) [-O level]\n"
+       << "       " << name << " -m pack -o file (image | -f file | -s code) [-O level]\n"
        << "       " << name << " -m id [-p port] [-b baud]\n"
        << "       " << name << " -h\n"
        << "\n"
-       << "Packs a program image for the YADAN board's loader, and sends it over the serial port.\n"
-       << "The image is what bit2bin prints, one hexadecimal word per line, or an image already\n"
-       << "packed; '-' is standard input.\n"
+       << "Packs a program for the YADAN board's loader, and sends it over the serial port. The\n"
+       << "program is an image in any form brainfunk -b reads, '-' for standard input, or Brainfuck\n"
+       << "source, which is compiled first.\n"
        << "\n"
        << "  -m mode   what to do (default run):\n"
        << "              run    load it into Code RAM and run it\n"
        << "              flash  write it to the user flash, then boot from there\n"
        << "              pack   only pack it, into -o\n"
        << "              id     print the user flash's JEDEC ID\n"
+       << "  -f file   Brainfuck source instead of an image\n"
+       << "  -s code   Brainfuck source on the command line\n"
+       << "  -O level  optimization level for source, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n"
        << "  -t        after run or flash, stay as a terminal for the program, at " << PROGRAM_BAUD << " baud\n"
        << "  -o file   where pack writes, '-' for standard output\n"
        << "  -p port   the board's serial port (default $BOARD_PORT, or else the one port under\n"
@@ -57,9 +61,8 @@ void usage(std::ostream& os, const char* name) {
        << "  -h        show this help\n"
        << "\n"
        << "Examples:\n"
-       << "  brainfunk -m bit -f program.b | bit2bin > program.hex\n"
-       << "  " << name << " -t program.hex                    run it, and talk to it\n"
-       << "  " << name << " -m flash program.hex              boot it from now on\n"
+       << "  " << name << " -t -f program.b                   run it, and talk to it\n"
+       << "  " << name << " -m flash -O2 -f program.b         boot it from now on\n"
        << "  " << name << " -m pack -o program.bfi program.hex\n";
 }
 
@@ -275,13 +278,27 @@ void write_packed(const std::string& output, std::span<const std::uint8_t> packe
 int main(int argc, char** argv) {
     const char* name = argv[0];
     Mode mode = Mode::Run;
-    std::string port_name, output;
+    std::string port_name, output, source_file, source_code;
+    bool have_source = false;
     int baud = DEFAULT_LOAD_BAUD;
+    int opt_level = OPT_MAX;
     bool stay = false;
 
     int opt;
-    while ((opt = ::getopt(argc, argv, "hm:p:b:to:")) != -1) {
+    while ((opt = ::getopt(argc, argv, "hm:p:b:to:f:s:O:")) != -1) {
         switch (opt) {
+        case 'f':
+            source_file = optarg;
+            have_source = true;
+            break;
+        case 's':
+            source_code = optarg;
+            have_source = true;
+            break;
+        case 'O':
+            if (const auto level = parse_opt_level(optarg)) opt_level = *level;
+            else usage_error(name, std::string("not an optimization level: ") + optarg);
+            break;
         case 'h':
             usage(std::cout, name);
             return 0;
@@ -311,9 +328,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    const int images = argc - optind;
+    const int images = argc - optind + (have_source ? 1 : 0);
     if (mode == Mode::Id ? images != 0 : images != 1)
-        usage_error(name, mode == Mode::Id ? "id takes no image" : images == 0 ? "no image given" : "more than one image given");
+        usage_error(name, mode == Mode::Id ? "id takes no program" : images == 0 ? "no program given" : "more than one program given");
     if (!output.empty() && mode != Mode::Pack) usage_error(name, "-o is for -m pack; the other modes send the image");
     if (mode == Mode::Pack && output.empty()) usage_error(name, "-m pack needs -o");
     if (stay && (mode == Mode::Pack || mode == Mode::Id)) usage_error(name, "-t is for -m run and -m flash");
@@ -321,7 +338,21 @@ int main(int argc, char** argv) {
     try {
         std::vector<std::uint8_t> packed;
         if (mode != Mode::Id) {
-            const auto words = read_image_file(argv[optind]);
+            std::vector<std::uint32_t> words;
+            if (have_source) {
+                std::string code = source_code;
+                if (!source_file.empty()) {
+                    std::ifstream in(source_file);
+                    if (!in.is_open()) throw std::runtime_error("cannot open " + source_file);
+                    code.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                }
+                Brainfunk program;
+                program.translate(code);
+                program.optimize(opt_level);
+                words = encode_bincode(program.bitcode());
+            } else {
+                words = read_image_file(argv[optind]);
+            }
             if (words.size() > CODE_RAM_WORDS)
                 throw std::runtime_error(std::to_string(words.size()) + " words is more than Code RAM's " + std::to_string(CODE_RAM_WORDS));
             packed = pack_image(words);

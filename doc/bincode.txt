@@ -1,9 +1,8 @@
 Brainfunk bincode: 32-bit instruction encoding
 ==============================================
 
-doc/bitcode.txt defines what each instruction does.
-
-bit2bin prints one word per line as eight lowercase hexadecimal digits.
+doc/bitcode.txt defines what each instruction does.  "Program images", at the end, describes
+the forms a whole program takes: a listing, hexadecimal text, and image files.
 
 Opcodes
 -------
@@ -89,7 +88,8 @@ Only their low log2(MEMSIZE) bits have any effect, because base_ptr wraps.
 Implementations
 ---------------
 
-bit2bin, the C++ interpreter (brainfunk -b) and rtl/ implement this format.
+image.cpp (encode_bincode, decode_bincode), the C++ interpreter (brainfunk -b) and rtl/
+implement this format.
 rtl/ does not implement the fused instructions yet and traps on them; run it on
 code from -O2 or lower.
 
@@ -97,11 +97,24 @@ CPU/Brainfunk.circ still implements the earlier 24-bit format, and cannot load
 this output.
 
 
-Packed images
--------------
+Program images
+--------------
 
-bfload packs an image for the board's loader, rtl/board/loader.sv, with pack_image() in
-image.cpp; brainfunk -b reads packed images as well as hexadecimal ones:
+A program is a sequence of words, the first at pc 0.  It takes three forms, which convert into
+each other without loss; brainfunk -m bit, hex and packed write them, and brainfunk -b,
+visualbrainfunk -b and bfload read any of them, told apart by content:
+
+  listing        text, a line per word: "pc:<TAB>MNEMONIC<TAB>operands", as in doc/bitcode.txt,
+                 pc counting from 0.  An illegal word other than 0 lists as X with the word,
+                 "X<TAB>0x9abcdef0", so that it converts back.  Spacing is free when read.
+  hexadecimal    text, a line per word, eight lowercase hexadecimal digits.
+  packed image   the words compressed, below.
+
+Every word converts to a listing line and back to itself, and the same for a listing line in
+the form brainfunk -m bit writes.  An instruction that does not fit its fields, which a program
+that is only interpreted may have, has no word, and converting it is an error.
+
+A packed image, as the board's loader rtl/board/loader.sv takes it:
 
   "BFIM"        4 bytes
   payload size  3 bytes, little endian, in bytes
@@ -109,7 +122,7 @@ image.cpp; brainfunk -b reads packed images as well as hexadecimal ones:
   CRC-32        4 bytes, little endian, of the payload (the common reflected polynomial)
   payload
 
-The payload is a run of tokens, and every multi-byte value is little endian:
+A packed image's payload is a run of tokens, and every multi-byte value is little endian:
 
   0lllllll              l + 1 literal words follow, 4 bytes each
   1lllllll, distance    l + 2 words copied from distance words back, one at a time, so a copy

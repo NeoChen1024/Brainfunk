@@ -8,8 +8,8 @@ CXXFLAGS = $(FLAGS) $(DBG) -std=c++20
 LDFLAGS	= -Wl,-O1 -Wl,--as-needed
 LIBOBJS	= libbrainfunk.o optimizer.o llvm_codegen.o image.o
 OBJS	= brainfunk.o $(LIBOBJS)
-PRGS	= brainfunk bf bit2bin bfstrip visualbrainfunk bfload
-DEPS	= brainfunk.d libbrainfunk.d optimizer.d llvm_codegen.d image.d bf.d bit2bin.d bfstrip.d visualbrainfunk.d bfload.d
+PRGS	= brainfunk bf bfstrip visualbrainfunk bfload
+DEPS	= brainfunk.d libbrainfunk.d optimizer.d llvm_codegen.d image.d bf.d bfstrip.d visualbrainfunk.d bfload.d
 
 .PHONY: all clean countline test hw-test formal yadan yadan-load
 
@@ -18,8 +18,8 @@ all: $(PRGS)
 brainfunk: $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) -o brainfunk
 
-bfload: bfload.cpp image.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) bfload.cpp image.o -o bfload
+bfload: bfload.cpp $(LIBOBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) bfload.cpp $(LIBOBJS) -o bfload
 
 visualbrainfunk: visualbrainfunk.cpp $(LIBOBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) visualbrainfunk.cpp $(LIBOBJS) -o visualbrainfunk -lncursesw

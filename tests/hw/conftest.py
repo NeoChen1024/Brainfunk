@@ -69,21 +69,19 @@ def tools(tmp_path_factory, worker_id):
     with FileLock(shared / "build.lock"):
         stamp = shared / "built"
         if not stamp.exists():
-            run("make", "-s", "brainfunk", "bit2bin", "bfload")
+            run("make", "-s", "brainfunk", "bfload")
             run("sh", "tb/build.sh")
             stamp.touch()
 
 
 def assemble(source, level, out):
-    """A program image from a Brainfuck file, through the real assembler."""
-    bitcode = run(ROOT / "brainfunk", f"-O{level}", "-m", "bit", "-f", source)
-    subprocess.run([ROOT / "bit2bin"], input=bitcode.stdout, stdout=out.open("w"), stderr=subprocess.DEVNULL, text=True, check=True)
+    """A hexadecimal program image from a Brainfuck file."""
+    run(ROOT / "brainfunk", f"-O{level}", "-m", "hex", "-f", source, "-o", out)
     return out
 
 
 def assemble_text(code, level, out):
-    bitcode = run(ROOT / "brainfunk", f"-O{level}", "-m", "bit", "-s", code)
-    subprocess.run([ROOT / "bit2bin"], input=bitcode.stdout, stdout=out.open("w"), stderr=subprocess.DEVNULL, text=True, check=True)
+    run(ROOT / "brainfunk", f"-O{level}", "-m", "hex", "-s", code, "-o", out)
     return out
 
 

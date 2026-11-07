@@ -133,7 +133,10 @@ public:
  * ================================================================ */
 
 /* Flat 8-byte record, so a cache line holds eight instructions and an operand
- * is a plain load.  Not the binary encoding: that is produced by bit2bin. */
+ * is a plain load.  Not the binary encoding: encode() and decode() convert, and
+ * to_string() and parse() do the same with the text of a listing.  Every word
+ * decodes to an instruction that encodes back to it, and the same for text in
+ * the form to_string() gives. */
 class Bitcode {
 public:
     constexpr Bitcode() noexcept = default;
@@ -151,8 +154,20 @@ public:
     [[nodiscard]] static Bitcode fill(offset_t addr_offset, memory_t data, unsigned count);
 
     /* Decodes a bincode word; doc/bincode.txt defines which words are legal.  An
-     * illegal word decodes to X, so that it traps if it is ever executed. */
+     * illegal word decodes to X, so that it traps if it is ever executed, and X
+     * keeps the word, so that it encodes back to it. */
     [[nodiscard]] static Bitcode decode(std::uint32_t word);
+
+    /* The bincode word.  Throws BrainfunkException if a field does not fit its
+     * binary width, which a program that is only interpreted may exceed. */
+    [[nodiscard]] std::uint32_t encode() const;
+
+    /* One instruction as to_string() prints it, such as "MUL\t3, 2, 255", with
+     * any spacing; "X" alone, or "X\t0x..." with an illegal word.  Throws
+     * BrainfunkException on anything that would not encode. */
+    [[nodiscard]] static Bitcode parse(std::string_view text);
+
+    friend constexpr bool operator==(const Bitcode&, const Bitcode&) noexcept = default;
 
     /* The same branch, with a different target. */
     [[nodiscard]] Bitcode with_jump_offset(offset_t jump_offset) const;
@@ -244,7 +259,7 @@ public:
     /* Translate Brainfuck source code into internal bitcode */
     void translate(std::string_view code);
 
-    /* Load a program image as produced by bit2bin.  The image must end in H or an
+    /* Load a program image, as read_image() gives it.  The image must end in H or an
      * illegal word, and no jump may leave it. */
     void load_bincode(std::span<const std::uint32_t> words);
 
@@ -306,15 +321,30 @@ private:
  * Program images (image.cpp); doc/bincode.txt is the normative format
  * ================================================================ */
 
+/* bincode words from instructions; throws BrainfunkException, naming the pc, if
+ * one does not encode. */
+[[nodiscard]] std::vector<std::uint32_t> encode_bincode(std::span<const Bitcode> code);
+
+/* Instructions from bincode words; an illegal word becomes X, keeping the word. */
+[[nodiscard]] std::vector<Bitcode> decode_bincode(std::span<const std::uint32_t> words);
+
+/* A listing: "pc:<TAB>instruction" a line, pc counting from 0, as to_string()
+ * prints the instruction.  parse_listing() takes any spacing. */
+void write_listing(std::ostream& os, std::span<const Bitcode> code);
+[[nodiscard]] std::vector<Bitcode> parse_listing(std::string_view text);
+
+/* A bincode image as text: one word a line, eight lowercase hexadecimal digits. */
+void write_hex(std::ostream& os, std::span<const std::uint32_t> words);
+
 /* A packed image starts with these four bytes. */
 inline constexpr std::array<std::uint8_t, 4> PACKED_MAGIC = {'B', 'F', 'I', 'M'};
 
-/* The farthest back a copy can reach: its distance is 16 bits. */
+/* The farthest back an LZ copy can reach: its distance is 16 bits. */
 inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
 
-/* Word-level LZ, the payload of a packed image.  Tokens: 0lllllll, then l + 1
- * literal words; 1lllllll, then a 16-bit distance, for l + 2 words copied one
- * at a time from that far back.  No copy reaches back more than max_distance. */
+/* Word-level LZ.  Tokens: 0lllllll, then l + 1 literal words; 1lllllll, then a
+ * 16-bit distance, for l + 2 words copied one at a time from that far back.  No
+ * copy reaches back more than max_distance. */
 [[nodiscard]] std::vector<std::uint8_t> lz_compress(std::span<const std::uint32_t> words,
                                                     std::size_t max_distance = LZ_MAX_DISTANCE);
 
@@ -330,8 +360,8 @@ inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
 /* Throws BrainfunkException unless the magic, both sizes and the CRC are right. */
 [[nodiscard]] std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes);
 
-/* Reads a program image: one hexadecimal word per line, as bit2bin prints it,
- * or a packed image, told apart by the magic. */
+/* Reads a program as words, whatever form it is in, told apart by content: a
+ * packed image, a listing, or one hexadecimal word a line. */
 [[nodiscard]] std::vector<std::uint32_t> read_image(std::istream& in);
 
 /* The same from a file; "-" is standard input. */

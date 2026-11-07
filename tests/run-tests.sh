@@ -41,13 +41,18 @@ check_codegen()
         cmp "$tmpdir/$name.reference" "$base.interpreted"
 
         ./brainfunk -O"$level" -m bit -f "$source" >"$base.bit"
-        ./bit2bin <"$base.bit" >"$base.hex" 2>/dev/null
+        ./brainfunk -O"$level" -m hex -f "$source" >"$base.hex"
 
-        # The image must decode back to the same program, and run the same.
-        ./brainfunk -b "$base.hex" -m bit -o "$base.image.bit"
-        cmp "$base.bit" "$base.image.bit"
-        ./brainfunk -b "$base.hex" >"$base.image.out" <"$input"
-        cmp "$tmpdir/$name.reference" "$base.image.out"
+        # Every form of the image must convert to every other without loss, and run the same.
+        ./brainfunk -b "$base.bit" -m hex | cmp "$base.hex" -
+        ./brainfunk -b "$base.hex" -m bit | cmp "$base.bit" -
+        ./brainfunk -b "$base.hex" -m packed -o "$base.bfi"
+        ./brainfunk -b "$base.bfi" -m hex | cmp "$base.hex" -
+        ./brainfunk -b "$base.bfi" -m bit | cmp "$base.bit" -
+        for form in bit hex bfi; do
+            ./brainfunk -b "$base.$form" >"$base.image.out" <"$input"
+            cmp "$tmpdir/$name.reference" "$base.image.out"
+        done
 
         ./brainfunk -O"$level" -m bfc -f "$source" >"$base.c"
         "$CC" -std=c99 -O2 -Wall -Wextra -Werror -pedantic \
@@ -195,14 +200,17 @@ else
     echo "LLVM tools not found; skipping LLVM assembly and execution tests" >&2
 fi
 
-./brainfunk -m bit -s '++>+++[<+>-].' | ./bit2bin >"$tmpdir/program.bin"
-test "$(wc -l <"$tmpdir/program.bin")" -gt 0
-
+# Each listing line must encode to its word, and the word must list as the same line.
 check_encoding()
 {
-    actual="$(printf '0: %s\n' "$1" | ./bit2bin 2>/dev/null)"
+    actual="$(printf '0: %s\n' "$1" | ./brainfunk -m hex -b - 2>/dev/null)"
     if [ "$actual" != "$2" ]; then
-        echo "bit2bin: '$1' encoded as '$actual', expected '$2'" >&2
+        echo "listing: '$1' encoded as '$actual', expected '$2'" >&2
+        exit 1
+    fi
+    listed="$(echo "$2" | ./brainfunk -m bit -b - | tr '\t' ' ' | sed 's/^0: //')"
+    if [ "$listed" != "$1" ]; then
+        echo "listing: $2 listed as '$listed', expected '$1'" >&2
         exit 1
     fi
 }
@@ -225,6 +233,8 @@ check_encoding 'MJN 1, -2, -3' c01feffd
 check_encoding 'MJN -128, 127, 2047' c807f7ff
 check_encoding 'SRUN 5, 7, 3' d0300507
 check_encoding 'SRUN -1, 0, 255' dfffff00
+check_encoding 'X 0x9abcdef0' 9abcdef0
+check_encoding 'X 0x00000005' 00000005
 
 for rejected in \
     'A 2048, 1' 'A -2049, 1' 'A 0, 256' 'A 0, -1' 'A 5' 'H 1' 'IO 0, 2' \
@@ -232,17 +242,18 @@ for rejected in \
     'F 128, 1' 'F 0, 524288' 'M 524288' 'M -524289' \
     'JE 128, 0' 'JN -129, 0' 'JE 0, 524288' 'NOPE 1' \
     'MULC 1, 128, 1' 'DJN 128, 0' 'MJN 1, 128, 0' 'MJN 1, 0, 2048' 'MJN 128, 0, 0' 'MJN 1, 2' \
-    'SRUN 0, 0, 0' 'SRUN 0, 0, 256' 'SRUN 0, 0, -1' 'SRUN 2048, 0, 1' 'SRUN 0, 256, 1' 'SRUN 0, 0'
+    'SRUN 0, 0, 0' 'SRUN 0, 0, 256' 'SRUN 0, 0, -1' 'SRUN 2048, 0, 1' 'SRUN 0, 256, 1' 'SRUN 0, 0' \
+    'X 0x10000005' 'X 0x0' 'X 5'
 do
-    if printf '0: %s\n' "$rejected" | ./bit2bin >/dev/null 2>&1; then
-        echo "bit2bin accepted invalid instruction: $rejected" >&2
+    if printf '0: %s\n' "$rejected" | ./brainfunk -m hex -b - >/dev/null 2>&1; then
+        echo "listing accepted invalid instruction: $rejected" >&2
         exit 1
     fi
 done
 
 awk 'BEGIN { printf "+[-"; for (i = 0; i < 3000; ++i) printf ">"; printf "+";
             for (i = 0; i < 3000; ++i) printf "<"; printf "]" }' >"$tmpdir/far-mul.bf"
-./brainfunk -m bit -f "$tmpdir/far-mul.bf" | ./bit2bin >/dev/null
+./brainfunk -m hex -f "$tmpdir/far-mul.bf" >/dev/null
 
 ./brainfunk -O0 -m stat -s '++[->+<]>.' >/dev/null 2>"$tmpdir/stat.out"
 grep -q '^MUL	1	1$' "$tmpdir/stat.out"

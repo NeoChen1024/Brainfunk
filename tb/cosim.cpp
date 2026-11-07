@@ -334,38 +334,6 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
     return words;
 }
 
-/* Same encoding as bit2bin, for programs generated in-process. */
-std::vector<std::uint32_t> assemble(const Brainfunk& program) {
-    std::vector<std::uint32_t> words;
-    for (const auto& instruction : program.bitcode()) {
-        std::uint32_t word = static_cast<std::uint32_t>(instruction.opcode()) << 28;
-        const auto field = [](offset_t value, unsigned bits) {
-            return static_cast<std::uint32_t>(value) & ((std::uint32_t{1} << bits) - 1);
-        };
-        switch (opcode_layout(instruction.opcode())) {
-        case OperandLayout::Data:
-            word |= field(instruction.addr_offset(), 12) << 8 | instruction.data();
-            break;
-        case OperandLayout::Mul:
-            word |= field(instruction.src_offset(), 8) << 20 | field(instruction.addr_offset(), 12) << 8 | instruction.data();
-            break;
-        case OperandLayout::Branch:
-            word |= field(instruction.test_offset(), 8) << 20 | field(instruction.jump_offset(), 20);
-            break;
-        case OperandLayout::Scan:
-            word |= field(instruction.test_offset(), 8) << 20 | field(instruction.step(), 20);
-            break;
-        case OperandLayout::Move:
-            word |= field(instruction.move_offset(), 20);
-            break;
-        default:
-            break;
-        }
-        words.push_back(word);
-    }
-    return words;
-}
-
 void print_json(const Result& result) {
     std::printf("{\"retired\":%llu,\"cycles\":%llu,\"halted\":%s,\"trapped\":%s,\"truncated\":%s,\"ops\":{",
                 static_cast<unsigned long long>(result.retired), static_cast<unsigned long long>(result.cycles),
@@ -463,16 +431,7 @@ int main(int argc, char** argv) {
                     program.translate(code);
                     program.optimize(level);
                     try {
-                        const auto image = assemble(program);
-
-                        /* assemble() is a second encoder; it must agree with the decoder. */
-                        Brainfunk decoded;
-                        decoded.load_bincode(image);
-                        if (!std::equal(program.bitcode().begin(), program.bitcode().end(),
-                                        decoded.bitcode().begin(), decoded.bitcode().end(),
-                                        [](const Bitcode& a, const Bitcode& b) { return a.to_string() == b.to_string(); })) {
-                            throw Divergence{"image does not decode back to the program"};
-                        }
+                        const auto image = encode_bincode(program.bitcode());
 
                         const auto result = cosim.run(image, std::string(input), stall, 20000, program_seed);
                         halted += result.halted;

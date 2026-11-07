@@ -199,6 +199,12 @@ public:
         cache_code_();
     }
 
+    /* A program image in any form brainfunk -b reads; -O does not apply. */
+    void load_image(const std::string& path) {
+        bf_.load_bincode(read_image_file(path));
+        cache_code_();
+    }
+
     void load_code(const std::string& code_str) {
         bf_.translate(code_str);
         bf_.optimize(opt_level_);
@@ -592,9 +598,10 @@ private:
 [[noreturn]] static void helpmsg(char** argv, int status = 0) {
     std::cerr
         << "Usage: " << argv[0]
-        << " [-h] [-f file] [-s code] [-t msec] [-O level]\n"
+        << " [-h] [-f file] [-s code] [-b image] [-t msec] [-O level]\n"
         << "  -f file    Read Brainfuck source from file\n"
         << "  -s code    Inline Brainfuck code\n"
+        << "  -b image   A program image, in any form brainfunk -b reads; -O does not apply\n"
         << "  -t msec    Initial delay per step in milliseconds (default 100)\n"
         << "  -O level   Optimization level, 0 to " << OPT_MAX << " (default 0)\n"
         << "  -h         Show this help\n"
@@ -611,12 +618,13 @@ private:
 int main(int argc, char** argv) {
     std::string filename;
     std::string code_str;
+    std::string image;
     auto delay = std::chrono::milliseconds{100};
     bool valid = false;
     int opt_level = OPT_NONE;
 
     int opt;
-    while ((opt = ::getopt(argc, argv, "hf:s:t:O:")) != -1) {
+    while ((opt = ::getopt(argc, argv, "hf:s:b:t:O:")) != -1) {
         switch (opt) {
         case 'O': {
             const auto level = parse_opt_level(optarg);
@@ -633,6 +641,10 @@ int main(int argc, char** argv) {
             break;
         case 's':
             code_str = optarg;
+            valid = true;
+            break;
+        case 'b':
+            image = optarg;
             valid = true;
             break;
         case 't':
@@ -666,7 +678,9 @@ int main(int argc, char** argv) {
         VisualBrainfunk vbf(delay);
         vbf.set_opt_level(opt_level);
 
-        if (!filename.empty()) {
+        if (!image.empty()) {
+            vbf.load_image(image);
+        } else if (!filename.empty()) {
             vbf.load_file(filename);
         } else {
             vbf.load_code(code_str);

@@ -377,7 +377,7 @@ int main() {
         check(decoded(0x601FFFFE) == "JE\t1, -2", "decode JE");
         check(decoded(0x77F7FFFF) == "JN\t127, 524287", "decode JN");
         check(decoded(0x80000001) == "IO\t0, 1", "decode IO");
-        check(decoded(0x90000000) == "H\t", "decode H");
+        check(decoded(0x90000000) == "H", "decode H");
         check(decoded(0xA0200303) == "MULC\t3, 2, 3", "decode MULC");
         check(decoded(0xB01FFFFE) == "DJN\t1, -2", "decode DJN");
         check(decoded(0xC01FEFFD) == "MJN\t1, -2, -3", "decode MJN");
@@ -394,6 +394,7 @@ int main() {
                  0xF0000000u,   // reserved opcode
              }) {
             check(Bitcode::decode(word).opcode() == Opcode::X, "illegal word decodes to X");
+            check(Bitcode::decode(word).encode() == word, "illegal word encodes back to itself");
         }
 
         check(rejected({}), "empty image is rejected");
@@ -513,6 +514,52 @@ int main() {
                   (void)read_image(in);
               }),
               "malformed hex image is rejected");
+    }
+
+    /* ---- every word and listing line converts back to itself ---- */
+    {
+        std::uint32_t state = 7;
+        const auto next = [&state] {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            return state;
+        };
+        std::size_t legal = 0, mismatches = 0;
+        for (int i = 0; i < 1000000; ++i) {
+            /* Half of them with the reserved bits clear, which most are legal with. */
+            std::uint32_t word = next();
+            if (i % 2) word &= 0xF00FFFFFu;
+            const auto decoded = Bitcode::decode(word);
+            legal += decoded.opcode() != Opcode::X;
+            bool same = false;
+            try {
+                same = decoded.encode() == word && Bitcode::parse(decoded.to_string()) == decoded &&
+                       Bitcode::parse(decoded.to_string()).to_string() == decoded.to_string();
+            } catch (const BrainfunkException&) {
+            }
+            if (!same && mismatches++ < 5) std::cerr << "FAIL: word " << std::hex << word << std::dec << " does not convert back\n";
+        }
+        check(mismatches == 0, "words convert to instructions and listing lines and back");
+        check(legal > 400000, "the bijection test saw enough legal words");
+
+        std::vector<Bitcode> code;
+        for (int i = 0; i < 1000; ++i) code.push_back(Bitcode::decode(next() & 0xF00FFFFFu));
+        std::ostringstream listing;
+        write_listing(listing, code);
+        check(parse_listing(listing.str()) == code, "listing round trip");
+        std::ostringstream hex;
+        write_hex(hex, encode_bincode(code));
+        std::istringstream hex_in(hex.str()), listing_in(listing.str());
+        check(read_image(hex_in) == read_image(listing_in), "hex and listing read as the same words");
+
+        bool rejected_far = false;
+        try {
+            (void)Bitcode::move(1 << 20).encode();
+        } catch (const BrainfunkException&) {
+            rejected_far = true;
+        }
+        check(rejected_far, "a move beyond 20 bits does not encode");
     }
 
     return failures == 0 ? 0 : 1;

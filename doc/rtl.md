@@ -223,8 +223,8 @@ The cycle counts of the real programs end up in `build/hw-test/cycles.json`.
 **Cosimulation** runs the core in lock step with `libbrainfunk`. At every retire it compares
 pc, next pc, `base_ptr`, the write address and data, and output; at the end it compares the
 whole tape, through the data cache. `tb/sdram_model.sv` stops the simulation on any command or
-timing the part would not accept. `bit2bin` produces the image, and the interpreter loads the same
-file with `load_bincode`, so the assembler and decoder are covered too. Input stalls and output
+timing the part would not accept. `brainfunk -m hex` produces the image, and the interpreter loads
+the same file with `load_bincode`, so the encoder and decoder are covered too. Input stalls and output
 backpressure can be randomized with `--stall`. `--evict` runs images that jump between cells a
 whole cache size apart: nothing in the test corpus evicts a dirty line, so nothing else tests
 write-back.
@@ -273,12 +273,12 @@ export TD_HOME=/path/to/TD
 make yadan                               # build/yadan/yadan.bit and reports
 make yadan-load                          # JTAG to SRAM; the configuration flash is not touched
 
-./brainfunk -O2 -m bit -f program.b | ./bit2bin > program.hex
-./bfload program.hex                     # into Code RAM, and run it
-./bfload -m flash program.hex            # into the user flash, and boot from it
-./bfload -t program.hex                  # either, then stay as a terminal for the program
+./bfload -f program.b                    # compile, into Code RAM, and run it
+./bfload -m flash -f program.b           # into the user flash, and boot from it
+./bfload -t -f program.b                 # either, then stay as a terminal for the program
+./bfload program.bfi                     # an image instead, in any form brainfunk -b reads
 ./bfload -m id                           # the user flash's JEDEC ID
-./bfload -m pack -o program.bfi program.hex   # only pack it; brainfunk -b runs packed images too
+./brainfunk -O2 -m packed -f program.b -o program.bfi   # what bfload sends
 ```
 
 `bfload` finds the board's serial port as the only one under `/dev/serial/by-id` from USB vendor

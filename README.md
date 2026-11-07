@@ -22,14 +22,17 @@ make test
 
 # Program images
 
-`bit2bin` assembles bitcode into a program image, one hexadecimal word per line, which
-`$readmemh` can load. `bfload` packs an image with word-level LZ, and sends it to the YADAN
-board; see [doc/rtl.md](doc/rtl.md). `brainfunk -b` runs either kind directly:
+A program also takes the form of a listing (`-m bit`), hexadecimal words (`-m hex`), or a packed
+image, compressed with word-level LZ (`-m packed`). They
+convert into each other without loss, and `brainfunk -b` runs any of them; see
+[doc/bincode.txt](doc/bincode.txt). `bfload` sends a program to the YADAN board; see
+[doc/rtl.md](doc/rtl.md).
 
 ```shell
-./brainfunk -m bit -f program.b | ./bit2bin > program.hex
-./bfload -m pack -o program.bfi program.hex
+./brainfunk -O2 -m packed -f program.b -o program.bfi
+./brainfunk -m bit -b program.bfi
 ./brainfunk -b program.bfi
+./bfload -t -f program.b
 ```
 
 # Optimization levels
@@ -40,11 +43,13 @@ highest level; `visualbrainfunk` defaults to `-O0`, which is easier to follow wh
 
 # Modes
 
-`bf`: interpret a Brainfuck program
+`run`, or `bf`: interpret a Brainfuck program
 
 `bfc`: convert a Brainfuck program to C99
 
-`bit`: print optimized bitcode
+`bit`: print optimized bitcode as a listing
+
+`hex`, `packed`: write the program image as hexadecimal words, or a packed image
 
 `llvm`: lower optimized bitcode to portable textual LLVM IR
 

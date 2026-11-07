@@ -38,7 +38,7 @@ jump_offset       Added to pc, relative to the NEXT instruction: a taken jump
 Instructions
 ------------
 
-Mnemonic and operands are the text format accepted by bit2bin.  Instructions
+Mnemonic and operands are the text of a listing, see "Program images" in doc/bincode.txt.  Instructions
 without a stated effect on pc continue at pc + 1.
 
 X
