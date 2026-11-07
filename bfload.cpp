@@ -155,7 +155,9 @@ void set_speed(int fd, int baud) {
     termios settings{};
     if (tcgetattr(fd, &settings) != 0) throw std::runtime_error(std::strerror(errno));
     cfmakeraw(&settings);
-    settings.c_cflag |= CLOCAL | CREAD;
+    // HUPCL drops RTS on close, so that the next open pulses the board's reset. minicom clears it,
+    // and the setting outlives the port being closed.
+    settings.c_cflag |= CLOCAL | CREAD | HUPCL;
     settings.c_cflag &= ~static_cast<tcflag_t>(CRTSCTS | CSTOPB | PARENB);
     settings.c_cc[VMIN] = 0;
     settings.c_cc[VTIME] = 0;
@@ -258,9 +260,11 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        const int port = open(port_name.c_str(), O_RDWR | O_NOCTTY);
+        // Without O_NONBLOCK this waits for a carrier that never comes if CLOCAL is off, as minicom leaves it.
+        const int port = open(port_name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
         if (port < 0) throw std::runtime_error(port_name + ": " + std::strerror(errno));
         set_speed(port, 115200);
+        fcntl(port, F_SETFL, 0);
         usleep(50000);
         tcsendbreak(port, 0);
         usleep(20000);

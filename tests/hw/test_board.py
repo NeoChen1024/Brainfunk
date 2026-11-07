@@ -30,6 +30,8 @@ def board(tools):
     if not os.path.exists(PORT):
         pytest.skip(f"{PORT} not found")
     run("sh", "synth/load-yadan.sh")
+    # minicom leaves this off, and without it closing the port does not drop RTS, so nothing restarts.
+    run("stty", "-F", PORT, "hupcl")
     time.sleep(1)
 
 

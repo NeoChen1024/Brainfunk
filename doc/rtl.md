@@ -181,9 +181,13 @@ What happens when:
 |---|---|
 | Power-up | Load Code RAM from the user flash, and run it; with a bad or empty flash, wait for a Break |
 | `K_51`, 5 ms or longer | The same |
-| Opening the serial port | RTS pulses the same net for about 137 us: restart the program from Code RAM |
+| Opening the serial port, if closing it dropped RTS | RTS pulses the same net for about 137 us: restart the program from Code RAM |
 | UART Break, 5 ms or longer | Whatever is going on, take a command at the loader's speed |
 | Any restart | Clear the tape and caches, then wait about 200 ms so the first output is not lost |
+
+Closing the port only drops RTS with `HUPCL` set. minicom clears it, and that outlives the port being
+closed, so no terminal restarts the program afterwards. `stty -F <port> hupcl` before connecting puts
+it back; so does running `bfload`.
 
 Program I/O is 115200 8N1, through 1 KiB FIFOs. There is no flow control, because RTS drives the
 reset net, so input arriving faster than the program reads it is lost once the FIFO fills. Input
