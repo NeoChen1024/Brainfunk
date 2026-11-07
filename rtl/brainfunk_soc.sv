@@ -1,11 +1,13 @@
-// Brainfunk core with its Harvard memories, in block RAM.
+// Brainfunk core, its caches, and the SDRAM behind them.
 module brainfunk_soc #(
-    parameter int IMEM_ADDR_WIDTH = 18,
+    parameter int IMEM_ADDR_WIDTH = 20,
     parameter int DMEM_ADDR_WIDTH = 16,
-    parameter     IMEM_INIT       = "",   // $readmemh image; empty to load it another way
-    parameter bit CLEAR_TAPE_ON_RESET = 1'b0
+    parameter bit CLEAR_TAPE_ON_RESET = 1'b0,
+    parameter int SDRAM_BOOT_CYCLES   = 16
 ) (
     input  logic       clk,
+    input  logic       sdclk,
+    input  logic       por,   // restarts the SDRAM too
     input  logic       rst,
 
     input  logic       io_in_valid,
@@ -16,7 +18,15 @@ module brainfunk_soc #(
     input  logic       io_out_ready,
 
     output logic       halted,
-    output logic       trapped
+    output logic       trapped,
+
+    // The image loader, which writes code while rst holds everything else still.
+    input  logic        load_req_valid,
+    input  logic [17:0] load_req_line,
+    output logic        load_req_ready,
+    output logic        load_wr_fetch,
+    input  logic [31:0] load_wr_data,
+    output logic        sdram_ready
 `ifdef BRAINFUNK_RETIRE_PORT
     ,
     output logic                       retire_valid,
@@ -26,16 +36,17 @@ module brainfunk_soc #(
     output logic [DMEM_ADDR_WIDTH-1:0] retire_base_ptr,
     output logic                       dmem_we_o,
     output logic [DMEM_ADDR_WIDTH-1:0] dmem_addr_o,
-    output logic [7:0]                 dmem_wdata_o
+    output logic [7:0]                 dmem_wdata_o,
+    output logic                       core_ready
 `endif
 );
 
-    logic                       imem_en;
-    logic [IMEM_ADDR_WIDTH-1:0] imem_addr;
+    logic                       imem_en, imem_hit, imem_miss, imem_hold, imem_refetch;
+    logic [IMEM_ADDR_WIDTH-1:0] imem_addr, imem_miss_addr;
     logic [31:0]                imem_rdata;
-    logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr;
+    logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr;
     logic [7:0]                 dmem_rdata, dmem_wdata;
-    logic                       dmem_we;
+    logic                       dmem_we, dmem_hit, dmem_miss, dmem_busy;
 
 `ifndef BRAINFUNK_RETIRE_PORT
     /* verilator lint_off UNUSEDSIGNAL */
@@ -50,77 +61,83 @@ module brainfunk_soc #(
     assign dmem_wdata_o = dmem_wdata;
 `endif
 
-    // After reset the core waits for the tape to be cleared, if it is going to be.
-    logic core_rst, tape_we;
-    logic [DMEM_ADDR_WIDTH-1:0] tape_waddr;
-    logic [7:0] tape_wdata;
+    // ---- SDRAM: code in the bottom half, tape in the top half ----
+    logic        sd_ras_n, sd_cas_n, sd_we_n, sd_dq_oe;
+    logic [10:0] sd_addr;
+    logic [1:0]  sd_ba;
+    logic [31:0] sd_dq_out, sd_dq_in;
 
-    generate
-        if (CLEAR_TAPE_ON_RESET) begin : g_clear
-            logic clearing = 1'b1;
-            logic [DMEM_ADDR_WIDTH-1:0] clear_addr = '0;
+    logic        req_valid, req_write, req_ready, rd_valid, wr_fetch;
+    logic [17:0] req_line;
+    logic [31:0] rd_data, wr_data;
 
-            always_ff @(posedge clk) begin
-                if (rst) begin
-                    clearing   <= 1'b1;
-                    clear_addr <= '0;
-                end else if (clearing) begin
-                    clearing   <= clear_addr != '1;
-                    clear_addr <= clear_addr + 1'b1;
-                end
-                core_rst <= rst || clearing;
-            end
+    sdram_ctrl #(.BOOT_CYCLES(SDRAM_BOOT_CYCLES)) sdram (
+        .clk(clk), .por(por), .init_done(sdram_ready),
+        .req_valid(req_valid), .req_write(req_write), .req_line(req_line), .req_ready(req_ready),
+        .rd_valid(rd_valid), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(wr_data),
+        .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_addr(sd_addr), .sd_ba(sd_ba),
+        .sd_dq_out(sd_dq_out), .sd_dq_oe(sd_dq_oe), .sd_dq_in(sd_dq_in)
+    );
 
-            assign tape_we    = clearing || dmem_we;
-            assign tape_waddr = clearing ? clear_addr : dmem_waddr;
-            assign tape_wdata = clearing ? 8'd0 : dmem_wdata;
-        end else begin : g_no_clear
-            assign core_rst   = rst;
-            assign tape_we    = dmem_we;
-            assign tape_waddr = dmem_waddr;
-            assign tape_wdata = dmem_wdata;
-        end
-    endgenerate
+    sdram_phy phy (
+        .clk(clk), .sdclk(sdclk), .ras_n(sd_ras_n), .cas_n(sd_cas_n), .we_n(sd_we_n),
+        .addr(sd_addr), .ba(sd_ba), .dq_out(sd_dq_out), .dq_oe(sd_dq_oe), .dq_in(sd_dq_in)
+    );
+
+    // One line at a time. The data cache goes first, because it holds the whole core up, and
+    // the owner of a request gets its read data.
+    logic        i_req_valid, i_req_ready, d_req_valid, d_req_write, d_req_ready, i_owns_read;
+    logic [17:0] i_req_line, d_req_line;
+    logic        cache_rst, load_req_active;
+    logic [31:0] d_wr_data;
+    assign cache_rst = rst || !sdram_ready;
+
+    // Write data comes after the request, so the data path needs to remember whose it was.
+    always_ff @(posedge clk) begin
+        if (req_ready && req_valid) load_req_active <= load_req_valid;
+    end
+
+    assign req_valid      = load_req_valid || d_req_valid || i_req_valid;
+    assign req_write      = load_req_valid || (d_req_valid && d_req_write);
+    assign req_line       = load_req_valid ? load_req_line : (d_req_valid ? d_req_line : i_req_line);
+    assign load_req_ready = req_ready && load_req_valid;
+    assign d_req_ready    = req_ready && !load_req_valid && d_req_valid;
+    assign i_req_ready    = req_ready && !load_req_valid && !d_req_valid;
+    assign load_wr_fetch  = wr_fetch;
+
+    always_ff @(posedge clk) begin
+        if (req_ready && req_valid && !req_write) i_owns_read <= !d_req_valid;
+    end
+
+    logic i_ready, d_ready, core_rst;
+
+    icache #(.PC_WIDTH(IMEM_ADDR_WIDTH)) icache (
+        .clk(clk), .rst(cache_rst), .ready(i_ready),
+        .imem_en(imem_en), .imem_addr(imem_addr), .imem_rdata(imem_rdata), .imem_hit(imem_hit),
+        .imem_miss(imem_miss), .imem_miss_addr(imem_miss_addr), .imem_hold(imem_hold), .imem_refetch(imem_refetch),
+        .req_valid(i_req_valid), .req_line(i_req_line), .req_ready(i_req_ready),
+        .rd_valid(rd_valid && i_owns_read), .rd_data(rd_data)
+    );
+
+    dcache #(.ADDR_WIDTH(DMEM_ADDR_WIDTH), .CLEAR_TAPE(CLEAR_TAPE_ON_RESET)) dcache (
+        .clk(clk), .rst(cache_rst), .ready(d_ready),
+        .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit),
+        .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata),
+        .dmem_miss(dmem_miss), .dmem_miss_addr(dmem_miss_addr), .dmem_busy(dmem_busy),
+        .req_valid(d_req_valid), .req_write(d_req_write), .req_line(d_req_line), .req_ready(d_req_ready),
+        .rd_valid(rd_valid && !i_owns_read), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(d_wr_data)
+    );
+    assign wr_data = load_req_active ? load_wr_data : d_wr_data;
+
+    // The core starts once the caches have invalidated themselves.
+    always_ff @(posedge clk) core_rst <= cache_rst || !i_ready || !d_ready;
+`ifdef BRAINFUNK_RETIRE_PORT
+    assign core_ready = !core_rst;
+`endif
 
     brainfunk_core #(
         .PC_WIDTH(IMEM_ADDR_WIDTH),
         .ADDR_WIDTH(DMEM_ADDR_WIDTH)
     ) core (.rst(core_rst), .*);
-
-    // Program memory. A bank holds 2048 words, the depth of two 32 Kb block RAMs.
-    localparam int IMEM_BANK_WIDTH = IMEM_ADDR_WIDTH < 11 ? IMEM_ADDR_WIDTH : 11;
-
-    banked_ram #(
-        .WIDTH(32),
-        .ADDR_WIDTH(IMEM_ADDR_WIDTH),
-        .BANK_WIDTH(IMEM_BANK_WIDTH),
-        .INIT(IMEM_INIT)
-    ) imem (
-        .clk(clk),
-        .en(imem_en),
-        .raddr(imem_addr),
-        .rdata(imem_rdata),
-        .we(1'b0),
-        .waddr('0),
-        .wdata('0)
-    );
-
-    // Tape: all zero at power-up, as the ISA requires, because Anlogic block RAM configures
-    // to zero by default. A bank holds 4096 cells, one 32 Kb block RAM.
-    localparam int DMEM_BANK_WIDTH = DMEM_ADDR_WIDTH < 12 ? DMEM_ADDR_WIDTH : 12;
-
-    banked_ram #(
-        .WIDTH(8),
-        .ADDR_WIDTH(DMEM_ADDR_WIDTH),
-        .BANK_WIDTH(DMEM_BANK_WIDTH)
-    ) dmem (
-        .clk(clk),
-        .en(1'b1),
-        .raddr(dmem_raddr),
-        .rdata(dmem_rdata),
-        .we(tape_we),
-        .waddr(tape_waddr),
-        .wdata(tape_wdata)
-    );
 
 endmodule

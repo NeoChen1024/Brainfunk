@@ -1,8 +1,10 @@
-# bmc replaces the 8 x 8 multiplier with an XOR on both sides of the check: the multiplier is
-# what the solver spends its time on, and it takes bmc from about 20 steps to over 30 in the
-# same time. multiplier keeps the real one, to a smaller depth.
+# bmc and bmc_miss replace the 8 x 8 multiplier with an XOR on both sides of the check, because the
+# multiplier is what the solver spends most of its time on; multiplier keeps the real one. With the
+# cache signals free the search grows quickly, so bmc assumes every access hits and goes deepest,
+# and bmc_miss leaves them free.
 [tasks]
 bmc
+bmc_miss
 multiplier
 latency
 cover
@@ -10,6 +12,8 @@ cover
 [options]
 bmc: mode bmc
 bmc: depth 32
+bmc_miss: mode bmc
+bmc_miss: depth 22
 multiplier: mode bmc
 multiplier: depth 15
 latency: mode bmc
@@ -24,7 +28,9 @@ smtbmc --nopresat yices
 multiplier: read -formal -sv -DFORMAL brainfunk_core.sv
 multiplier: read -formal -sv core_props.sv
 bmc: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
-bmc: read -formal -sv -DFORMAL_ABSTRACT_MUL core_props.sv
+bmc: read -formal -sv -DFORMAL_ABSTRACT_MUL -DNO_MISSES core_props.sv
+bmc_miss: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
+bmc_miss: read -formal -sv -DFORMAL_ABSTRACT_MUL core_props.sv
 latency: read -formal -sv -DFORMAL -DFORMAL_ABSTRACT_MUL brainfunk_core.sv
 latency: read -formal -sv -DBOUNDED_LATENCY -DFORMAL_ABSTRACT_MUL core_props.sv
 cover: read -formal -sv -DFORMAL brainfunk_core.sv

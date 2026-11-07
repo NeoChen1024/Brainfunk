@@ -20,8 +20,13 @@
 // F issues one read per cycle, assuming each cell is non-zero, with base_ptr stepping ahead.
 // The read that finds a zero ends it, and flushes the reads behind it.
 //
-// The memories are synchronous; see brainfunk_mem.sv. dmem_rdata arrives three edges after
-// dmem_raddr, and imem_rdata three edges after imem_addr, if imem_en holds.
+// The memories are caches; see brainfunk_cache.sv. dmem_rdata arrives three edges after dmem_raddr,
+// and imem_rdata three edges after imem_addr if imem_en holds, each with a hit flag.
+//
+// An instruction fetch miss holds D until the cache has the line. A data miss is found in X, and
+// flushes the instruction with everything behind it, to start again from fetch. It has made no
+// writes by then, because writes come after the last read of the same instruction; input reads
+// its cell first for that reason, because a byte taken cannot be asked for again.
 //
 // The fused instructions (MULC, DJN, MJN, SRUN) are not implemented yet and trap.
 module brainfunk_core #(
@@ -34,9 +39,18 @@ module brainfunk_core #(
     output logic                  imem_en,
     output logic [PC_WIDTH-1:0]   imem_addr,
     input  logic [31:0]           imem_rdata,
+    input  logic                  imem_hit,        // arrives with imem_rdata
+    output logic                  imem_miss,       // D holds a word that was not in the cache
+    output logic [PC_WIDTH-1:0]   imem_miss_addr,
+    input  logic                  imem_hold,       // the cache is writing a tag: do not read
+    input  logic                  imem_refetch,    // a fill finished: look up what missed again
 
     output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
+    input  logic                  dmem_hit,        // arrives with dmem_rdata
+    output logic                  dmem_miss,       // one cycle; the instruction restarts
+    output logic [ADDR_WIDTH-1:0] dmem_miss_addr,
+    input  logic                  dmem_busy,       // handling a miss: nothing may issue
     output logic                  dmem_we,
     output logic [ADDR_WIDTH-1:0] dmem_waddr,
     output logic [7:0]            dmem_wdata,
@@ -83,8 +97,10 @@ module brainfunk_core #(
     logic [PC_WIDTH-1:0] fetch_pc, i1_pc, i2_pc, d_pc;
     logic                i1_valid, i2_valid, d_valid;
 
-    assign imem_en   = front_en;
-    assign imem_addr = fetch_pc;
+    assign imem_en        = front_en;
+    assign imem_addr      = fetch_pc;
+    assign imem_miss      = d_valid && !imem_hit;
+    assign imem_miss_addr = d_pc;
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -94,6 +110,11 @@ module brainfunk_core #(
             d_valid  <= 1'b0;
         end else if (redirect) begin
             fetch_pc <= w_alt_pc;
+            i1_valid <= 1'b0;
+            i2_valid <= 1'b0;
+            d_valid  <= 1'b0;
+        end else if (imem_refetch && imem_miss) begin
+            fetch_pc <= d_pc;
             i1_valid <= 1'b0;
             i2_valid <= 1'b0;
             d_valid  <= 1'b0;
@@ -137,7 +158,7 @@ module brainfunk_core #(
     assign d_is_halt   = d_op == OP_H;
     assign d_multi     = d_is_mul || d_is_scan || d_is_io || d_is_halt || !d_legal;
 
-    assign d_predict_taken = d_valid && d_is_branch && d_instr[19];
+    assign d_predict_taken = d_valid && imem_hit && d_is_branch && d_instr[19];
     assign d_target        = d_pc + d_instr[PC_WIDTH-1:0] + PC_WIDTH'(1);
 
     logic [PC_WIDTH-1:0] d_seq;
@@ -171,23 +192,26 @@ module brainfunk_core #(
     assign moved = base_ptr + a_offset_2;
 
     logic a_issue, a_flag_mul_dst;
-    assign a_issue        = a_valid && (!a_multi || a_go);
+    assign a_issue        = a_valid && !dmem_busy && (!a_multi || a_go);
     assign a_flag_mul_dst = a_is_mul && a_last;
 
-    assign front_en = !a_valid || !a_multi || a_last || scan_exit;
+    // A can take a new instruction; the front end moves if it has one to give.
+    logic a_ready;
+    assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_exit;
+    assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
     logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
-    assign drained = !(m0_valid || m1_valid || m2_valid || x_valid || w_valid);
+    assign drained = !(m0_valid || m1_valid || m2_valid || x_valid || w_valid || redirect);
 
     logic out_pending;
-    assign io_in_ready = a_valid && a_is_in && a_phase == 2'd0 && drained;
+    assign io_in_ready = a_valid && a_is_in && a_phase == 2'd1 && drained;
 
     always_ff @(posedge clk) begin
         if (rst || redirect) begin
             a_valid <= 1'b0;
-        end else if (front_en) begin
-            a_valid <= d_valid;
+        end else if (a_ready) begin
+            a_valid <= front_en && d_valid;
         end
 
         if (rst) begin
@@ -219,13 +243,13 @@ module brainfunk_core #(
             a_alt_pc        <= d_instr[19] ? d_seq : d_target;
             a_phase         <= 2'd0;
             a_last          <= 1'b0;
-            a_go            <= !(d_is_io && d_legal && !d_instr[0]);
+            a_go            <= 1'b1;
             a_offset        <= (d_is_mul || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
                                                                       : d_addr[ADDR_WIDTH-1:0];
             a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
         end else if (a_is_mul) begin
             unique case (a_phase)
-                2'd0: begin // source issues now, then a gap for the multiplier
+                2'd0: if (!dmem_busy) begin // source issues now, then a gap for the multiplier
                     a_go     <= 1'b0;
                     a_offset <= a_offset_2;
                     a_phase  <= 2'd1;
@@ -237,26 +261,35 @@ module brainfunk_core #(
                 end
             endcase
         end else if (a_is_in) begin
-            if (a_phase == 2'd0 && drained && io_in_valid) begin
+            // A read first, so that the line is in the cache and the write cannot miss: a byte
+            // once taken cannot be asked for again.
+            if (a_phase == 2'd0) begin
+                if (!dmem_busy) begin
+                    a_go    <= 1'b0;
+                    a_phase <= 2'd1;
+                end
+            end else if (a_phase == 2'd1 && drained && io_in_valid) begin
                 a_data  <= io_in_data;
                 a_go    <= 1'b1;
                 a_last  <= 1'b1;
                 a_phase <= 2'd2;
             end
         end else if (a_is_out) begin
-            a_go <= 1'b0; // the read issues now, and sets out_pending from X if it is not flushed
-            if (a_phase == 2'd0) a_phase <= 2'd1;
-            else if (drained && !out_pending) begin
+            if (!dmem_busy) a_go <= 1'b0; // the read issues now, and sets out_pending from X
+            if (a_phase == 2'd0) begin
+                if (!dmem_busy) a_phase <= 2'd1;
+            end else if (drained && !out_pending) begin
                 a_go   <= 1'b1;
                 a_last <= 1'b1;
             end
-        end else if (!a_is_scan) begin // H or an illegal word: issued, and stays until flushed
+        end else if (!a_is_scan && !dmem_busy) begin // H or an illegal word: issued, stays until flushed
             a_go <= 1'b0;
         end
     end
 
     // ---- M0: compares against everything that has not written yet ----
     // Each stage's fields, as one uop. pc, instr and base_after are only for the retire port.
+    logic                  m0_uses_cache, m1_uses_cache, m2_uses_cache, x_uses_cache;
     logic                  m0_writes, m0_retire, m0_no_read, m0_is_branch, m0_is_je, m0_predict_taken;
     logic                  m0_is_scan, m0_is_out_read, m0_is_mul_src, m0_is_mul_dst, m0_is_halt, m0_is_trap;
     logic [7:0]            m0_data;
@@ -297,14 +330,16 @@ module brainfunk_core #(
 
     // ---- X ----
     logic [7:0] x_value, x_addend, mul_operand, mul_factor, product, x_sum;
-    logic       x_zero, x_taken, x_mispredict, x_scan_exit;
+    logic       x_zero, x_taken, x_mispredict, x_scan_exit, x_miss;
 
     assign x_value = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
     assign x_zero  = x_value == 8'd0;
     assign x_taken = x_zero == x_is_je;
 
-    assign x_mispredict = x_valid && !flush && x_is_branch && x_taken != x_predict_taken;
-    assign x_scan_exit  = x_valid && !flush && x_is_scan && x_zero;
+    // A miss restarts the instruction, which is the same as a misprediction back to itself.
+    assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit;
+    assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && x_taken != x_predict_taken;
+    assign x_scan_exit  = x_valid && !flush && dmem_hit && x_is_scan && x_zero;
 
     assign x_addend = x_is_mul_dst ? product : x_data;
     assign x_sum    = x_value + x_addend;
@@ -318,14 +353,18 @@ module brainfunk_core #(
             w_valid   <= 1'b0;
             redirect  <= 1'b0;
             scan_exit <= 1'b0;
+            dmem_miss <= 1'b0;
+            dmem_we   <= 1'b0;
         end else begin
             m0_valid  <= a_issue && !flush;
             m1_valid  <= m0_valid && !flush;
             m2_valid  <= m1_valid && !flush;
             x_valid   <= m2_valid && !flush;
-            w_valid   <= x_valid && !flush;
-            redirect  <= x_mispredict;
+            w_valid   <= x_valid && !flush && !x_miss;
+            dmem_we   <= x_valid && !flush && !x_miss && x_writes;
+            redirect  <= x_mispredict || x_miss;
             scan_exit <= x_scan_exit;
+            dmem_miss <= x_miss;
         end
 
         // A to M0
@@ -333,8 +372,10 @@ module brainfunk_core #(
         m0_base          <= base_ptr;
         m0_base_after    <= a_is_move ? moved : base_ptr;
         m0_writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
+        m0_uses_cache    <= a_is_add || a_is_set || a_is_mul || a_is_scan || a_is_branch || a_is_in ||
+                            (a_is_out && !a_last);
         m0_retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
-        m0_no_read       <= a_is_set || a_is_in;
+        m0_no_read       <= a_is_set || (a_is_in && a_last);
         m0_is_branch     <= a_is_branch;
         m0_is_je         <= a_is_je;
         m0_predict_taken <= a_predict_taken;
@@ -362,6 +403,7 @@ module brainfunk_core #(
         m1_base          <= m0_base;
         m1_base_after    <= m0_base_after;
         m1_writes        <= m0_writes;
+        m1_uses_cache    <= m0_uses_cache;
         m1_retire        <= m0_retire;
         m1_no_read       <= m0_no_read;
         m1_is_branch     <= m0_is_branch;
@@ -389,6 +431,7 @@ module brainfunk_core #(
         m2_base          <= m1_base;
         m2_base_after    <= m1_base_after;
         m2_writes        <= m1_writes;
+        m2_uses_cache    <= m1_uses_cache;
         m2_retire        <= m1_retire;
         m2_no_read       <= m1_no_read;
         m2_is_branch     <= m1_is_branch;
@@ -418,6 +461,7 @@ module brainfunk_core #(
         x_base          <= m2_base;
         x_base_after    <= m2_base_after;
         x_writes        <= m2_writes;
+        x_uses_cache    <= m2_uses_cache;
         x_retire        <= m2_retire;
         x_is_branch     <= m2_is_branch;
         x_is_je         <= m2_is_je;
@@ -456,7 +500,7 @@ module brainfunk_core #(
         w_base_after <= x_base_after;
         w_pc         <= x_pc;
         w_next_pc    <= x_mispredict ? x_alt_pc : x_next_pc;
-        w_alt_pc     <= x_alt_pc;
+        w_alt_pc     <= x_miss ? x_pc : x_alt_pc;
         w_instr      <= x_instr;
         w_data       <= x_sum;
         w1_data      <= w_data;
@@ -467,7 +511,7 @@ module brainfunk_core #(
             halted      <= 1'b0;
             trapped     <= 1'b0;
         end else begin
-            if (x_valid && !flush && x_is_out_read) out_pending <= 1'b1;
+            if (x_valid && !flush && dmem_hit && x_is_out_read) out_pending <= 1'b1;
             else if (out_pending && io_out_ready)   out_pending <= 1'b0;
             if (w_valid && w_is_halt) halted <= 1'b1;
             if (w_valid && w_is_trap) trapped <= 1'b1;
@@ -478,9 +522,9 @@ module brainfunk_core #(
     assign io_out_valid = out_pending;
 
     assign dmem_raddr = m0_ea;
-    assign dmem_we    = w_valid && w_writes;
     assign dmem_waddr = w_ea;
     assign dmem_wdata = w_data;
+    assign dmem_miss_addr = w_ea;
 
     assign retire_valid    = w_valid && w_retire;
     assign retire_pc       = w_pc;

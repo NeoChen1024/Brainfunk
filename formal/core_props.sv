@@ -5,6 +5,9 @@
 // "the cell at a" holds for every cell, and one about "dst at a, source at b" for every pair.
 // A read colliding with a write of the same cell returns anything too, as block RAM may.
 //
+// The caches' signals are free as well, so any hit may be a miss, and any stall can happen. Only
+// a read that hits has to return real data.
+//
 // The reference state is what the retire port implies, instruction by instruction.
 module core_props #(
     parameter int PC_WIDTH   = 5,
@@ -13,15 +16,20 @@ module core_props #(
     input logic        clk,
     input logic        rst,
     input logic [31:0] imem_rdata,
+    input logic        imem_hit,
+    input logic        imem_hold,
+    input logic        imem_refetch,
     input logic [7:0]  dmem_rdata,
+    input logic        dmem_hit,
+    input logic        dmem_busy,
     input logic        io_in_valid,
     input logic [7:0]  io_in_data,
     input logic        io_out_ready
 );
-    logic [PC_WIDTH-1:0]   imem_addr, retire_pc, retire_next_pc;
-    logic                  imem_en, dmem_we, io_in_ready, io_out_valid, halted, trapped;
+    logic [PC_WIDTH-1:0]   imem_addr, imem_miss_addr, retire_pc, retire_next_pc;
+    logic                  imem_en, imem_miss, dmem_we, dmem_miss, io_in_ready, io_out_valid, halted, trapped;
     logic                  retire_valid, formal_w_valid;
-    logic [ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, retire_base_ptr;
+    logic [ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr, retire_base_ptr;
     logic [7:0]            dmem_wdata, io_out_data;
     logic [31:0]           retire_instr;
 
@@ -37,14 +45,33 @@ module core_props #(
     (* anyconst *) logic [31:0]         word;
     logic i1_hit, i2_hit, i3_hit;
 
+    // F restarted by a miss resumes from where it was, so its word must still be there.
+    logic [PC_WIDTH-1:0] i1_addr, i2_addr, i3_addr, scan_pc;
+    logic [31:0]         scan_word;
+    logic                scan_active = 1'b0;
+
     always_ff @(posedge clk) begin
         if (imem_en) begin
             i1_hit <= imem_addr == word_addr;
             i2_hit <= i1_hit;
             i3_hit <= i2_hit;
+            i1_addr <= imem_addr;
+            i2_addr <= i1_addr;
+            i3_addr <= i2_addr;
         end
-        if (past_valid && !$past(rst) && !$past(imem_en)) assume (imem_rdata == $past(imem_rdata));
-        if (!rst && i3_hit) assume (imem_rdata == word);
+        if (rst || retire_valid) begin
+            scan_active <= 1'b0;
+        end else if (w_is_scan_read) begin
+            scan_active <= 1'b1;
+            scan_pc     <= retire_pc;
+            scan_word   <= retire_instr;
+        end
+        if (!rst && scan_active && i3_addr == scan_pc && imem_hit) assume (imem_rdata == scan_word);
+        if (past_valid && !$past(rst) && !$past(imem_en)) begin
+            assume (imem_rdata == $past(imem_rdata));
+            assume (imem_hit == $past(imem_hit));
+        end
+        if (!rst && i3_hit && imem_hit) assume (imem_rdata == word);
     end
 
     // ---- data memory: two tracked cells, three edges of latency ----
@@ -77,8 +104,11 @@ module core_props #(
         b3_hit   <= b2_hit;
         b3_value <= b2_value;
 
-        if (a3_hit) assume (dmem_rdata == a3_value);
-        if (b3_hit) assume (dmem_rdata == b3_value);
+        if (a3_hit && dmem_hit) assume (dmem_rdata == a3_value);
+        if (b3_hit && dmem_hit) assume (dmem_rdata == b3_value);
+
+        // Input reads its cell before taking a byte, so that its write cannot miss.
+        if (in_taken) assume (dmem_hit);
     end
 
     // ---- the architectural state the retire port implies ----
@@ -165,7 +195,7 @@ module core_props #(
 
             // What may pass W without retiring.
             if (formal_w_valid && !retire_valid) begin
-                assert (!legal || op == OP_F || op == OP_MUL || is_output);
+                assert (!legal || op == OP_F || op == OP_MUL || is_output || is_input);
             end
 
             // Halt and trap are sticky, and nothing happens afterwards.
@@ -249,12 +279,18 @@ module core_props #(
         end
     end
 
+`ifdef NO_MISSES
+    // The pipeline alone, without the solver also having to consider every miss: it gets further.
+    always_ff @(posedge clk) assume (imem_hit && dmem_hit && !imem_hold && !imem_refetch && !dmem_busy);
+`endif
+
 `ifdef BOUNDED_LATENCY
     // Without F and I/O, whose duration depends on the outside world, an instruction retires
     // within a fixed number of cycles of the one before, including a misprediction.
     logic [4:0] busy = '0;
     always_ff @(posedge clk) begin
         assume (imem_rdata[31:28] != OP_F && imem_rdata[31:28] != OP_IO);
+        assume (imem_hit && dmem_hit && !imem_hold && !imem_refetch && !dmem_busy);
         if (rst || retire_valid || halted || trapped) busy <= '0;
         else if (busy != 5'h1F) busy <= busy + 5'd1;
         if (past_valid && !rst) assert (busy <= 5'd14);
@@ -284,6 +320,8 @@ module core_props #(
             cover (retire_valid && is_output);
             cover (halted);
             cover (trapped);
+            cover (dmem_miss);
+            cover (retired >= 8'd1 && dmem_miss && $past(retire_valid));
 
             // Forwarding: two neighbouring instructions on the tracked cell.
             cover (retired >= 8'd2 && retire_valid && op == OP_A && addr_ea == a && $past(retire_valid) &&

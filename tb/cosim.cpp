@@ -2,6 +2,7 @@
 //
 //   cosim [--stall] [--limit N] image.hex [input-file]   run one program image
 //   cosim --random N [--seed S] [--stall]                run N random programs at -O0..-O2
+//   cosim --evict N [--seed S] [--stall]                 run N random images built to force evictions
 //
 // Exit status is non-zero on the first divergence.
 #include "Vbrainfunk_soc.h"
@@ -25,9 +26,8 @@
 namespace {
 
 constexpr std::size_t TAPE_SIZE = std::size_t{1} << 16;
-constexpr std::size_t ROM_SIZE  = std::size_t{1} << 18;
-constexpr std::size_t TAPE_BANK = std::size_t{1} << 12; // brainfunk_soc: DMEM_BANK_WIDTH
-constexpr std::size_t ROM_BANK  = std::size_t{1} << 11; // brainfunk_soc: IMEM_BANK_WIDTH
+constexpr std::size_t ROM_SIZE  = std::size_t{1} << 20;
+constexpr std::uint32_t SDRAM_TAPE = std::uint32_t{1} << 20; // word address of the tape in SDRAM
 
 struct Divergence {
     std::string what;
@@ -71,9 +71,16 @@ class Cosim {
 public:
     Cosim() : top_(&context_) {
         top_.eval(); // so that scopes exist
-        for (std::size_t bank = 0; bank < TAPE_SIZE / TAPE_BANK; ++bank) tape_.push_back(bank_scope("dmem", bank));
-        for (std::size_t bank = 0; bank < ROM_SIZE / ROM_BANK; ++bank) rom_.push_back(bank_scope("imem", bank));
-        for (std::size_t i = 0; i < TAPE_SIZE; ++i) poke_tape(i, 0);
+        sdram_ = scope("phy");
+        tag_   = scope("dcache.tag");
+        for (int lane = 0; lane < 4; ++lane) lanes_[lane] = scope("dcache.g_lane[" + std::to_string(lane) + "].lane");
+        svSetScope(sdram_);
+        for (std::size_t word = 0; word < TAPE_SIZE / 4; ++word) sdram_poke(static_cast<int>(SDRAM_TAPE + word), 0);
+
+        top_.por = 1;
+        top_.rst = 1;
+        for (int i = 0; i < 4; ++i) tick();
+        top_.por = 0;
     }
 
     Result run(const std::vector<std::uint32_t>& image, const std::string& input, bool stall,
@@ -97,18 +104,19 @@ public:
         for (int i = 0; i < 4; ++i) tick();
         top_.rst = 0;
 
+        // The caches invalidate themselves, and the controller finishes what it was doing.
+        while (!top_.core_ready) tick();
+
         // A previous program leaves its tape behind, and the rest of its image past the end
-        // of this one, where speculative fetch may go. Its last write can land during reset.
-        for (std::size_t i = 0; i < image.size(); ++i) {
-            svSetScope(rom_[i / ROM_BANK]);
-            ram_poke(static_cast<int>(i % ROM_BANK), image[i]);
-        }
-        for (const auto cell : written_) poke_tape(cell, 0);
+        // of this one, where speculative fetch may go.
+        svSetScope(sdram_);
+        for (std::size_t i = 0; i < image.size(); ++i) sdram_poke(static_cast<int>(i), static_cast<int>(image[i]));
+        for (const auto cell : written_) sdram_poke(static_cast<int>(SDRAM_TAPE + cell / 4), 0);
         written_.clear();
 
         Result result;
         std::uint64_t cycles_since_retire = 0;
-        const std::uint64_t scan_cycle_limit = 4 * TAPE_SIZE + 64;
+        const std::uint64_t scan_cycle_limit = 8 * TAPE_SIZE + 64; // cache misses all the way
 
         for (;;) {
             /* Inputs for this cycle.  End of input reads as a stream of zero bytes. */
@@ -173,13 +181,9 @@ public:
                     result.halted = true;
                     break;
                 }
-                if (retire_limit != 0 && result.retired >= retire_limit) {
+                if ((retire_limit != 0 && result.retired >= retire_limit) || scan_never_ends(iss)) {
                     result.truncated = true;
-                    return result;
-                }
-                if (scan_never_ends(iss)) {
-                    result.truncated = true;
-                    return result;
+                    break;
                 }
             } else if (cycles_since_retire > scan_cycle_limit && !top_.io_in_ready && !top_.io_out_valid) {
                 throw Divergence{"no retire for " + std::to_string(cycles_since_retire) + " cycles, pc " +
@@ -190,8 +194,7 @@ public:
         /* The whole architectural state, once more. */
         const auto memory = iss.memory();
         for (std::size_t i = 0; i < TAPE_SIZE; ++i) {
-            svSetScope(tape_[i / TAPE_BANK]);
-            if (static_cast<std::uint8_t>(ram_peek(static_cast<int>(i % TAPE_BANK))) != memory[i]) {
+            if (peek_tape(i) != memory[i]) {
                 throw Divergence{"final tape differs at cell " + std::to_string(i)};
             }
         }
@@ -201,19 +204,29 @@ public:
 private:
     VerilatedContext context_;
     Vbrainfunk_soc   top_;
-    std::vector<svScope> tape_, rom_;
+    svScope sdram_ = nullptr, tag_ = nullptr;
+    std::array<svScope, 4> lanes_{};
     std::vector<std::uint32_t> written_;
 
-    static svScope bank_scope(const char* memory, std::size_t bank) {
-        const auto name = std::string("TOP.brainfunk_soc.") + memory + ".g_bank[" + std::to_string(bank) + "].bank";
-        const svScope scope = svGetScopeFromName(name.c_str());
-        if (scope == nullptr) throw Divergence{"no such scope: " + name};
-        return scope;
+    static svScope scope(const std::string& path) {
+        const auto name = "TOP.brainfunk_soc." + path;
+        const svScope found = svGetScopeFromName(name.c_str());
+        if (found == nullptr) throw Divergence{"no such scope: " + name};
+        return found;
     }
 
-    void poke_tape(std::size_t cell, std::uint8_t value) {
-        svSetScope(tape_[cell / TAPE_BANK]);
-        ram_poke(static_cast<int>(cell % TAPE_BANK), value);
+    /* A cell as the program sees it: the data cache first, then SDRAM. */
+    std::uint8_t peek_tape(std::size_t cell) {
+        const auto index = static_cast<int>((cell >> 5) & 511);
+        const auto tag = static_cast<long long>(cell >> 14);
+        svSetScope(tag_);
+        if (ram_peek(index) == (4 | tag)) { // valid, tag
+            svSetScope(lanes_[cell & 3]);
+            return static_cast<std::uint8_t>(ram_peek(static_cast<int>((cell >> 2) & 4095)));
+        }
+        svSetScope(sdram_);
+        const auto word = static_cast<std::uint32_t>(sdram_peek(static_cast<int>(SDRAM_TAPE + cell / 4)));
+        return static_cast<std::uint8_t>(word >> (8 * (cell & 3)));
     }
 
     void tick() {
@@ -263,6 +276,59 @@ private:
         }
     }
 };
+
+/* Words for a program that moves between cells a whole number of data cache sizes apart, so that
+   lines keep evicting each other, including dirty ones, and reads what it wrote back again. */
+std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
+    std::uint32_t state = seed * 2654435761u + 12345u;
+    const auto next = [&state](std::uint32_t range) {
+        state = state * 1664525u + 1013904223u;
+        return (state >> 8) % range;
+    };
+    const auto field = [](int value, unsigned bits) { return static_cast<std::uint32_t>(value) & ((std::uint32_t{1} << bits) - 1); };
+    const auto cell = [&next] { return static_cast<int>(next(129)) - 64; };
+
+    std::vector<std::uint32_t> words;
+    const auto plain = [&](unsigned choice) {
+        const auto data = next(256);
+        switch (choice) {
+        case 0: words.push_back(0x10000000u | field(cell(), 12) << 8 | data); break;
+        case 1: words.push_back(0x20000000u | field(cell(), 12) << 8 | data); break;
+        case 2: words.push_back(0x30000000u | field(cell(), 8) << 20 | field(cell(), 12) << 8 | data); break;
+        case 3: words.push_back(0x80000001u | field(cell(), 12) << 8); break;
+        default: words.push_back(0x80000000u | field(cell(), 12) << 8); break;
+        }
+    };
+
+    const auto length = 200 + next(800);
+    for (std::uint32_t i = 0; i < length; ++i) {
+        const auto choice = next(16);
+        if (choice < 5) {
+            // Same index, another tag, and a little way along.
+            const int lines = static_cast<int>(next(7)) - 3;
+            words.push_back(0x50000000u | field(lines * 16384 + static_cast<int>(next(65)) - 32, 20));
+        } else if (choice == 5) {
+            // A counted loop, with an eviction inside it.
+            const int counter = cell();
+            words.push_back(0x20000000u | field(counter, 12) << 8 | (2 + next(3)));
+            const auto start = words.size();
+            const auto body = 1 + next(6);
+            for (std::uint32_t k = 0; k < body; ++k) plain(next(4));
+            words.push_back(0x50000000u | 16384u);
+            words.push_back(0x50000000u | field(-16384, 20));
+            words.push_back(0x10000000u | field(counter, 12) << 8 | 0xFFu);
+            const int back = static_cast<int>(start) - static_cast<int>(words.size()) - 1;
+            words.push_back(0x70000000u | field(counter, 8) << 20 | field(back, 20));
+        } else if (choice == 6) {
+            // A scan that crosses far-apart cells.
+            words.push_back(0x40000000u | field(cell(), 8) << 20 | field((next(2) ? 16384 : -16384) + static_cast<int>(next(9)) - 4, 20));
+        } else {
+            plain(next(5));
+        }
+    }
+    words.push_back(0x90000000u);
+    return words;
+}
 
 std::vector<std::uint32_t> read_image(const std::string& filename) {
     std::ifstream file(filename);
@@ -334,19 +400,39 @@ int main(int argc, char** argv) {
 
     bool stall = false;
     std::uint64_t limit = 0;
-    std::uint32_t random_count = 0, seed = 1;
+    std::uint32_t random_count = 0, evict_count = 0, seed = 1;
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--stall") stall = true;
         else if (arg == "--limit") limit = std::stoull(argv[++i]);
         else if (arg == "--random") random_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        else if (arg == "--evict") evict_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--seed") seed = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else files.push_back(arg);
     }
 
     try {
         Cosim cosim;
+        if (evict_count != 0) {
+            std::uint64_t halted = 0, truncated = 0, trapped = 0, retired = 0;
+            for (std::uint32_t n = 0; n < evict_count; ++n) {
+                try {
+                    const auto result = cosim.run(eviction_image(seed + n), "Az\xff\x01?", stall, 60000, seed + n);
+                    halted += result.halted;
+                    truncated += result.truncated;
+                    trapped += result.trapped;
+                    retired += result.retired;
+                } catch (const Divergence& divergence) {
+                    std::cerr << "DIVERGED, eviction image seed " << seed + n << ": " << divergence.what << '\n';
+                    return 1;
+                }
+            }
+            std::printf("%u eviction images: %llu halted, %llu truncated, %llu trapped, %llu instructions compared\n",
+                        evict_count, static_cast<unsigned long long>(halted), static_cast<unsigned long long>(truncated),
+                        static_cast<unsigned long long>(trapped), static_cast<unsigned long long>(retired));
+            return 0;
+        }
         if (random_count != 0) {
             std::uint64_t halted = 0, truncated = 0, trapped = 0, retired = 0;
             constexpr std::string_view input = "Az\xff\x01?";
@@ -390,7 +476,8 @@ int main(int argc, char** argv) {
 
         if (files.empty()) {
             std::cerr << "usage: cosim [--stall] [--limit N] image.hex [input-file]\n"
-                         "       cosim --random N [--seed S] [--stall]\n";
+                         "       cosim --random N [--seed S] [--stall]\n"
+                         "       cosim --evict N [--seed S] [--stall]\n";
             return 2;
         }
         std::string input;
