@@ -34,7 +34,7 @@
 
 namespace {
 
-constexpr std::size_t WINDOW_WORDS = 8192; // the loader's copy window, in rtl/board/loader.sv
+constexpr std::size_t WINDOW_WORDS = 65536; // as far back as a 16-bit distance reaches
 constexpr std::size_t MAX_LITERAL = 128, MIN_COPY = 2, MAX_COPY = 129, MAX_CHAIN = 64;
 
 using Bytes = std::vector<std::uint8_t>;

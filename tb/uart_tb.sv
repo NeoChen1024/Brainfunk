@@ -1,5 +1,6 @@
 // The board top over its UART pins, with an SDRAM and a W25Q16 model. The program is +.,+.,+. and
-// so prints 1, then reads 2 bytes, echoes each incremented, and halts.
+// so prints 1, then reads 2 bytes, echoes each incremented, and halts. A loop that is skipped comes
+// first, so that loading it copies from lines already in SDRAM.
 //
 // An empty flash boots to nothing. A Break and a packed image load the program into Code RAM, and a
 // corrupted one is refused. A short reset pulse restarts it on a clear tape. A Break can then

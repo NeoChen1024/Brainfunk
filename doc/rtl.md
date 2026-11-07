@@ -15,7 +15,7 @@ rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
 rtl/sdram_ctrl.sv        SDRAM controller
 rtl/brainfunk_soc.sv     all of those together
 rtl/board/               YADAN Board top, PLL, SDRAM pins, UART and FIFOs, image loader, SPI flash
-tb/                      Verilator cosimulation, SDRAM and flash models, UART testbench
+tb/                      Verilator cosimulation, SDRAM and flash models, loader and UART testbenches
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
 bfload.cpp               packs an image, and sends it to the board
@@ -209,7 +209,7 @@ Each range of random seeds and each program is a test of its own, so a failure c
 Everything runs at nice 19.
 
 ```shell
-make hw-test                          # pytest -n auto: cosimulation, UART testbench and formal, 4 minutes
+make hw-test                          # pytest -n auto: cosimulation, loader and UART testbenches, formal, 4 minutes
 pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
 pytest -n auto --mutation             # broken designs must be caught, 4 minutes
 pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial
@@ -228,6 +228,11 @@ file with `load_bincode`, so the assembler and decoder are covered too. Input st
 backpressure can be randomized with `--stall`. `--evict` runs images that jump between cells a
 whole cache size apart: nothing in the test corpus evicts a dirty line, so nothing else tests
 write-back.
+
+**The loader** is tested on its own with the controller and SDRAM model, `tb/loader_tb.sv`: images
+that copy from the line being filled, overlapping themselves, across lines, and from up to 65535 words
+back, and `LostKng.b`, must end up in SDRAM word for word; one image after another must not reuse
+what was read for the first; a corrupt one must be refused. `tb/uart_tb.sv` covers the board top.
 
 **Formal** checks the core against abstract memories: two tape cells and one instruction word,
 at addresses the solver picks, behave like real memory with its latency, and every other read
@@ -311,6 +316,13 @@ After a Break the host sends a command byte, and images are in the format in
 | `I` | Nothing | The flash's 3-byte JEDEC ID |
 
 The user flash on the board reads as `C8 40 15`, a GigaDevice part compatible with the W25Q16.
+
+The loader writes each line to SDRAM as soon as it is whole, and a copy reads its source back from
+there, so a copy can reach as far back as its 16-bit distance, 65535 words, and the loader needs two
+lines of buffer instead of a window: the line being filled, which a copy may read from too, and the
+last line read back. A copied word takes 6 cycles, and a line read about 20 more, against 840 cycles
+for each byte at 2 Mbaud. With the window of 8192 words of block RAM it had before, `LostKng.b` packed
+to 82 KB; now it packs to 71 KB, and 8 of the 12 large block RAMs in use came free.
 
 A `make yadan` build reports timing violations on the SDRAM's own pads, from constraints Tang
 Dynasty adds there; the data path they describe is covered by the measured capture phase above.

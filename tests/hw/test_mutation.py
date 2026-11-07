@@ -8,8 +8,10 @@ import shutil
 import pytest
 
 from conftest import CORPUS, ROOT, assemble, run
-from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
+from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, LOADER_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
 from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, MUL_SELF_IMAGES, program_cpi
+import test_loader
+import test_uart_tb
 
 pytestmark = pytest.mark.mutation
 
@@ -112,3 +114,29 @@ prep -top brainfunk_core
 """)
     result = run("sby", "-f", "check.sby", cwd=tmp_path, check=False, timeout=600)
     assert result.returncode != 0, f"formal did not catch: {name}"
+
+
+@pytest.mark.parametrize("name,file,text,replacement", LOADER_MUTANTS, ids=[mutant[0] for mutant in LOADER_MUTANTS])
+def test_loader_testbenches_catch(tools, tmp_path, name, file, text, replacement):
+    content = (ROOT / "rtl" / file).read_text()
+    assert content.count(text) == 1, f"mutant is stale: its text is in {file} {content.count(text)} times"
+    path = tmp_path / file.split("/")[-1]
+    path.write_text(content.replace(text, replacement))
+    original = f"rtl/{file}"
+    if file == "brainfunk_soc.sv":
+        checks = [lambda where, sources: test_uart_tb.uart_testbench(where, sources)]
+        sources = [path if source == original else source for source in test_uart_tb.SOURCES]
+    else:
+        checks = [lambda where, sources: test_loader.test_loader_copies_from_anywhere(None, where, sources),
+                  lambda where, sources: test_loader.test_loader_forgets_the_last_image(None, where, sources),
+                  lambda where, sources: test_loader.test_loader_with_a_slow_source(None, where, sources)]
+        sources = [path if source == original else source for source in test_loader.SOURCES]
+    assert path in sources
+    for number, check in enumerate(checks):
+        where = tmp_path / str(number)
+        where.mkdir()
+        try:
+            check(where, sources)
+        except (Exception, pytest.fail.Exception):  # a failed assertion, pytest.fail, or a timeout
+            return
+    pytest.fail(f"nothing caught: {name}")

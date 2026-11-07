@@ -112,8 +112,9 @@ The payload is a run of tokens, and every multi-byte value is little endian:
 
   0lllllll              l + 1 literal words follow, 4 bytes each
   1lllllll, distance    l + 2 words copied from distance words back, one at a time, so a copy
-                        may overlap itself.  distance is 2 bytes, from 1 to 8191: the loader's
-                        window is 8192 words of block RAM.
+                        may overlap itself.  distance is 2 bytes, from 1 to 65535.  The loader
+                        reads it back from SDRAM, so any distance within what has been written
+                        works.
 
 A trailing partial line of 8 words is written to SDRAM whole, so the words after the end of an
 image are undefined.  An image must end in H or an illegal word anyway, see doc/bitcode.txt.

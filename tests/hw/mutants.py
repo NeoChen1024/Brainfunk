@@ -321,7 +321,7 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   "sd_addr <= {3'b100, line_q[4:0], 3'b000};",
   "sd_addr <= {3'b000, line_q[4:0], 3'b000};"),
  ('sdram: oe short', 'sdram_ctrl.sv', "write_left <= 4'd7;", "write_left <= 4'd6;"),
- ('soc: wrong read owner', 'brainfunk_soc.sv', 'i_owns_read <= !d_req_valid;', 'i_owns_read <= d_req_valid;'),
+ ('soc: wrong read owner', 'brainfunk_soc.sv', 'i_owns_read    <= !load_req_valid && !d_req_valid;', 'i_owns_read    <= !load_req_valid && d_req_valid;'),
  ('soc: priority inverted',
   'brainfunk_soc.sv',
   'assign d_req_ready    = req_ready && !load_req_valid && d_req_valid;',
@@ -370,4 +370,16 @@ FORMAL_MUTANTS = [
     "scan moves on without having read", "backward scan goes forward a line", "unit factor ignores its sign",
     "chained to a MUL that wrote the source", "chained after a MUL that wrote the source",
     "chained across another instruction",
+]
+
+# Caught by the loader's testbench, or for the SoC, by the UART testbench.
+LOADER_MUTANTS = [
+    ('loader: any held line', 'board/loader.sv', 'src_held      <= held_valid && src[23:3] == held_line;', 'src_held      <= held_valid;'),
+    ('loader: always this line', 'board/loader.sv', 'src_here      <= src[23:3] == dest[23:3];', "src_here      <= 1'b1;"),
+    ('loader: copy too early', 'board/loader.sv', "if (copy_wait == 3'd4) state <= ST_COPY_PUT;", "if (copy_wait == 3'd3) state <= ST_COPY_PUT;"),
+    ('loader: decides too early', 'board/loader.sv', "if (copy_wait == 3'd2 && !src_here && !src_held)", "if (copy_wait == 3'd1 && !src_here && !src_held)"),
+    ('loader: held line kept', 'board/loader.sv', "held_valid <= 1'b0;\n                end", "end"),
+    ('loader: held the wrong line', 'board/loader.sv', 'held_line  <= src[23:3];', 'held_line  <= dest[23:3];'),
+    ('loader: short distance', 'board/loader.sv', "src           <= dest - 24'(distance);", "src           <= dest - 24'(distance[12:0]);"),
+    ('soc: loader never reads', 'brainfunk_soc.sv', 'load_owns_read <= load_req_valid;', "load_owns_read <= 1'b0;"),
 ]

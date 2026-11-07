@@ -1,6 +1,8 @@
 // Decodes a program image from a byte stream into SDRAM. See doc/bincode.txt for the format.
 //
-// The copy window is 8192 words of block RAM, which also holds each line until it is written.
+// The words go straight to SDRAM a line at a time, and a copy reads its source back from there, so
+// a copy can reach as far back as its 16-bit distance says. Two lines of buffer: the one being
+// filled, which a copy can read from too, and the last line read back for a copy.
 // One word at a time: this only has to keep up with a serial port or SPI flash.
 module image_loader (
     input  logic        clk,
@@ -16,14 +18,17 @@ module image_loader (
     output logic        in_ready,
 
     output logic        req_valid,
+    output logic        req_write,
     output logic [17:0] req_line,
     input  logic        req_ready,
+    input  logic        rd_valid,
+    input  logic [31:0] rd_data,
     input  logic        wr_fetch,
     output logic [31:0] wr_data
 );
     typedef enum logic [3:0] {
         ST_IDLE, ST_MAGIC, ST_HEADER, ST_TOKEN, ST_LITERAL, ST_LITERAL_PUT, ST_DISTANCE,
-        ST_COPY_READ, ST_COPY_PUT, ST_FLUSH_REQ, ST_FLUSH, ST_FINISH, ST_VERDICT
+        ST_COPY_READ, ST_COPY_PUT, ST_FETCH_REQ, ST_FETCH, ST_FLUSH_REQ, ST_FLUSH, ST_FINISH, ST_VERDICT
     } state_t;
     state_t state;
 
@@ -38,7 +43,7 @@ module image_loader (
     logic [23:0] dest;
     logic        is_copy, last_flush;
     logic [2:0]  copy_wait;
-    logic [3:0]  flush_word;
+    logic [3:0]  flush_word, fetch_word;
 
     // CRC-32, one bit a cycle.
     logic [31:0] crc;
@@ -50,7 +55,12 @@ module image_loader (
 
     // Comparisons a cycle late, which is fine: a byte is never taken within 8 cycles of another.
     logic        payload_empty, image_bad, flushing;
-    logic [12:0] copy_raddr;
+
+    // Where a copied word comes from: the line being filled, the line read back last, or neither,
+    // and then that line is read first. Lines below the one being filled are all written already.
+    logic [23:0] src;
+    logic [20:0] held_line;
+    logic        held_valid, src_here, src_held;
 
     // A byte waits in a register, so that where it came from is not part of what it decides.
     logic       byte_valid = 1'b0, byte_ready = 1'b0, take;
@@ -76,29 +86,42 @@ module image_loader (
     end
     assign crc_feed   = take && in_payload;
 
-    logic [12:0] window_raddr;
-    logic [31:0] window_rdata;
-    logic        window_we;
-    logic [31:0] window_wdata;
+    // Line 0 is the one being filled, line 1 the one read back.
+    logic [3:0]  line_raddr, line_waddr;
+    logic [31:0] line_rdata, line_q, line_wdata;
+    logic        line_we;
 
-    banked_ram #(.WIDTH(32), .ADDR_WIDTH(13), .BANK_WIDTH(11)) window (
+    ram_bank #(.WIDTH(32), .ADDR_WIDTH(4)) lines (
         .clk(clk),
         .en(1'b1),
-        .raddr(window_raddr),
-        .rdata(window_rdata),
-        .we(window_we),
-        .waddr(dest[12:0]),
-        .wdata(window_wdata)
+        .raddr(line_raddr),
+        .rdata(line_q),
+        .we(line_we),
+        .waddr(line_waddr),
+        .wdata(line_wdata)
     );
+    always_ff @(posedge clk) line_rdata <= line_q; // three edges in all, as wr_fetch wants
 
-    // Writing a line reads it back out of the window; wr_fetch allows for the latency.
+    // Read data is registered before it is written into the buffer.
+    logic        fetch_we = 1'b0;
+    logic [31:0] fetch_data;
+    always_ff @(posedge clk) begin
+        fetch_we   <= rd_valid; // only ever for a read of the loader's
+        fetch_data <= rd_data;
+    end
+
     logic [20:0] flush_line;
-    assign window_raddr = flushing ? {flush_line[9:0], flush_word[2:0]} : copy_raddr;
-    assign wr_data      = window_rdata;
-    assign window_we    = state == ST_LITERAL_PUT || state == ST_COPY_PUT;
-    assign window_wdata = is_copy ? window_rdata : word;
-    assign req_valid    = state == ST_FLUSH_REQ;
-    assign req_line     = 18'(flush_line); // code is the bottom half of SDRAM
+    logic        putting;
+    assign putting      = state == ST_LITERAL_PUT || state == ST_COPY_PUT;
+    assign line_raddr   = flushing ? {1'b0, flush_word[2:0]} : {!src_here, src[2:0]};
+    assign wr_data      = line_rdata;
+    assign line_we      = putting || fetch_we;
+    assign line_waddr   = putting ? {1'b0, dest[2:0]} : {1'b1, fetch_word[2:0]};
+    assign line_wdata   = !putting ? fetch_data : is_copy ? line_rdata : word;
+    assign req_valid    = state == ST_FLUSH_REQ || state == ST_FETCH_REQ;
+    assign req_write    = state == ST_FLUSH_REQ;
+    // Code is the bottom half of SDRAM.
+    assign req_line     = 18'(state == ST_FLUSH_REQ ? flush_line : src[23:3]);
     assign busy         = state != ST_IDLE;
 
     localparam logic [31:0] MAGIC = "BFIM";
@@ -114,7 +137,9 @@ module image_loader (
         payload_right <= payload_left == 24'd0;
         crc_right     <= ~crc == crc_expected;
         image_bad     <= !(dest_right && payload_right && crc_right);
-        copy_raddr    <= dest[12:0] - distance[12:0];
+        src           <= dest - 24'(distance);
+        src_here      <= src[23:3] == dest[23:3];
+        src_held      <= held_valid && src[23:3] == held_line;
         flushing      <= state == ST_FLUSH_REQ || state == ST_FLUSH;
 
         if (crc_feed) begin
@@ -138,6 +163,7 @@ module image_loader (
                     magic_pos  <= '0;
                     failed     <= 1'b0;
                     last_flush <= 1'b0;
+                    held_valid <= 1'b0;
                 end
 
                 // Whatever was on a serial line before the image is skipped.
@@ -209,9 +235,11 @@ module image_loader (
                     end
                 end
 
-                ST_COPY_READ: begin // the address takes a cycle, and the window three edges
+                // src takes a cycle, and where it lies another; then the buffer takes three edges.
+                ST_COPY_READ: begin
                     copy_wait <= copy_wait + 3'd1;
-                    if (copy_wait == 3'd5) state <= ST_COPY_PUT;
+                    if (copy_wait == 3'd2 && !src_here && !src_held) state <= ST_FETCH_REQ;
+                    if (copy_wait == 3'd4) state <= ST_COPY_PUT;
                 end
 
                 ST_COPY_PUT: begin
@@ -220,6 +248,21 @@ module image_loader (
                     copy_wait <= '0;
                     state    <= dest_next[2:0] == 3'd0 ? ST_FLUSH_REQ : (run_left == 9'd1 ? ST_TOKEN : ST_COPY_READ);
                     flush_line <= 21'(dest[23:3]);
+                end
+
+                ST_FETCH_REQ: begin
+                    fetch_word <= '0;
+                    if (req_ready) state <= ST_FETCH;
+                end
+
+                ST_FETCH: begin
+                    if (fetch_we) fetch_word <= fetch_word + 4'd1;
+                    if (fetch_word == 4'd8) begin
+                        held_line  <= src[23:3];
+                        held_valid <= 1'b1;
+                        copy_wait  <= '0;
+                        state      <= ST_COPY_READ;
+                    end
                 end
 
                 ST_FLUSH_REQ: begin

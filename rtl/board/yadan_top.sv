@@ -359,9 +359,9 @@ module yadan_top #(
     // ---- the core and the loader ----
     logic        in_ready, out_valid, halted, trapped;
     logic [7:0]  out_data;
-    logic        load_req_valid, load_req_ready, load_wr_fetch;
+    logic        load_req_valid, load_req_write, load_req_ready, load_rd_valid, load_wr_fetch;
     logic [17:0] load_req_line;
-    logic [31:0] load_wr_data;
+    logic [31:0] load_wr_data, load_rd_data;
 
     assign rxf_ready = (|(state & ST_LOADING)    && load_from_uart && load_in_ready) ||
                        (|(state & ST_COMMAND)    && command_take) ||
@@ -381,8 +381,8 @@ module yadan_top #(
         .busy(), .done(load_done), .failed(load_failed),
         .in_valid((load_from_flash && flash_out_valid) || (load_from_uart && rxf_valid)),
         .in_data(load_from_flash ? flash_out_data : rxf_data), .in_ready(load_in_ready),
-        .req_valid(load_req_valid), .req_line(load_req_line), .req_ready(load_req_ready),
-        .wr_fetch(load_wr_fetch), .wr_data(load_wr_data)
+        .req_valid(load_req_valid), .req_write(load_req_write), .req_line(load_req_line), .req_ready(load_req_ready),
+        .rd_valid(load_rd_valid), .rd_data(load_rd_data), .wr_fetch(load_wr_fetch), .wr_data(load_wr_data)
     );
 
     brainfunk_soc #(
@@ -404,8 +404,11 @@ module yadan_top #(
         .halted(halted),
         .trapped(trapped),
         .load_req_valid(load_req_valid),
+        .load_req_write(load_req_write),
         .load_req_line(load_req_line),
         .load_req_ready(load_req_ready),
+        .load_rd_valid(load_rd_valid),
+        .load_rd_data(load_rd_data),
         .load_wr_fetch(load_wr_fetch),
         .load_wr_data(load_wr_data),
         .sdram_ready(sdram_ready)

@@ -9,9 +9,10 @@ optimize_gate
 legalize_phy_inst
 # The design runs close to the part's limit, and with the default relaxation of 1.0 a small change could
 # leave paths with no logic in them, block RAM straight to a register, failing on placement alone. Any
-# value from 0.8 to 0.95 closed timing on the same design where 1.0 did not. Higher place effort and
+# value from 0.8 to 0.95 closed timing on the same design where 1.0 did not; after a change to the
+# loader 0.9 missed by 0.04 ns in the core, and 0.85 had the most slack. Higher place effort and
 # opt_timing made place stop part way, with no message.
-set_param place relaxation 0.9
+set_param place relaxation 0.85
 # Finishes, then raises an error with an empty message on a design with the SDRAM in it.
 catch {place}
 route

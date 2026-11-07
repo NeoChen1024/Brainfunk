@@ -20,12 +20,15 @@ module brainfunk_soc #(
     output logic       halted,
     output logic       trapped,
 
-    // The image loader, which writes code while rst holds everything else still.
+    // The image loader, which writes code, and reads it back, while rst holds everything else still.
     input  logic        load_req_valid,
+    input  logic        load_req_write,
     input  logic [17:0] load_req_line,
     output logic        load_req_ready,
+    output logic        load_rd_valid,
     output logic        load_wr_fetch,
     input  logic [31:0] load_wr_data,
+    output logic [31:0] load_rd_data,
     output logic        sdram_ready
 `ifdef BRAINFUNK_RETIRE_PORT
     ,
@@ -90,7 +93,7 @@ module brainfunk_soc #(
     // the owner of a request gets its read data.
     logic        i_req_valid, i_req_ready, d_req_valid, d_req_write, d_req_ready, i_owns_read;
     logic [17:0] i_req_line, d_req_line;
-    logic        cache_rst, load_req_active;
+    logic        cache_rst, load_req_active, load_owns_read = 1'b0;
     logic [31:0] d_wr_data;
     assign cache_rst = rst || !sdram_ready;
 
@@ -100,15 +103,20 @@ module brainfunk_soc #(
     end
 
     assign req_valid      = load_req_valid || d_req_valid || i_req_valid;
-    assign req_write      = load_req_valid || (d_req_valid && d_req_write);
+    assign req_write      = load_req_valid ? load_req_write : d_req_valid && d_req_write;
     assign req_line       = load_req_valid ? load_req_line : (d_req_valid ? d_req_line : i_req_line);
     assign load_req_ready = req_ready && load_req_valid;
     assign d_req_ready    = req_ready && !load_req_valid && d_req_valid;
     assign i_req_ready    = req_ready && !load_req_valid && !d_req_valid;
     assign load_wr_fetch  = wr_fetch;
+    assign load_rd_valid  = rd_valid && load_owns_read;
+    assign load_rd_data   = rd_data;
 
     always_ff @(posedge clk) begin
-        if (req_ready && req_valid && !req_write) i_owns_read <= !d_req_valid;
+        if (req_ready && req_valid && !req_write) begin
+            i_owns_read    <= !load_req_valid && !d_req_valid;
+            load_owns_read <= load_req_valid;
+        end
     end
 
     logic i_ready, d_ready, core_rst;
@@ -127,7 +135,7 @@ module brainfunk_soc #(
         .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata),
         .dmem_miss(dmem_miss), .dmem_miss_addr(dmem_miss_addr), .dmem_busy(dmem_busy),
         .req_valid(d_req_valid), .req_write(d_req_write), .req_line(d_req_line), .req_ready(d_req_ready),
-        .rd_valid(rd_valid && !i_owns_read), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(d_wr_data)
+        .rd_valid(rd_valid && !i_owns_read && !load_owns_read), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(d_wr_data)
     );
     assign wr_data = load_req_active ? load_wr_data : d_wr_data;
 
