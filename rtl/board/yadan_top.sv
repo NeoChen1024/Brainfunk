@@ -102,7 +102,7 @@ module yadan_top #(
     end
 
     // ---- what the board is doing ----
-    // One-hot: this state fans out widely and is decoded everywhere.
+    // One-hot, and read one bit at a time: this state fans out widely and is decoded everywhere.
     typedef enum logic [13:0] {
         ST_POWERUP    = 14'b00_0000_0000_0001, // waiting for the SDRAM
         ST_FLASH_LOAD = 14'b00_0000_0000_0010, // Code RAM from the flash
@@ -151,17 +151,17 @@ module yadan_top #(
     // The command byte, decoded a cycle ahead of being taken.
     logic command_take = 1'b0, command_ram = 1'b0, command_rom = 1'b0, command_id = 1'b0;
     always_ff @(posedge clk) begin
-        command_take <= state == ST_COMMAND && rxf_valid && !command_take;
-        command_ram  <= state == ST_COMMAND && rxf_valid && !command_take && rxf_data == "R";
-        command_rom  <= state == ST_COMMAND && rxf_valid && !command_take && rxf_data == "F";
-        command_id   <= state == ST_COMMAND && rxf_valid && !command_take && rxf_data == "I";
+        command_take <= |(state & ST_COMMAND) && rxf_valid && !command_take;
+        command_ram  <= |(state & ST_COMMAND) && rxf_valid && !command_take && rxf_data == "R";
+        command_rom  <= |(state & ST_COMMAND) && rxf_valid && !command_take && rxf_data == "F";
+        command_id   <= |(state & ST_COMMAND) && rxf_valid && !command_take && rxf_data == "I";
     end
 
     logic load_from_flash = 1'b0, load_from_uart = 1'b0, rst = 1'b1;
     always_ff @(posedge clk) begin
-        load_from_flash <= state == ST_FLASH_LOAD;
-        load_from_uart  <= state == ST_LOADING;
-        rst             <= state != ST_RUN;
+        load_from_flash <= |(state & ST_FLASH_LOAD);
+        load_from_uart  <= |(state & ST_LOADING);
+        rst             <= !(|(state & ST_RUN));
     end
 
     always_ff @(posedge clk) begin
@@ -179,25 +179,25 @@ module yadan_top #(
         end else if (break_seen) begin
             flash_read_stop <= load_from_flash;
             state           <= ST_COMMAND;
-        end else if (reload && state != ST_POWERUP && state != ST_FLASH_LOAD) begin
+        end else if (reload && !(|(state & ST_POWERUP)) && !(|(state & ST_FLASH_LOAD))) begin
             load_start       <= 1'b1;
             flash_read_start <= 1'b1;
             state            <= ST_FLASH_LOAD;
         end else begin
-            unique case (state)
-                ST_POWERUP: if (sdram_ready) begin
+            unique case (1'b1)
+                |(state & ST_POWERUP): if (sdram_ready) begin
                     load_start       <= 1'b1;
                     flash_read_start <= 1'b1;
                     state            <= ST_FLASH_LOAD;
                 end
 
-                ST_FLASH_LOAD: if (load_done) begin
+                |(state & ST_FLASH_LOAD): if (load_done) begin
                     image_valid     <= !load_failed;
                     startup         <= '0;
                     state           <= load_failed ? ST_WAIT_IMAGE : ST_STARTUP;
                 end
 
-                ST_COMMAND: begin // anything else is junk from around the Break
+                |(state & ST_COMMAND): begin // anything else is junk from around the Break
                     if (command_ram) begin
                         load_start <= 1'b1;
                         state      <= ST_LOADING;
@@ -211,7 +211,7 @@ module yadan_top #(
                     end
                 end
 
-                ST_LOADING: if (load_done) begin
+                |(state & ST_LOADING): if (load_done) begin
                     image_valid <= !load_failed;
                     ack_now     <= 1'b1;
                     ack_byte    <= load_failed ? "E" : "K";
@@ -221,13 +221,13 @@ module yadan_top #(
                 end
 
                 // Length, little endian; then erase what it needs and say so.
-                ST_ROM_LENGTH: if (rxf_valid) begin
+                |(state & ST_ROM_LENGTH): if (rxf_valid) begin
                     rom_left       <= {rxf_data, rom_left[23:8]};
                     rom_length_pos <= rom_length_pos + 2'd1;
                     if (rom_length_pos == 2'd2) state <= ST_ROM_ERASE_START;
                 end
 
-                ST_ROM_ERASE_START: begin // rom_sectors has settled by the time this has passed
+                |(state & ST_ROM_ERASE_START): begin // rom_sectors has settled by the time this has passed
                     rom_length_pos <= rom_length_pos + 2'd1;
                     if (rom_length_pos == 2'd0) begin
                         flash_erase_start <= 1'b1;
@@ -235,7 +235,7 @@ module yadan_top #(
                     end
                 end
 
-                ST_ROM_ERASE: if (flash_done) begin
+                |(state & ST_ROM_ERASE): if (flash_done) begin
                     rom_page  <= '0;
                     ack_now   <= 1'b1;
                     ack_byte  <= "R";
@@ -244,7 +244,7 @@ module yadan_top #(
                 end
 
                 // The host sends a page and waits for an answer, so the FIFO cannot overflow.
-                ST_ROM_READY: begin
+                |(state & ST_ROM_READY): begin
                     if (rom_finished) begin
                         // Reading it back through the loader checks the CRC, and boots it.
                         load_start       <= 1'b1;
@@ -256,7 +256,7 @@ module yadan_top #(
                     end
                 end
 
-                ST_ROM_PAGE: if (flash_done) begin
+                |(state & ST_ROM_PAGE): if (flash_done) begin
                     rom_page  <= rom_page + 13'd1;
                     rom_left  <= rom_last_page ? 24'd0 : rom_left - 24'd256;
                     ack_now   <= 1'b1;
@@ -265,7 +265,7 @@ module yadan_top #(
                     state     <= ST_ACK;
                 end
 
-                ST_ID: if (flash_done || id_pos != 2'd0) begin // three bytes, one per trip through ST_ACK
+                |(state & ST_ID): if (flash_done || id_pos != 2'd0) begin // three bytes, one per trip through ST_ACK
                     id_pos    <= id_pos + 2'd1;
                     ack_now   <= 1'b1;
                     ack_byte  <= id_pos == 2'd0 ? flash_id[23:16] : (id_pos == 2'd1 ? flash_id[15:8] : flash_id[7:0]);
@@ -274,9 +274,9 @@ module yadan_top #(
                     state     <= ST_ACK;
                 end
 
-                ST_ACK: if (tx_idle) state <= after_ack;
+                |(state & ST_ACK): if (tx_idle) state <= after_ack;
 
-                ST_STARTUP: begin
+                |(state & ST_STARTUP): begin
                     startup <= startup + 1'b1;
                     if (startup_done) state <= ST_RUN;
                 end
@@ -284,7 +284,7 @@ module yadan_top #(
                 default: ; // ST_WAIT_IMAGE, ST_RUN
             endcase
 
-            if (restart && image_valid && (state == ST_RUN || state == ST_STARTUP || state == ST_WAIT_IMAGE)) begin
+            if (restart && image_valid && (|(state & ST_RUN) || |(state & ST_STARTUP) || |(state & ST_WAIT_IMAGE))) begin
                 startup <= '0;
                 state   <= ST_STARTUP;
             end
@@ -310,7 +310,7 @@ module yadan_top #(
         .id_start(flash_id_start), .id(flash_id),
         .erase_start(flash_erase_start), .erase_sectors(rom_sectors),
         .page_start(flash_page_start), .page(rom_page),
-        .in_valid(rxf_valid && state == ST_ROM_PAGE), .in_data(rxf_data), .in_ready(flash_in_ready),
+        .in_valid(rxf_valid && |(state & ST_ROM_PAGE)), .in_data(rxf_data), .in_ready(flash_in_ready),
         .done(flash_done),
         .flash_cs_n(flash_cs_n_d), .flash_clk(flash_clk_d), .flash_mosi(flash_mosi_d), .flash_miso(flash_miso_q)
     );
@@ -318,8 +318,8 @@ module yadan_top #(
     // ---- UART, at the loader's speed from a Break until the command has been answered ----
     logic [13:0] cycles_per_bit = 14'(PROGRAM_BIT);
     always_ff @(posedge clk) begin
-        cycles_per_bit <= state == ST_RUN || state == ST_STARTUP || state == ST_WAIT_IMAGE ||
-                          state == ST_FLASH_LOAD || state == ST_POWERUP ? 14'(PROGRAM_BIT) : 14'(LOAD_BIT);
+        cycles_per_bit <= |(state & ST_RUN) || |(state & ST_STARTUP) || |(state & ST_WAIT_IMAGE) ||
+                          |(state & ST_FLASH_LOAD) || |(state & ST_POWERUP) ? 14'(PROGRAM_BIT) : 14'(LOAD_BIT);
     end
 
     logic       rx_valid, txf_valid, txf_in_valid, txf_in_ready, tx_ready, txf_empty;
@@ -353,7 +353,7 @@ module yadan_top #(
     assign tx_idle = ack_queued && txf_empty && !txf_valid && tx_ready;
     always_ff @(posedge clk) begin
         if (ack_now) ack_queued <= 1'b1;
-        else if (state != ST_ACK) ack_queued <= 1'b0;
+        else if (!(|(state & ST_ACK))) ack_queued <= 1'b0;
     end
 
     // ---- the core and the loader ----
@@ -363,16 +363,11 @@ module yadan_top #(
     logic [17:0] load_req_line;
     logic [31:0] load_wr_data;
 
-    always_comb begin
-        unique case (state)
-            ST_LOADING:                rxf_ready = load_from_uart && load_in_ready;
-            ST_COMMAND:                rxf_ready = command_take;
-            ST_ROM_LENGTH:             rxf_ready = 1'b1;
-            ST_ROM_PAGE:               rxf_ready = flash_in_ready;
-            ST_RUN:                    rxf_ready = !rst && in_ready;
-            default:                   rxf_ready = 1'b0;
-        endcase
-    end
+    assign rxf_ready = (|(state & ST_LOADING)    && load_from_uart && load_in_ready) ||
+                       (|(state & ST_COMMAND)    && command_take) ||
+                        |(state & ST_ROM_LENGTH) ||
+                       (|(state & ST_ROM_PAGE)   && flash_in_ready) ||
+                       (|(state & ST_RUN)        && !rst && in_ready);
     assign txf_in_valid = ack_now || (!rst && out_valid);
     assign txf_in_data  = ack_now ? ack_byte : out_data;
 
@@ -420,8 +415,8 @@ module yadan_top #(
     always_ff @(posedge clk) blink <= blink + 1'b1;
 
     always_comb begin
-        unique case (state)
-            ST_RUN:  led = trapped ? blink[25] : !halted;
+        unique case (1'b1)
+            |(state & ST_RUN):  led = trapped ? blink[25] : !halted;
             default: led = blink[22];
         endcase
     end
