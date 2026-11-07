@@ -18,7 +18,9 @@ Programs must run within 1M instruction words and 64 KiB of cells.
 
 | Program | Size | Notes |
 |---|---|---|
-| ELVM's Brainfuck output (`3rdparty/ELVM`, `make build-bf`) | 7.9 MB to 159 MB of source each, 928 MiB for the 71 tests | `hello.c` becomes 275,395 bitcode words at `-O2`, within the limit, but it touches about 51 million cells: registers start at 0, so the first push wraps the stack pointer to the top of the 24-bit address space, three cells per word. Fitting 64 KiB would need a patch to ELVM so that programs start with a small stack pointer. Not decided yet. |
+| `eli.c` from ELVM (`3rdparty/ELVM`) | 588,194 bitcode words at `-O2` | ELVM's IR interpreter needs about 3.4 million cells for its test input: its heap grows from the data segment upward, past where the patched stack starts. The other ELVM tests that fit are in `elvm/programs.toml`. |
+| `8cc.c` from ELVM | 2,902,895 bitcode words at `-O2` | The C compiler compiling a test program. Almost three times the 1M-word limit, and it did not finish in 600 s. |
+| `elc.c` from ELVM | 6,255,357 bitcode words at `-O2` | ELVM's backend driver. Over six times the limit, and it did not finish in 600 s. |
 
 ## Replaced by an upstream copy
 

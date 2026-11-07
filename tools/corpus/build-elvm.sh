@@ -5,7 +5,10 @@
 #
 # Copies the 3rdparty/ELVM submodule (with its own submodules checked out) to WORKDIR,
 # patches the copy and runs `make build-bf` there, so the submodule stays clean. The
-# Brainfuck files end up in WORKDIR/out/*.eir.bf. Set ELVM_BF_STACK_TOP to move the stack.
+# Brainfuck files end up in WORKDIR/out/*.eir.bf, and those that programs/elvm/programs.toml
+# lists are installed into programs/elvm/out/ after their blake3 is checked.
+#
+# ELVM_BF_STACK_TOP moves the stack; the recorded hashes assume the patch's default.
 set -eu
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
@@ -28,3 +31,7 @@ patch -p1 < "$repo/programs/elvm/bf-stack-top.patch"
 mkdir -p out
 touch out/git_submodule.stamp
 make -j"${JOBS:-8}" -o out/git_submodule.stamp COMMONFLAGS="-MMD -MP -O -g -w" build-bf
+
+if [ -f "$repo/programs/elvm/programs.toml" ]; then
+    "$repo/tools/corpus/corpus.py" install "$repo/programs/elvm/programs.toml" "$work/out"
+fi

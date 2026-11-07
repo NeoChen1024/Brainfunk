@@ -37,6 +37,12 @@ with `submodule = "3rdparty/..."`; its program paths are relative to the submodu
 generated from a submodule, such as `awib/awib.b`, are committed here with their generator
 and the command that rebuilds them.
 
+Generated programs too large to commit come from a source with `generated = true`, such as
+`elvm/`. Its manifest records the build command and each file's BLAKE3; the files are built
+into a git-ignored directory, and `corpus.py install` copies them there only if every hash
+matches. They are left out of `index.tsv`, so the index does not depend on whether they have
+been built, and `list` prints them only once they exist.
+
 ## Manifests
 
 ```toml
@@ -86,6 +92,8 @@ tools/corpus/corpus.py list --role workload --halts always --cell-bits 8 --uniqu
 tools/corpus/corpus.py summary   # counts by source, role and origin
 tools/corpus/corpus.py draft 3rdparty/<repo>/<dir> programs/<source>/<name>.toml
 tools/corpus/setfield.py programs/<source>/<name>.toml family '"cristofd"' path/to/file.b
+tools/corpus/build-elvm.sh WORKDIR     # build and install programs/elvm/out/
+tools/corpus/check-elvm.py WORKDIR     # recheck ELVM outputs against the limits
 ```
 
 `draft` writes a manifest for a directory of a submodule, running each program once on empty

@@ -61,6 +61,7 @@ class Program:
     source: str
     path: Path                       # absolute
     meta: dict
+    generated: bool = False          # built locally, not committed: see `install`
 
     @property
     def rel(self) -> str:
@@ -93,7 +94,8 @@ def load(manifest: Path) -> tuple[dict, list[Program]]:
         meta.update(entry)
         if "file" not in meta:
             fail(f"{manifest}: program without file: {entry}")
-        programs.append(Program(manifest, source["name"], root / meta["file"], meta))
+        programs.append(Program(manifest, source["name"], root / meta["file"], meta,
+                                bool(source.get("generated"))))
     return source, programs
 
 
@@ -219,7 +221,13 @@ def check_manifest(manifest: Path) -> list[str]:
         if program.meta["file"] in seen:
             errors.append(f"{name}: listed twice")
         seen.add(program.meta["file"])
-        if not program.path.is_file():
+        if program.generated:
+            if "blake3" not in program.meta:
+                errors.append(f"{name}: a generated program needs its blake3")
+            elif program.path.is_file() and \
+                    blake3.blake3(program.path.read_bytes()).hexdigest() != program.meta["blake3"]:
+                errors.append(f"{name}: built file does not match its blake3; rebuild it")
+        elif not program.path.is_file():
             errors.append(f"{name}: file not found")
         for key in REQUIRED:
             if key not in program.meta:
@@ -253,7 +261,10 @@ def unlisted(programs: list[Program]) -> list[str]:
 
 
 def current_index() -> str:
-    return format_index(build_index(load_all(), progress=sys.stderr.isatty()))
+    """The index of committed and submodule programs. Generated programs are left out, so
+    the index is the same whether or not they have been built."""
+    programs = [p for p in load_all() if not p.generated]
+    return format_index(build_index(programs, progress=sys.stderr.isatty()))
 
 
 def check_index(text: str) -> None:
@@ -294,6 +305,12 @@ def verify() -> None:
     check_index(text)
     for warning in family_conflicts(text):
         click.echo(f"warning: {warning}", err=True)
+    unbuilt = [p for p in load_all() if p.generated and not p.path.is_file()]
+    for manifest in sorted({p.manifest for p in unbuilt}):
+        count = sum(p.manifest == manifest for p in unbuilt)
+        build = load(manifest)[0].get("build", "its build script")
+        click.echo(f"note: {count} generated program(s) of {manifest.relative_to(REPO)} "
+                   f"not built; run {build}", err=True)
     click.echo("corpus OK", err=True)
 
 
@@ -352,6 +369,8 @@ def list_programs(role, halts, eof, cell_bits, unique, pattern) -> None:
         rows = {r["path"]: r for r in (dict(zip(header, l.split("\t"))) for l in lines[1:])}
     for program in load_all():
         meta = program.meta
+        if program.generated and not program.path.is_file():
+            continue
         if role and meta.get("role") not in role:
             continue
         if halts and meta.get("halts") not in halts:
@@ -388,6 +407,31 @@ def summary() -> None:
         click.echo(f"\nunique programs by {title}:")
         for name, count in sorted(counts.items(), key=lambda item: -item[1]):
             click.echo(f"  {count:5}  {name}")
+
+
+@cli.command()
+@click.argument("manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("built", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def install(manifest: Path, built: Path) -> None:
+    """Copy the generated programs of MANIFEST from the directory BUILT.
+
+    Each program is looked up in BUILT by its file name, and must match the blake3 that
+    the manifest records, so a different generator or patch is caught here.
+    """
+    source, programs = load(manifest.resolve())
+    if not source.get("generated"):
+        fail(f"{manifest} is not a generated source")
+    bad = []
+    for program in programs:
+        data = (built / program.path.name).read_bytes()
+        if blake3.blake3(data).hexdigest() != program.meta["blake3"]:
+            bad.append(program.path.name)
+            continue
+        program.path.parent.mkdir(parents=True, exist_ok=True)
+        program.path.write_bytes(data)
+    if bad:
+        fail(f"{len(bad)} program(s) differ from their recorded blake3: {', '.join(bad)}")
+    click.echo(f"installed {len(programs)} programs", err=True)
 
 
 # ------------------------------------------------------------------- draft
