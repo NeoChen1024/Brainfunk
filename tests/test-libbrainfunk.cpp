@@ -760,15 +760,18 @@ constexpr std::uint32_t HALT = 0x90000000u;
 TEST_CASE("the issue model counts cycles as the cores would take them", "[analysis]") {
     /* Eight adds to eight cells, then H, which waits for everything. */
     const auto independent = analyze({add(0), add(1), add(2), add(3), add(4), add(5), add(6), add(7), HALT}, "issue");
-    CHECK(cycles_of(independent, 0) == 9);    // scalar: one a cycle
-    CHECK(cycles_of(independent, 1) == 5);    // dual: in pairs
+    CHECK(cycles_of(independent, 0) == 5);    // the core: in pairs
+    CHECK(cycles_of(independent, 1) == 9);    // scalar: one a cycle
+    CHECK(cycles_of(independent, 2) == 5);    // dual: in pairs
 
     /* Adds to one cell, one after another: a pair would chain two adders, which only raw 2 allows. */
-    const nlohmann::json config = {{"issue", {{"machines", {{{"name", "strict"}, {"width", 2}, {"raw", 1}},
-                                                           {{"name", "chained"}, {"width", 2}, {"raw", 2}}}}}}};
+    const nlohmann::json config = {{"issue", {{"machines", {{{"name", "strict"}, {"raw", 1}, {"pair_disjoint", false}, {"write_banks", 0}},
+                                                           {{"name", "chained"}, {"raw", 2}, {"pair_disjoint", false}, {"write_banks", 0}},
+                                                           {{"name", "the core"}}}}}}};
     const auto chain = analyze({add(0), 0x10000002u, add(0), 0x10000002u, HALT}, "issue", config);
     CHECK(cycles_of(chain, 0) == 3);   // A+A of constants folds in D, so even raw 1 pairs them
     CHECK(cycles_of(chain, 1) == 3);
+    CHECK(cycles_of(chain, 2) == 5);   // the core pairs no two instructions on one cell
 
     const nlohmann::json narrow = {{"issue", {{"machines", {{{"width", 2}, {"writes", 1}}}}}}};
     CHECK(cycles_of(analyze({add(0), add(1), add(2), add(3), HALT}, "issue", narrow), 0) == 5);   // one write a cycle
@@ -827,8 +830,8 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
     Brainfunk bf;
     bf.translate(std::string(20, '+') + "[>+++[-.>+<]<-]");
     const auto machine = [](const char* name, unsigned early, const char* forward, unsigned cells, bool zero_bits = false) {
-        return nlohmann::json{{"name", name}, {"early_penalty", early}, {"forward", forward}, {"early_cells", cells},
-                              {"early_zero_bits", zero_bits}};
+        return nlohmann::json{{"name", name}, {"width", 1}, {"penalty", 9}, {"early_penalty", early}, {"forward", forward},
+                              {"early_cells", cells}, {"early_zero_bits", zero_bits}};
     };
     nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
                                                            machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1),

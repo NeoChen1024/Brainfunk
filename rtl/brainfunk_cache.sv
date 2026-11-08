@@ -10,8 +10,15 @@
 //
 // A miss holds the front end. If a redirect abandons the instruction that missed, the line is
 // still filled, and fetching goes on meanwhile. Tag writes hold the front end for their cycle.
+//
+// A read is two words in a row, imem_addr's in the low half: even and odd words have a bank each.
+// The second is only meaningful within imem_addr's line, which is all that the hit covers. Each word
+// comes predecoded too, with where it would branch to, worked out from the block RAM's output on its way
+// to the register, where there is time.
 module icache #(
-    parameter int PC_WIDTH = 20
+    parameter int PC_WIDTH   = 20,
+    parameter int CELL_WIDTH = 16,   // the core's ADDR_WIDTH and LINE_BITS, for brainfunk_predecode
+    parameter int LINE_BITS  = 5
 ) (
     input  logic                clk,
     input  logic                rst,
@@ -19,7 +26,9 @@ module icache #(
 
     input  logic                imem_en,
     input  logic [PC_WIDTH-1:0] imem_addr,
-    output logic [31:0]         imem_rdata,
+    output logic [63:0]         imem_rdata,
+    output logic [2*(5 + LINE_BITS + CELL_WIDTH)-1:0] imem_pre,   // each word predecoded for the core
+    output logic [2*PC_WIDTH-1:0] imem_target,  // each word's branch target: its address + 1 + its low bits
     output logic                imem_hit,
     input  logic                imem_miss,
     input  logic [PC_WIDTH-1:0] imem_miss_addr,
@@ -57,17 +66,36 @@ module icache #(
         .wdata({tag_valid_in, tag_q})
     );
 
-    banked_ram #(.WIDTH(32), .ADDR_WIDTH(12), .BANK_WIDTH(11)) data (
+    // The even word after an odd one is in the same line, unless it is the last: the line wraps.
+    logic [31:0] even_rdata, odd_rdata;
+    ram_bank #(.WIDTH(32), .ADDR_WIDTH(11)) even (
         .clk(clk),
         .en(imem_en),
-        .raddr(imem_addr[11:0]),
-        .rdata(imem_rdata),
-        .we(fill_we),
-        .waddr(fill_addr),
+        .raddr({imem_addr[11:3], imem_addr[2:1] + 2'(imem_addr[0])}),
+        .rdata(even_rdata),
+        .we(fill_we && !fill_addr[0]),
+        .waddr(fill_addr[11:1]),
+        .wdata(fill_data)
+    );
+    ram_bank #(.WIDTH(32), .ADDR_WIDTH(11)) odd (
+        .clk(clk),
+        .en(imem_en),
+        .raddr(imem_addr[11:1]),
+        .rdata(odd_rdata),
+        .we(fill_we && fill_addr[0]),
+        .waddr(fill_addr[11:1]),
         .wdata(fill_data)
     );
 
-    logic [PC_WIDTH-1:0] addr_1, addr_2;
+    localparam int PRE_WIDTH = 5 + LINE_BITS + CELL_WIDTH;
+    logic [PRE_WIDTH-1:0] even_pre, odd_pre;
+    brainfunk_predecode #(.ADDR_WIDTH(CELL_WIDTH), .LINE_BITS(LINE_BITS)) even_decode (.word(even_rdata), .pre(even_pre));
+    brainfunk_predecode #(.ADDR_WIDTH(CELL_WIDTH), .LINE_BITS(LINE_BITS)) odd_decode (.word(odd_rdata), .pre(odd_pre));
+
+    logic [PC_WIDTH-1:0] addr_1, addr_2, addr_2p1, addr_2p2;
+    logic [31:0]         word_lo, word_hi;
+    assign word_lo = addr_2[0] ? odd_rdata : even_rdata;
+    assign word_hi = addr_2[0] ? even_rdata : odd_rdata;
     always_ff @(posedge clk) begin
         fill_we   <= state == ST_FILL && rd_valid;
         fill_addr <= {index_q, word_q};
@@ -75,7 +103,12 @@ module icache #(
         if (imem_en) begin
             addr_1   <= imem_addr;
             addr_2   <= addr_1;
+            addr_2p1 <= addr_1 + PC_WIDTH'(1);
+            addr_2p2 <= addr_1 + PC_WIDTH'(2);
             imem_hit <= tag_rdata == {1'b1, addr_2[PC_WIDTH-1:12]};
+            imem_rdata <= addr_2[0] ? {even_rdata, odd_rdata} : {odd_rdata, even_rdata};
+            imem_pre   <= addr_2[0] ? {even_pre, odd_pre} : {odd_pre, even_pre};
+            imem_target <= {addr_2p2 + word_hi[PC_WIDTH-1:0], addr_2p1 + word_lo[PC_WIDTH-1:0]};
         end
     end
 
@@ -128,7 +161,8 @@ endmodule
 // one the second port reads takes its address, and the others the first port's; the core never asks
 // for two cells in the same bank and different lines, and nothing while this module has the read port.
 // The core decodes the bank, a cycle ahead, so that only a multiplexer comes before the block RAM.
-// The tags have a copy for it.
+// The tags have a copy for it. There are two write ports too, which the core never has write the same
+// bank; each sets a dirty bit of its own.
 //
 // A retried instruction must find everything it needs in the cache at once, or two lines could
 // evict each other for ever. MUL is the only one that touches two cells, whose addresses are at
@@ -148,10 +182,14 @@ module dcache #(
     input  logic [31:0]           dmem_bank2,    // which bank the second port reads, one-hot, or none
     input  logic [ADDR_WIDTH-1:0] dmem_raddr2,
     output logic [7:0]            dmem_rdata2,
-    output logic                  dmem_hit_both, // dmem_hit, and the second port hit if it was read
+    output logic                  dmem_hit2,     // the second port hit, if it was read
     input  logic                  dmem_we,
     input  logic [ADDR_WIDTH-1:0] dmem_waddr,
     input  logic [7:0]            dmem_wdata,
+    input  logic                  dmem_we2,
+    input  logic [ADDR_WIDTH-1:0] dmem_waddr2,
+    input  logic [31:0]           dmem_wbank2,   // its bank, one-hot; set only if dmem_we2, or nothing writes
+    input  logic [7:0]            dmem_wdata2,
     input  logic                  dmem_miss,
     input  logic [ADDR_WIDTH-1:0] dmem_miss_addr,
     output logic                  dmem_busy,
@@ -181,7 +219,7 @@ module dcache #(
 
     logic [TAG_WIDTH:0]    tag_rdata, tag2_rdata;
     logic                  tag_we, tag_valid_in;
-    logic                  dirty_rdata;
+    logic                  dirty_rdata, dirty2_rdata;
 
     // The read port belongs to the core except while handling a miss.
     logic                  fsm_owns_read;
@@ -221,29 +259,42 @@ module dcache #(
         .waddr(dmem_we ? dmem_waddr[13:5] : index_q),
         .wdata(dmem_we)
     );
+    ram_bank #(.WIDTH(1), .ADDR_WIDTH(9)) dirty2 (
+        .clk(clk),
+        .en(1'b1),
+        .raddr(index_q),
+        .rdata(dirty2_rdata),
+        .we(dmem_we2 || state == ST_TAG_WRITE),
+        .waddr(dmem_we2 ? dmem_waddr2[13:5] : index_q),
+        .wdata(dmem_we2)
+    );
 
     // One block RAM per cell of a line, so that a read gets the whole line at once. The core writes
     // one, a fill writes the four of a word. F needs the width; see the core.
-    logic         filling;
-    logic [11:0]  fill_addr;
-    logic [31:0]  fill_data;
     logic [255:0] line_rdata;
-    always_ff @(posedge clk) begin
-        filling   <= state == ST_FILL && rd_valid;
-        fill_addr <= {index_q, word_q};
-        fill_data <= rd_data;
-    end
 
     generate
         for (genvar i = 0; i < 32; i++) begin : g_byte
+            // A fill's write, a cycle after its word arrives, from registers of each bank's own, which
+            // can sit by its block RAM: the banks are spread out.
+            logic       second, filling, fill_this;
+            logic [8:0] fill_row;
+            logic [7:0] fill_byte;
+            always_ff @(posedge clk) begin
+                filling   <= state == ST_FILL && rd_valid;
+                fill_this <= state == ST_FILL && rd_valid && word_q == 3'(i / 4);
+                fill_row  <= index_q;
+                fill_byte <= rd_data[8*(i % 4) +: 8];
+            end
+            assign second = dmem_wbank2[i];
             ram_bank #(.WIDTH(8), .ADDR_WIDTH(9)) ram (
                 .clk(clk),
                 .en(1'b1),
                 .raddr(dmem_bank2[i] ? dmem_raddr2[13:5] : raddr[13:5]),
                 .rdata(line_rdata[8*i +: 8]),
-                .we(filling ? fill_addr[2:0] == 3'(i / 4) : (dmem_we && dmem_waddr[4:0] == 5'(i))),
-                .waddr(filling ? fill_addr[11:3] : dmem_waddr[13:5]),
-                .wdata(filling ? fill_data[8*(i % 4) +: 8] : dmem_wdata)
+                .we(filling ? fill_this : (dmem_we && dmem_waddr[4:0] == 5'(i)) || (dmem_we2 && second)),
+                .waddr(filling ? fill_row : second ? dmem_waddr2[13:5] : dmem_waddr[13:5]),
+                .wdata(filling ? fill_byte : second ? dmem_wdata2 : dmem_wdata)
             );
         end
     endgenerate
@@ -257,8 +308,7 @@ module dcache #(
         addr2_2    <= addr2_1;
         re2_1      <= |dmem_bank2;
         re2_2      <= re2_1;
-        dmem_hit_both <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]} &&
-                         (!re2_2 || tag2_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]});
+        dmem_hit2  <= !re2_2 || tag2_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]};
         dmem_rdata2 <= line_rdata[8*addr2_2[4:0] +: 8];
         dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};
         dmem_rdata <= line_rdata[8*addr_2[4:0] +: 8];
@@ -341,7 +391,7 @@ module dcache #(
                 ST_DECIDE: begin
                     victim_tag <= tag_rdata[TAG_WIDTH-1:0];
                     fetched    <= '0;
-                    state      <= tag_rdata[TAG_WIDTH] && dirty_rdata ? ST_WRITEBACK : ST_REQUEST;
+                    state      <= tag_rdata[TAG_WIDTH] && (dirty_rdata || dirty2_rdata) ? ST_WRITEBACK : ST_REQUEST;
                 end
 
                 ST_WRITEBACK: if (req_ready) state <= ST_WRITEBACK_WAIT;

@@ -73,6 +73,31 @@ endfunction
         if (s``_is_mul_dst || (s``_instr[31:28] == OP_A || s``_instr[31:28] == OP_S) && word_legal(s``_instr)) assert (s``_ea == addr_ea_of(s``_base, s``_instr)); \
         if (!s``_is_scan) assert (s``_base_after == (s``_instr[31:28] == OP_M && word_legal(s``_instr) ? long_sum_of(s``_base, s``_instr) : s``_base)); \
         `PAIR_DECODE(s) \
+    end \
+    `P_DECODE(s)
+
+// The companion: the word before the main lane's, an A, S or M, and a main lane that pairs with it.
+function automatic logic simple_word(input logic [31:0] instr);
+    simple_word = (instr[31:28] == OP_A || instr[31:28] == OP_S || instr[31:28] == OP_M) && instr[27:20] == 8'd0;
+endfunction
+`define P_DECODE(s) \
+    if (s``_valid && s``_p_valid) begin \
+        if (s``_p_pc == word_addr) assert (s``_p_instr == word); \
+        assert (s``_pc == s``_p_pc + PC_WIDTH'(1)); \
+        assert (simple_word(s``_p_instr)); \
+        assert (simple_word(s``_instr) || s``_instr[31:28] == OP_JE || s``_instr[31:28] == OP_JN); \
+        assert (s``_base == (s``_p_instr[31:28] == OP_M ? long_sum_of(s``_p_base, s``_p_instr) : s``_p_base)); \
+        assert (s``_p_writes == (s``_p_instr[31:28] != OP_M)); \
+        assert (s``_p_no_read == (s``_p_instr[31:28] == OP_S)); \
+        assert (s``_p_data == s``_p_instr[7:0]); \
+        if (s``_p_writes) begin \
+            assert (s``_ea2 == addr_ea_of(s``_p_base, s``_p_instr)); \
+            if (s``_uses_cache) assert (s``_ea2[LINE_BITS-1:0] != s``_ea[LINE_BITS-1:0]); \
+            if (s``_writes) assert (s``_ea2[ZB_CMP-1:0] != s``_ea[ZB_CMP-1:0]); \
+        end \
+        assert (s``_uses2 == s``_p_writes); \
+    end else if (s``_valid) begin \
+        assert (s``_uses2 == s``_pair && !s``_p_writes); \
     end
 
 `define NOTHING_AFTER(s) \
@@ -84,30 +109,38 @@ endfunction
 // value the cell has now.
 `define CELL_VALUE(c, cell, hit1, hit2, hit3, value1, value2, value3) \
     if (h1_we && h1_ea == c) assert (w1_data == cell); \
-    if (h2_we && h2_ea == c && !(h1_we && h1_ea == c)) assert (w2_data == cell); \
-    if (m1_valid && ok_w && m1_ea == c && !(|m1_hit)) assert (hit1 && value1 == cell); \
-    if (m2_valid && ok_w && m2_ea == c && !m2_from_w_next && !m2_from_w && !m2_from_w1 && !m2_from_w2) assert (hit2 && value2 == cell); \
-    if (x_valid && ok_w && x_ea == c && !(x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes) && !x_from_w) begin \
+    if (h1_we2 && h1_ea2 == c && !(h1_we && h1_ea == c)) assert (w1_data2 == cell); \
+    if (h2_we && h2_ea == c && !(h1_we && h1_ea == c) && !(h1_we2 && h1_ea2 == c)) assert (w2_data == cell); \
+    if (h2_we2 && h2_ea2 == c && !(h1_we && h1_ea == c) && !(h1_we2 && h1_ea2 == c) && !(h2_we && h2_ea == c)) assert (w2_data2 == cell); \
+    if (m1_valid && ok_w && m1_ea == c && !(|m1_hit) && !(|m1_hitp)) assert (hit1 && value1 == cell); \
+    if (m2_valid && ok_w && m2_ea == c && !m2_from_w_next && !m2_from_w && !m2_from_w1 && !m2_from_w2 && \
+        !m2_from_w_next_p && !m2_from_w_p && !m2_from_w1_p && !m2_from_w2_p) assert (hit2 && value2 == cell); \
+    if (x_valid && ok_w && x_ea == c && !(x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes) && !x_from_w && !x_from_w_p) begin \
         if (x_from_early) assert (x_early == cell); \
         else assert (hit3 && value3 == cell); \
     end
 
 `define SOURCE_VALUE(c, cell, hit1, hit2, hit3, value1, value2, value3) \
-    if (m1_valid && ok_w && m1_pair && m1_ea2 == c && !(|m1_hit2)) assert (hit1 && value1 == cell); \
-    if (m2_valid && ok_w && m2_pair && m2_ea2 == c && !m2_s_from_w_next && !m2_s_from_w && !m2_s_from_w1 && !m2_s_from_w2) assert (hit2 && value2 == cell); \
-    if (x_valid && ok_w && x_pair && x_ea2 == c && !x_s_from_w) begin \
+    if (m1_valid && ok_w && m1_uses2 && m1_ea2 == c && !(|m1_hit2) && !(|m1_hit2p)) assert (hit1 && value1 == cell); \
+    if (m2_valid && ok_w && m2_uses2 && m2_ea2 == c && !m2_s_from_w_next && !m2_s_from_w && !m2_s_from_w1 && !m2_s_from_w2 && \
+        !m2_s_from_w_next_p && !m2_s_from_w_p && !m2_s_from_w1_p && !m2_s_from_w2_p) assert (hit2 && value2 == cell); \
+    if (x_valid && ok_w && x_uses2 && x_ea2 == c && !x_s_from_w && !x_s_from_w_p) begin \
         if (x_s_from_early) assert (x_s_early == cell); \
         else assert (hit3 && value3 == cell); \
     end
 
 // Writes landed one and two cycles ago, which reads ahead of them did not see.
-logic                  h1_we = 1'b0, h2_we = 1'b0;
-logic [ADDR_WIDTH-1:0] h1_ea, h2_ea;
+logic                  h1_we = 1'b0, h2_we = 1'b0, h1_we2 = 1'b0, h2_we2 = 1'b0;
+logic [ADDR_WIDTH-1:0] h1_ea, h2_ea, h1_ea2, h2_ea2;
 always_ff @(posedge clk) begin
     h1_we <= !rst && dmem_we;
     h1_ea <= dmem_waddr;
     h2_we <= !rst && h1_we;
     h2_ea <= h1_ea;
+    h1_we2 <= !rst && dmem_we2;
+    h1_ea2 <= dmem_waddr2;
+    h2_we2 <= !rst && h1_we2;
+    h2_ea2 <= h1_ea2;
 end
 
 // What mul_operand holds is the value of the cell at ea, as far as the tracked cells can tell.
@@ -126,8 +159,9 @@ endfunction
 `define PROVIDED_FROM_M1(ea) (`SOURCE_IN(m1) ? `SOURCE_EA(m1) == (ea) : !`WRITES(m1, ea) && `PROVIDED_FROM_M2(ea))
 `define PROVIDED_FROM_M2(ea) (`SOURCE_IN(m2) ? `SOURCE_EA(m2) == (ea) : !`WRITES(m2, ea) && `PROVIDED_FROM_X(ea))
 `define PROVIDED_FROM_X(ea)  (`SOURCE_IN(x) ? `SOURCE_EA(x) == (ea) : !`WRITES(x, ea) && operand_holds(ea) && \
-                              !(w_valid && w_writes && w_ea == (ea) && w_data != mul_operand))
-`define WRITES(t, ea) (t``_valid && t``_writes && t``_ea == (ea))
+                              !(w_valid && w_writes && w_ea == (ea) && w_data != mul_operand) && \
+                              !(dmem_we2 && w_ea2 == (ea) && w_data2 != mul_operand))
+`define WRITES(t, ea) (t``_valid && (t``_writes && t``_ea == (ea) || t``_p_writes && t``_ea2 == (ea)))
 
 `define IS_READ_OF(s) (s``_is_out_read && s``_pc == a_pc && s``_instr == a_instr && s``_base == base_ptr)
 
@@ -208,6 +242,7 @@ assign scan_ending   = scan_stop || scan_found_1 || scan_done;
     if (ok_older && s``_valid && s``_is_scan) begin \
         assert (a_valid && a_is_scan && a_pc == s``_pc && a_instr == s``_instr); \
         assert (!(m0_valid && m0_writes) && !(m1_valid && m1_writes) && !(m2_valid && m2_writes) && !(x_valid && x_writes) && !(w_valid && w_writes)); \
+        assert (!(m0_valid && m0_p_writes) && !(m1_valid && m1_p_writes) && !(m2_valid && m2_p_writes) && !(x_valid && x_p_writes) && !dmem_we2); \
     end
 
 // The end of F: the cell it stops on is reached, it is zero, and nothing before it is.
@@ -255,7 +290,50 @@ assign ok_m0        = ok_m1 && !(m0_valid && m0_target_wrong);
 logic a_finishes;
 assign a_finishes = !a_is_halt && a_legal;
 assign path_a_pc  = a_valid ? a_next_pc : path_m0_pc;
-assign ok_a       = ok_m0 && (!a_valid || (a_finishes && !(a_next_taken && a_is_branch && a_next_pc != a_fetched_next)));
+assign ok_a       = ok_m0 && (!a_valid || (a_finishes && !a_target_wrong));
+
+function automatic logic [ADDR_WIDTH-1:0] addr_sum(input logic [ADDR_WIDTH-1:0] x, input logic [ADDR_WIDTH-1:0] y);
+    addr_sum = x + y;
+endfunction
+
+// How far the companion moves base_ptr before the main lane's word.
+logic [ADDR_WIDTH-1:0] a_p_shift;
+assign a_p_shift = a_p_valid && a_p_is_move ? a_p_long : '0;
+
+// A word in the queue pairs with the one before it.
+function automatic logic has_cell_word(input logic [31:0] instr);
+    has_cell_word = (instr[31:28] == OP_A || instr[31:28] == OP_S) && instr[27:20] == 8'd0 || instr[31:28] == OP_JE || instr[31:28] == OP_JN;
+endfunction
+function automatic logic [ADDR_WIDTH-1:0] own_offset(input logic [31:0] instr);
+    own_offset = instr[31:28] == OP_M ? ADDR_WIDTH'($signed(instr[19:0])) :
+                 (instr[31:28] == OP_JE || instr[31:28] == OP_JN) ? ADDR_WIDTH'($signed(instr[27:20])) : ADDR_WIDTH'($signed(instr[19:8]));
+endfunction
+function automatic logic [ADDR_WIDTH-1:0] fold_of(input logic [31:0] first, input logic [31:0] second);
+    logic [ADDR_WIDTH-1:0] shift;
+    shift = first[31:28] == OP_M ? ADDR_WIDTH'($signed(first[19:0])) : ADDR_WIDTH'(0);
+    fold_of = own_offset(second) + shift;
+endfunction
+function automatic logic [LINE_BITS-1:0] own_bank(input logic [31:0] instr);
+    logic [ADDR_WIDTH-1:0] offset;
+    offset = own_offset(instr);
+    own_bank = offset[LINE_BITS-1:0];
+endfunction
+function automatic logic [ZB_CMP-1:0] own_lane(input logic [31:0] instr);
+    logic [ADDR_WIDTH-1:0] offset;
+    offset = own_offset(instr);
+    own_lane = offset[ZB_CMP-1:0];
+endfunction
+
+// What has been fetched after A: the queue, oldest first, then the blocks on their way to it. Each
+// word is where the one before goes, unless its target was a next-fetch guess, which A checks.
+function automatic logic [PC_WIDTH-1:0] block_after(input logic [PC_WIDTH-1:0] pc);
+    block_after = pc + (pc[ILINE_BITS-1:0] != '1 ? PC_WIDTH'(2) : PC_WIDTH'(1));
+endfunction
+function automatic logic [PC_WIDTH-1:0] word_after(input logic [PC_WIDTH-1:0] pc, input logic [31:0] instr, input logic taken);
+    word_after = taken ? branch_target(pc, instr) : pc + PC_WIDTH'(1);
+endfunction
+logic [PC_WIDTH-1:0] fetched_first;   // the oldest block not yet queued
+assign fetched_first = q_valid ? q_pc : i2_valid ? i2_pc : i1_valid ? i1_pc : fetch_pc;
 
 // The second half of an earlier output, still ahead of this one.
 logic older_out_last;
@@ -300,6 +378,7 @@ always_ff @(posedge clk) if (!rst) begin
         if (!x_is_scan) assert (x_base_after == (x_instr[31:28] == OP_M && word_legal(x_instr) ? long_sum_of(x_base, x_instr) : x_base));
         `PAIR_DECODE(x)
     end
+    `P_DECODE(x)
 
     if (w_valid) begin
         if (w_pc == word_addr) assert (w_instr == word);
@@ -317,10 +396,20 @@ always_ff @(posedge clk) if (!rst) begin
         else assert (w_next_pc == w_pc + PC_WIDTH'(1));
         if (w_writes) assert (w_ea == addr_ea_of(w_base, w_instr));
         if (w_instr[31:28] != OP_F) assert (w_base_after == (w_instr[31:28] == OP_M && word_legal(w_instr) ? long_sum_of(w_base, w_instr) : w_base));
+        if (w_p_valid) begin
+            if (w_p_pc == word_addr) assert (w_p_instr == word);
+            assert (w_pc == w_p_pc + PC_WIDTH'(1));
+            assert (simple_word(w_p_instr));
+            assert (w_retire && !w_is_trap && !w_is_halt);
+            assert (w_base == (w_p_instr[31:28] == OP_M ? long_sum_of(w_p_base, w_p_instr) : w_p_base));
+            if (w_p_instr[31:28] != OP_M) assert (w_ea2 == addr_ea_of(w_p_base, w_p_instr));
+            if (w_p_instr[31:28] == OP_S) assert (w_data2 == w_p_instr[7:0]);
+        end
     end
 
     // Writes follow W.
     assert (dmem_we == (w_valid && w_writes));
+    assert (dmem_we2 == (w_valid && w_p_valid && w_p_instr[31:28] != OP_M));
 
     // A's fields.
     if (a_valid) begin
@@ -363,18 +452,37 @@ always_ff @(posedge clk) if (!rst) begin
             endcase
             if (a_last) assert (out_taken && !out_pending);
         end
-        if (a_is_branch) assert (a_offset == ADDR_WIDTH'($signed(a_instr[27:20])));
-        if (a_is_add || a_is_set || a_is_move) assert (a_offset == ADDR_WIDTH'($signed(a_instr[19:8])));
-        if (a_is_move) assert (a_offset_2 == ADDR_WIDTH'($signed(a_instr[19:0])));
+        if (a_is_branch) assert (a_offset == addr_sum(ADDR_WIDTH'($signed(a_instr[27:20])), a_p_shift));
+        if (a_is_add || a_is_set) assert (a_offset == addr_sum(ADDR_WIDTH'($signed(a_instr[19:8])), a_p_shift));
+        if (a_is_move && !a_p_valid) assert (a_offset == ADDR_WIDTH'($signed(a_instr[19:8])));
+        if (a_is_move) assert (a_offset_2 == addr_sum(ADDR_WIDTH'($signed(a_instr[19:0])), a_p_shift));
+        else if (a_p_valid && a_p_is_move) assert (a_offset_2 == a_p_shift);
+        assert (a_moves == (a_is_move || (a_p_valid && a_p_is_move)));
+        if (a_p_valid) begin
+            if (a_p_pc == word_addr) assert (a_p_instr == word);
+            assert (a_pc == a_p_pc + PC_WIDTH'(1));
+            assert (simple_word(a_p_instr));
+            assert (a_is_add || a_is_set || a_is_move || a_is_branch);
+            assert (a_p_is_add == (a_p_instr[31:28] == OP_A));
+            assert (a_p_is_set == (a_p_instr[31:28] == OP_S));
+            assert (a_p_is_move == (a_p_instr[31:28] == OP_M));
+            assert (a_p_data == a_p_instr[7:0]);
+            assert (a_p_long == ADDR_WIDTH'($signed(a_p_instr[19:0])));
+            if (!a_p_is_move) begin
+                assert (a_mul_source == ADDR_WIDTH'($signed(a_p_instr[19:8])));
+                if (a_is_add || a_is_set || a_is_branch) assert (a_mul_source[LINE_BITS-1:0] != a_offset[LINE_BITS-1:0]);
+                if (a_is_add || a_is_set) assert (a_mul_source[ZB_CMP-1:0] != a_offset[ZB_CMP-1:0]);
+            end
+        end
         if (a_is_mul) begin
             assert (a_offset_2 == ADDR_WIDTH'($signed(a_instr[19:8])));
             assert (a_mul_source == ADDR_WIDTH'($signed(a_instr[27:20])));
             assert (a_mul_unit == (a_instr[7:0] == 8'd1 || a_instr[7:0] == 8'hFF));
             assert (a_mul_negate == (a_instr[7:0] == 8'hFF));
             assert (a_mul_pair == mul_pair_of(a_instr));
-            if (a_mul_pair) assert (a_phase == 2'd2);
+            if (a_mul_pair) assert (a_phase == 2'd2 && !a_mul_chained);
             case (a_phase)
-                2'd0: assert (a_go && !a_last && a_offset == ADDR_WIDTH'($signed(a_instr[27:20])));
+                2'd0: assert (a_go == !a_mul_chained && !a_last && a_offset == ADDR_WIDTH'($signed(a_instr[27:20])));
                 2'd1: assert (!a_go && !a_last && a_offset == a_offset_2 && !a_mul_unit);
                 2'd2: assert (a_go && a_last && a_offset == a_offset_2);
                 default: assert (1'b0);
@@ -388,39 +496,76 @@ always_ff @(posedge clk) if (!rst) begin
     end
 
     // The pipeline on the path, oldest first.
-    if (w_valid) assert (w_pc == expected_pc);
-    if (w_valid && w_instr[31:28] != OP_F) assert (w_base == expected_base);
+    if (w_valid) assert ((w_p_valid ? w_p_pc : w_pc) == expected_pc);
+    if (w_valid && w_instr[31:28] != OP_F) assert ((w_p_valid ? w_p_base : w_base) == expected_base);
     if (redirect && w_valid) assert (w_alt_pc == w_next_pc && w_retire && w_is_branch);
     if (redirect) assert (w_alt_pc == (w_valid ? w_next_pc : expected_pc));
-    if (redirect && !g_active) assert (w_base == expected_base);
-    if (redirect && g_active) assert (short_ea_of(w_base, g_word) == g_cursor);
-    if (ok_w && x_valid)  assert (x_pc  == path_w_pc);
-    if (ok_x && m2_valid) assert (m2_pc == path_x_pc);
-    if (ok_m2 && m1_valid) assert (m1_pc == path_m2_pc);
-    if (ok_m1 && m0_valid) assert (m0_pc == path_m1_pc);
-    if (ok_w && x_valid && !x_is_scan) assert (x_base == path_w_base);
-    if (ok_x && m2_valid && !m2_is_scan) assert (m2_base == path_x_base);
-    if (ok_m2 && m1_valid && !m1_is_scan) assert (m1_base == path_m2_base);
-    if (ok_m1 && m0_valid && !m0_is_scan) assert (m0_base == path_m1_base);
-    if (ok_m0 && a_valid) assert (a_pc == path_m0_pc);
+    if (redirect && !g_active) assert (w_redirect_base == (w_valid ? w_base_after : expected_base));
+    if (redirect && g_active) assert (short_ea_of(w_redirect_base, g_word) == g_cursor);
+    if (ok_w && x_valid)  assert ((x_p_valid ? x_p_pc : x_pc)  == path_w_pc);
+    if (ok_x && m2_valid) assert ((m2_p_valid ? m2_p_pc : m2_pc) == path_x_pc);
+    if (ok_m2 && m1_valid) assert ((m1_p_valid ? m1_p_pc : m1_pc) == path_m2_pc);
+    if (ok_m1 && m0_valid) assert ((m0_p_valid ? m0_p_pc : m0_pc) == path_m1_pc);
+    if (ok_w && x_valid && !x_is_scan) assert ((x_p_valid ? x_p_base : x_base) == path_w_base);
+    if (ok_x && m2_valid && !m2_is_scan) assert ((m2_p_valid ? m2_p_base : m2_base) == path_x_base);
+    if (ok_m2 && m1_valid && !m1_is_scan) assert ((m1_p_valid ? m1_p_base : m1_base) == path_m2_base);
+    if (ok_m1 && m0_valid && !m0_is_scan) assert ((m0_p_valid ? m0_p_base : m0_base) == path_m1_base);
+    if (ok_m0 && a_valid) assert ((a_p_valid ? a_p_pc : a_pc) == path_m0_pc);
     if (ok_m0 && !any_scan_read && !g_active && !scan_ending) assert (base_ptr == path_m0_base);
     if (early_redirect) assert (m1_valid && m1_is_branch && !m1_target_wrong && early_pc == m1_next_pc);
     if (early_redirect) assert (early_base == m1_base_after);
 
     // What has been fetched: each word follows the one before unless it was sent elsewhere.
-    if (d_valid && i2_valid && !d_next_taken) assert (i2_pc == d_pc + PC_WIDTH'(1));
-    if (i2_valid && i1_valid && !i2_next_taken) assert (i1_pc == i2_pc + PC_WIDTH'(1));
-    if (i1_valid && !i1_next_taken) assert (fetch_pc == i1_pc + PC_WIDTH'(1));
-    if (a_valid && d_valid) assert (d_pc == a_fetched_next);
-    if (d_valid) assert (i2_valid);
+    if (q_valid && i2_valid && !q_next_taken) assert (i2_pc == block_after(q_pc));
+    if (i2_valid && i1_valid && !i2_next_taken) assert (i1_pc == block_after(i2_pc));
+    if (i1_valid && !i1_next_taken) assert (fetch_pc == block_after(i1_pc));
+    assert (fq_count <= 3'(FQ_SIZE));
+    // Worked out a stage early, from the pcs they follow.
+    if (q_valid) begin
+        assert (q_pc1 == q_pc + PC_WIDTH'(1) && q_pc2 == q_pc + PC_WIDTH'(2));
+        assert (q_gap0 == i2_pc - q_pc - PC_WIDTH'(1) && q_gap1 == i2_pc - q_pc - PC_WIDTH'(2));
+        assert (q_two == two_words(q_pc, q_next_taken, q_next_pos));
+        assert (q_next_at == {q_next_taken && q_next_pos, q_next_taken && !q_next_pos});
+    end
+    for (int j = 0; j < FQ_SIZE; j++) begin
+        if (3'(j) < fq_count) begin
+            if (fq_pc[j] == word_addr) assert (fq_instr[j] == word);
+            // F restarted from fetch: what was fetched since has its word.
+            if (g_active && scan_active && !(a_valid && a_is_scan) && fq_pc[j] == g_pc) assert (fq_instr[j] == g_word);
+            if (fq_taken[j]) assert (fq_instr[j][31:28] == OP_JE || fq_instr[j][31:28] == OP_JN);
+            if (fq_next_taken[j]) assert (fq_taken[j]);
+            if (3'(j + 1) == fq_count) begin
+                // The last word queued, which the next block's first word may pair with.
+                assert (lp_first_ok == simple_word(fq_instr[j]));
+                assert (lp_move == (fq_instr[j][31:28] == OP_M && fq_instr[j][27:20] == 8'd0));
+                assert (lp_has_cell == has_cell_word(fq_instr[j]));
+                if (lp_has_cell) assert (lp_cell == own_bank(fq_instr[j]));
+                assert (lp_long == ADDR_WIDTH'($signed(fq_instr[j][19:0])));
+            end
+            if (j > 0 && fq_pair[j]) begin
+                assert (simple_word(fq_instr[(j + FQ_SIZE - 1) % FQ_SIZE]));
+                assert (simple_word(fq_instr[j]) || fq_instr[j][31:28] == OP_JE || fq_instr[j][31:28] == OP_JN);
+                assert (fq_fold[j] == fold_of(fq_instr[(j + FQ_SIZE - 1) % FQ_SIZE], fq_instr[j]));
+                if (has_cell_word(fq_instr[(j + FQ_SIZE - 1) % FQ_SIZE]) && has_cell_word(fq_instr[j])) begin
+                    assert (own_bank(fq_instr[(j + FQ_SIZE - 1) % FQ_SIZE]) != own_bank(fq_instr[j]));
+                    if (fq_instr[j][31:28] == OP_A || fq_instr[j][31:28] == OP_S)
+                        assert (own_lane(fq_instr[(j + FQ_SIZE - 1) % FQ_SIZE]) != own_lane(fq_instr[j]));
+                end
+            end
+            if (!(fq_next_taken[j] && fq_target_wrong[j])) begin
+                if (3'(j + 1) < fq_count) assert (fq_pc[(j + 1) % FQ_SIZE] == word_after(fq_pc[j], fq_instr[j], fq_taken[j]));
+                else if (3'(j + 1) == fq_count) assert (fetched_first == word_after(fq_pc[j], fq_instr[j], fq_taken[j]));
+            end
+        end
+    end
+    if (a_valid && a_target_wrong) assert (a_is_branch && a_predict_taken && a_next_taken);
+    if (q_valid) assert (i2_valid);
     if (i2_valid) assert (i1_valid);
 
     // ...and the first of it is where the path goes.
     if (ok_a) begin
-        if (d_valid) assert (d_pc == path_a_pc);
-        else if (i2_valid) assert (i2_pc == path_a_pc);
-        else if (i1_valid) assert (i1_pc == path_a_pc);
-        else assert (fetch_pc == path_a_pc);
+        if (d_valid) assert (fq_pc[0] == path_a_pc);
+        else assert (fetched_first == path_a_pc);
     end
 
     // Nothing follows a word that never finishes.
@@ -449,21 +594,32 @@ always_ff @(posedge clk) if (!rst) begin
         assert (m1_hit[2] == (x_valid && x_writes && x_ea == m1_ea));
         assert (m1_hit[3] == (w_valid && w_writes && w_ea == m1_ea));
         assert (m1_hit[4] == (h1_we && h1_ea == m1_ea));
+        assert (m1_hitp[1] == (m2_valid && m2_p_writes && m2_ea2 == m1_ea));
+        assert (m1_hitp[2] == (x_valid && x_p_writes && x_ea2 == m1_ea));
+        assert (m1_hitp[3] == (dmem_we2 && w_ea2 == m1_ea));
+        assert (m1_hitp[4] == (h1_we2 && h1_ea2 == m1_ea));
     end
     if (m2_valid && ok_w) begin
         assert (m2_from_w_next == (x_valid && x_writes && x_ea == m2_ea));
-        assert (m2_from_w == (!m2_from_w_next && w_valid && w_writes && w_ea == m2_ea));
-        assert (m2_from_w1 == (!m2_from_w_next && !m2_from_w && h1_we && h1_ea == m2_ea));
-        assert (m2_from_w2 == (!m2_from_w_next && !m2_from_w && !m2_from_w1 && h2_we && h2_ea == m2_ea));
+        assert (m2_from_w_next_p == (x_valid && x_p_writes && x_ea2 == m2_ea));
+        assert (m2_from_w == (!m2_from_w_next && !m2_from_w_next_p && w_valid && w_writes && w_ea == m2_ea));
+        assert (m2_from_w_p == (!m2_from_w_next && !m2_from_w_next_p && dmem_we2 && w_ea2 == m2_ea));
+        assert (m2_from_w1 == (!m2_from_w_next && !m2_from_w_next_p && !m2_from_w && !m2_from_w_p && h1_we && h1_ea == m2_ea));
+        assert (m2_from_w1_p == (!m2_from_w_next && !m2_from_w_next_p && !m2_from_w && !m2_from_w_p && h1_we2 && h1_ea2 == m2_ea));
+        assert (m2_from_w2 == (!m2_from_w_next && !m2_from_w_next_p && !m2_from_w && !m2_from_w_p && !m2_from_w1 && !m2_from_w1_p &&
+                               h2_we && h2_ea == m2_ea));
+        assert (m2_from_w2_p == (!m2_from_w_next && !m2_from_w_next_p && !m2_from_w && !m2_from_w_p && !m2_from_w1 && !m2_from_w1_p &&
+                                 h2_we2 && h2_ea2 == m2_ea));
         assert (m2_no_read == (m2_instr[31:28] == OP_S && word_legal(m2_instr) || word_in(m2_instr) && m2_writes));
     end
     if (m1_valid) assert (m1_no_read == (m1_instr[31:28] == OP_S && word_legal(m1_instr) || word_in(m1_instr) && m1_writes));
     if (m0_valid) assert (m0_no_read == (m0_instr[31:28] == OP_S && word_legal(m0_instr) || word_in(m0_instr) && m0_writes));
     if (x_valid && ok_w) begin
         if (x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes) begin
-            assert (!x_from_w && x_from_early && x_early == 8'd0);
+            assert (!x_from_w && !x_from_w_p && x_from_early && x_early == 8'd0);
         end else begin
             assert (x_from_w == (w_valid && w_writes && w_ea == x_ea));
+            assert (x_from_w_p == (dmem_we2 && w_ea2 == x_ea));
         end
     end
     `CELL_VALUE(a, cell_a, a1_hit, a2_hit, a3_hit, a1_value, a2_value, a3_value)
@@ -475,20 +631,33 @@ always_ff @(posedge clk) if (!rst) begin
         assert (m1_hit2[2] == (x_valid && x_writes && x_ea == m1_ea2));
         assert (m1_hit2[3] == (w_valid && w_writes && w_ea == m1_ea2));
         assert (m1_hit2[4] == (h1_we && h1_ea == m1_ea2));
+        assert (m1_hit2p[1] == (m2_valid && m2_p_writes && m2_ea2 == m1_ea2));
+        assert (m1_hit2p[2] == (x_valid && x_p_writes && x_ea2 == m1_ea2));
+        assert (m1_hit2p[3] == (dmem_we2 && w_ea2 == m1_ea2));
+        assert (m1_hit2p[4] == (h1_we2 && h1_ea2 == m1_ea2));
     end
     if (m2_valid && ok_w) begin
         assert (m2_s_from_w_next == (x_valid && x_writes && x_ea == m2_ea2));
-        assert (m2_s_from_w == (!m2_s_from_w_next && w_valid && w_writes && w_ea == m2_ea2));
-        assert (m2_s_from_w1 == (!m2_s_from_w_next && !m2_s_from_w && h1_we && h1_ea == m2_ea2));
-        assert (m2_s_from_w2 == (!m2_s_from_w_next && !m2_s_from_w && !m2_s_from_w1 && h2_we && h2_ea == m2_ea2));
+        assert (m2_s_from_w_next_p == (x_valid && x_p_writes && x_ea2 == m2_ea2));
+        assert (m2_s_from_w == (!m2_s_from_w_next && !m2_s_from_w_next_p && w_valid && w_writes && w_ea == m2_ea2));
+        assert (m2_s_from_w_p == (!m2_s_from_w_next && !m2_s_from_w_next_p && dmem_we2 && w_ea2 == m2_ea2));
+        assert (m2_s_from_w1 == (!m2_s_from_w_next && !m2_s_from_w_next_p && !m2_s_from_w && !m2_s_from_w_p && h1_we && h1_ea == m2_ea2));
+        assert (m2_s_from_w1_p == (!m2_s_from_w_next && !m2_s_from_w_next_p && !m2_s_from_w && !m2_s_from_w_p && h1_we2 && h1_ea2 == m2_ea2));
+        assert (m2_s_from_w2 == (!m2_s_from_w_next && !m2_s_from_w_next_p && !m2_s_from_w && !m2_s_from_w_p && !m2_s_from_w1 && !m2_s_from_w1_p &&
+                                 h2_we && h2_ea == m2_ea2));
+        assert (m2_s_from_w2_p == (!m2_s_from_w_next && !m2_s_from_w_next_p && !m2_s_from_w && !m2_s_from_w_p && !m2_s_from_w1 && !m2_s_from_w1_p &&
+                                   h2_we2 && h2_ea2 == m2_ea2));
     end
-    if (x_valid && ok_w) assert (x_s_from_w == (w_valid && w_writes && w_ea == x_ea2));
+    if (x_valid && ok_w) begin
+        assert (x_s_from_w == (w_valid && w_writes && w_ea == x_ea2));
+        assert (x_s_from_w_p == (dmem_we2 && w_ea2 == x_ea2));
+    end
     // Which reads the second port serves, and served three edges behind.
-    assert ((|m0_bank2) == (m0_valid && m0_pair));
-    if (m0_valid && m0_pair) assert (m0_bank2 == (1 << LINE_BITS)'(1) << m0_ea2[LINE_BITS-1:0]);
-    if (m1_valid) assert (re2_1 == m1_pair);
-    if (m2_valid) assert (re2_2 == m2_pair);
-    if (x_valid) assert (re2_3 == x_pair);
+    assert ((|m0_bank2) == (m0_valid && m0_uses2));
+    if (m0_valid && m0_uses2) assert (m0_bank2 == (1 << LINE_BITS)'(1) << m0_ea2[LINE_BITS-1:0]);
+    if (m1_valid) assert (re2_1 == m1_uses2);
+    if (m2_valid) assert (re2_2 == m2_uses2);
+    if (x_valid) assert (re2_3 == x_uses2);
     `SOURCE_VALUE(a, cell_a, as1_hit, as2_hit, as3_hit, a1_value, a2_value, a3_value)
     `SOURCE_VALUE(b, cell_b, bs1_hit, bs2_hit, bs3_hit, b1_value, b2_value, b3_value)
 
@@ -496,6 +665,8 @@ always_ff @(posedge clk) if (!rst) begin
     // straight away; any other needs a cycle between, for the multiplier. A destination is told
     // nothing about which source it belongs to: only that the next one to reach X is for its cell.
     if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd1) assert (m0_valid && m0_is_mul_src && m0_pc == a_pc && m0_instr == a_instr && m0_base == base_ptr);
+    // A chained MUL waits a cycle in phase 0 without issuing: its source is on the way already.
+    if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd0 && a_mul_chained) assert (`PROVIDED_FROM_M0(short_ea_of(base_ptr, a_instr)));
     if (ok_m0 && a_valid && a_is_mul && a_phase == 2'd2 && !a_mul_pair) begin
         if (!a_mul_unit) assert (!`SOURCE_IN(m0));
         assert (`PROVIDED_FROM_M0(short_ea_of(base_ptr, a_instr)));
@@ -535,9 +706,12 @@ always_ff @(posedge clk) if (!rst) begin
 
     // The tracked word reads as itself.
     if (i1_hit == 1'b0) assert (1'b1);
-    if (d_valid && d_pc == word_addr) assert (i3_hit);
+    if (q_valid && q_pc == word_addr) assert (i3_hit);
     if (i2_valid && i2_pc == word_addr) assert (i2_hit);
     if (i1_valid && i1_pc == word_addr) assert (i1_hit);
+    if (q_valid && second_is(q_pc, word_addr)) assert (i3_hit_hi);
+    if (i2_valid && second_is(i2_pc, word_addr)) assert (i2_hit_hi);
+    if (i1_valid && second_is(i1_pc, word_addr)) assert (i1_hit_hi);
 
     // Input: a byte taken is on its way to W with nothing older left, so nothing can flush it.
     if (a_valid && a_is_in && a_phase == 2'd2) assert (!m0_valid && !m1_valid && !m2_valid && !x_valid && !w_valid && !redirect);
@@ -611,6 +785,7 @@ always_ff @(posedge clk) if (!rst) begin
         assert ((a_phase == 2'd1) == (scan_found_1 || scan_done));
         if (a_phase == 2'd1) assert (!a_go);
         if (a_go) assert (!(m0_valid && m0_writes) && !(m1_valid && m1_writes) && !(m2_valid && m2_writes) && !(x_valid && x_writes));
+        if (a_go) assert (!(m0_valid && m0_p_writes) && !(m1_valid && m1_p_writes) && !(m2_valid && m2_p_writes) && !(x_valid && x_p_writes));
         if (a_scan_more) assert (m0_scan_cell == (m0_ea[LINE_BITS-1:0] ^ {LINE_BITS{a_scan_back}}));
         if (a_scan_more && a_phase == 2'd0) assert (a_go);
     end
@@ -676,6 +851,7 @@ always_ff @(posedge clk) if (!rst) begin
         assert (g_word[31:28] == OP_F);
         if (g_pc == word_addr) assert (g_word == word);
         if (a_valid && a_pc == g_pc && ok_w) assert (a_instr == g_word);
+        if (a_valid && a_p_valid && ok_w) assert (a_p_pc != g_pc);
         if (w_valid) assert (w_instr == g_word && !w_writes);
         if (ok_w && x_valid) assert (x_is_scan && x_instr == g_word);
         if (ok_w && m2_valid) assert (m2_is_scan && m2_instr == g_word);
@@ -690,7 +866,7 @@ always_ff @(posedge clk) if (!rst) begin
     if (g_active && !scan_active) assert (w_valid && w_instr[31:28] == OP_F);
     if (i1_valid) assert (i1_addr == i1_pc);
     if (i2_valid) assert (i2_addr == i2_pc);
-    if (d_valid) assert (i3_addr == d_pc);
+    if (q_valid) assert (i3_addr == q_pc);
 
     // A read in the line of a tracked cell sees it.
     if (x_valid && x_is_scan && ok_w && x_ea[ADDR_WIDTH-1:LINE_BITS] == a[ADDR_WIDTH-1:LINE_BITS]) assert (a3_line && a3_value == cell_a);

@@ -38,21 +38,33 @@ module brainfunk_soc #(
     output logic [31:0]                retire_instr,
     output logic [IMEM_ADDR_WIDTH-1:0] retire_next_pc,
     output logic [DMEM_ADDR_WIDTH-1:0] retire_base_ptr,
+    output logic                       retire2_valid,
+    output logic [IMEM_ADDR_WIDTH-1:0] retire2_pc,
+    output logic [31:0]                retire2_instr,
+    output logic [DMEM_ADDR_WIDTH-1:0] retire2_base_ptr,
     output logic                       dmem_we_o,
     output logic [DMEM_ADDR_WIDTH-1:0] dmem_addr_o,
     output logic [7:0]                 dmem_wdata_o,
+    output logic                       dmem_we2_o,
+    output logic [DMEM_ADDR_WIDTH-1:0] dmem_addr2_o,
+    output logic [7:0]                 dmem_wdata2_o,
     output logic                       core_ready
 `endif
 );
 
     logic                       imem_en, imem_hit, imem_miss, imem_hold, imem_refetch;
     logic [IMEM_ADDR_WIDTH-1:0] imem_addr, imem_miss_addr;
-    logic [31:0]                imem_rdata;
+    logic [63:0]                imem_rdata;
+    logic [2*(5 + 5 + DMEM_ADDR_WIDTH)-1:0] imem_pre;   // the core's LINE_BITS is 5
+    logic [2*IMEM_ADDR_WIDTH-1:0] imem_target;
     logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr;
     logic [7:0]                 dmem_rdata, dmem_wdata;
     logic                       dmem_we, dmem_hit, dmem_miss, dmem_busy;
     logic [31:0]                dmem_zero;
-    logic                       dmem_hit_both;
+    logic                       dmem_hit2, dmem_we2;
+    logic [DMEM_ADDR_WIDTH-1:0] dmem_waddr2;
+    logic [31:0]                dmem_wbank2;
+    logic [7:0]                 dmem_wdata2;
     logic [31:0]                dmem_bank2;
     logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr2;
     logic [7:0]                 dmem_rdata2;
@@ -63,11 +75,18 @@ module brainfunk_soc #(
     logic [IMEM_ADDR_WIDTH-1:0] retire_pc, retire_next_pc;
     logic [31:0]                retire_instr;
     logic [DMEM_ADDR_WIDTH-1:0] retire_base_ptr;
+    logic                       retire2_valid;
+    logic [IMEM_ADDR_WIDTH-1:0] retire2_pc;
+    logic [31:0]                retire2_instr;
+    logic [DMEM_ADDR_WIDTH-1:0] retire2_base_ptr;
     /* verilator lint_on UNUSEDSIGNAL */
 `else
     assign dmem_we_o    = dmem_we;
     assign dmem_addr_o  = dmem_waddr;
     assign dmem_wdata_o = dmem_wdata;
+    assign dmem_we2_o   = dmem_we2;
+    assign dmem_addr2_o = dmem_waddr2;
+    assign dmem_wdata2_o = dmem_wdata2;
 `endif
 
     // ---- SDRAM: code in the bottom half, tape in the top half ----
@@ -125,9 +144,9 @@ module brainfunk_soc #(
 
     logic i_ready, d_ready, core_rst;
 
-    icache #(.PC_WIDTH(IMEM_ADDR_WIDTH)) icache (
+    icache #(.PC_WIDTH(IMEM_ADDR_WIDTH), .CELL_WIDTH(DMEM_ADDR_WIDTH), .LINE_BITS(5)) icache (
         .clk(clk), .rst(cache_rst), .ready(i_ready),
-        .imem_en(imem_en), .imem_addr(imem_addr), .imem_rdata(imem_rdata), .imem_hit(imem_hit),
+        .imem_en(imem_en), .imem_addr(imem_addr), .imem_rdata(imem_rdata), .imem_pre(imem_pre), .imem_target(imem_target), .imem_hit(imem_hit),
         .imem_miss(imem_miss), .imem_miss_addr(imem_miss_addr), .imem_hold(imem_hold), .imem_refetch(imem_refetch),
         .req_valid(i_req_valid), .req_line(i_req_line), .req_ready(i_req_ready),
         .rd_valid(rd_valid && i_owns_read), .rd_data(rd_data)
@@ -136,8 +155,9 @@ module brainfunk_soc #(
     dcache #(.ADDR_WIDTH(DMEM_ADDR_WIDTH), .CLEAR_TAPE(CLEAR_TAPE_ON_RESET)) dcache (
         .clk(clk), .rst(cache_rst), .ready(d_ready),
         .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit), .dmem_zero(dmem_zero),
-        .dmem_bank2(dmem_bank2), .dmem_raddr2(dmem_raddr2), .dmem_rdata2(dmem_rdata2), .dmem_hit_both(dmem_hit_both),
+        .dmem_bank2(dmem_bank2), .dmem_raddr2(dmem_raddr2), .dmem_rdata2(dmem_rdata2), .dmem_hit2(dmem_hit2),
         .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata),
+        .dmem_we2(dmem_we2), .dmem_waddr2(dmem_waddr2), .dmem_wbank2(dmem_wbank2), .dmem_wdata2(dmem_wdata2),
         .dmem_miss(dmem_miss), .dmem_miss_addr(dmem_miss_addr), .dmem_busy(dmem_busy),
         .req_valid(d_req_valid), .req_write(d_req_write), .req_line(d_req_line), .req_ready(d_req_ready),
         .rd_valid(rd_valid && !i_owns_read && !load_owns_read), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(d_wr_data)
@@ -150,17 +170,20 @@ module brainfunk_soc #(
     assign core_ready = !core_rst;
 `endif
 
-    logic                       pred_front_en, next_taken, next_we, next_valid, dir_we;
-    logic [IMEM_ADDR_WIDTH-1:0] pred_fetch_pc, pred_i1_pc, next_target, next_key, next_new_target, dir_pc;
-    logic [1:0]                 d_counter, dir_counter;
+    logic                       pred_front_en, pred_look_en, pred_use_steer, pred_use_other, next_taken, next_pos, next_we, next_valid, next_new_pos, dir_we;
+    logic [IMEM_ADDR_WIDTH-1:0] pred_fetch_pc, pred_steer_pc, pred_other_pc, next_target, next_key, next_new_target, dir_pc;
+    logic [3:0]                 q_counter;
+    logic [1:0]                 dir_counter;
 
     branch_predictor #(.PC_WIDTH(IMEM_ADDR_WIDTH)) predictor (
-        .clk(clk), .rst(core_rst), .front_en(pred_front_en), .fetch_pc(pred_fetch_pc), .i1_pc(pred_i1_pc),
+        .clk(clk), .rst(core_rst), .front_en(pred_front_en), .look_en(pred_look_en), .fetch_pc(pred_fetch_pc),
+        .steer_pc(pred_steer_pc), .use_steer(pred_use_steer), .other_pc(pred_other_pc), .use_other(pred_use_other),
 `ifdef BRAINFUNK_RETIRE_PORT
         .chaos(predict_chaos),
 `endif
-        .next_taken_o(next_taken), .next_target_o(next_target), .d_counter_o(d_counter),
-        .next_we(next_we), .next_key(next_key), .next_valid(next_valid), .next_new_target(next_new_target),
+        .next_taken_o(next_taken), .next_pos_o(next_pos), .next_target_o(next_target), .q_counter_o(q_counter),
+        .next_we(next_we), .next_key(next_key), .next_valid(next_valid), .next_new_pos(next_new_pos),
+        .next_new_target(next_new_target),
         .dir_we(dir_we), .dir_pc(dir_pc), .dir_counter(dir_counter)
     );
 

@@ -44,10 +44,11 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
-# the design changes. Some are close because of what they are there to catch: hanoi.b's, the early store
-# gone (1.0464 as it is, 1.0516 without); fib.b's, adds to a pending cell of the early store forgotten
-# (1.2622 against 1.2908); mandel.b's, the zero bits gone (1.5168 against 1.5831).
-CPI_LIMITS = {"hanoi.b": 1.05, "mandel.b": 1.525, "LostKng.b": 11.5, "fib.b": 1.27}
+# the design changes. Some are close because of what they are there to catch: mandel.b's, adds to a pending
+# cell of the early store forgotten (1.2477 as it is, 1.2495 without); hanoi.b's, the zero bits gone (0.7433
+# against 0.7457); long.b's, fetch stopping at three queued words even before a pair (1.0660 against 1.0717)
+# and pairs only within a fetched block (1.0731).
+CPI_LIMITS = {"hanoi.b": 0.745, "mandel.b": 1.249, "LostKng.b": 11.0, "fib.b": 1.05, "long.b": 1.068}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -169,12 +170,13 @@ def test_stalls_on_a_real_program(tools, tmp_path):
     assert cosim_json("--stall", image)["halted"]
 
 
-# How far the scalar machine of `brainfunk -m analyze -a issue` may be from the core, over the same first
+# How far the default machine of `brainfunk -m analyze -a issue` may be from the core, over the same first
 # instructions. The model has no caches, so LostKng.b, which waits on the instruction cache, is not here,
-# and mandel.b's branches cost the core more than the model sees: at the last count, with early
-# resolution, the model was 0.01% short on long.b, 1.0% on hanoi.b, 1.9% on fib.b and 6.2% on mandel.b.
-# A design change that the model does not follow shows up here.
-MODEL_TOLERANCE = {"hanoi.b": 0.02, "long.b": 0.01, "fib.b": 0.03, "mandel.b": 0.07}
+# and mandel.b's branches cost the core more than the model sees; nor does it have the core's fetch, two
+# words a block into a queue of four. At the last count, with dual issue, the model was 0.9% short on
+# long.b, 3.1% on hanoi.b, 3.8% on mandel.b and 5.0% on fib.b. A design change that the model does not
+# follow shows up here.
+MODEL_TOLERANCE = {"hanoi.b": 0.04, "long.b": 0.015, "fib.b": 0.06, "mandel.b": 0.05}
 
 
 @pytest.mark.parametrize("name", MODEL_TOLERANCE)

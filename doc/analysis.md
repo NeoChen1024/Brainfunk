@@ -98,31 +98,37 @@ inputs.
 ### `issue`
 
 A trace-driven model of in-order cores that issue up to `width` instructions a cycle, from the dual-issue
-study. Its defaults are the scalar core in `rtl/` as it is; over the first two million instructions, it
-is within 0.01% of the cosimulator on `long.b`, 1% on `hanoi.b`, 2% on `fib.b` and 7% on `mandel.b`, and
-`tests/hw/test_cosim.py` keeps it there. It has no caches, so a program that misses, `LostKng.b`, takes
-far longer on the core.
+study. Its defaults are the core in `rtl/` as it is, which issues pairs of simple instructions; over the
+first two million instructions, it is short of the cosimulator by 0.9% on `long.b`, 3.1% on `hanoi.b`,
+3.8% on `mandel.b` and 5.0% on `fib.b`, and `tests/hw/test_cosim.py` keeps it there. It has no caches
+and no fetch queue, so a program that misses, `LostKng.b`, takes far longer on the core.
 
-Without `--config` it compares `scalar`, the defaults, with `dual`, `width` 2, `penalty` 10 and
-`early_penalty` 7. Each
-machine's fields, all optional:
+Without `--config` it compares `rtl`, the defaults, with `scalar`, `width` 1, `penalty` 9 and
+`early_penalty` 6, the core before dual issue, and with `dual`, the defaults without the core's pairing
+rules: `raw` 1 and any two instructions together. Each machine's fields, all optional:
 
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | `machine` | |
-| `width` | 1 | instructions issued a cycle |
+| `width` | 2 | instructions issued a cycle |
 | `reads`, `writes` | 2, 2 | cell reads and writes a cycle |
 | `branches` | 1 | branches a cycle |
-| `raw` | 1 | a read in the same cycle as a write of its cell: 0 never; 1 when cheap: a branch's zero test, after `S`, a `MUL`'s source, an add after an add; 2 always |
+| `raw` | 0 | a read in the same cycle as a write of its cell: 0 never; 1 when cheap: a branch's zero test, after `S`, a `MUL`'s source, an add after an add; 2 always |
 | `mul` | `pair-unit` | `split`: source, a cycle for the multiplier, destination, and a `MUL` after one with the same source takes it from a register; `pair-unit`: factors of 1 and -1 read both cells at once, unless they share a bank of different lines; `single`: every `MUL` does |
 | `two_mul` | true | two `MUL` destinations in one cycle |
 | `fetch_line` | 0 | a group stays within an aligned run of this many words; 0 any two in a row |
+| `pair_simple` | true | only `A`, `S`, `M`, `JE` and `JN` share a group |
+| `branch_first`, `branch_last` | false, true | a branch only opens a group; a branch closes its group |
+| `pair_disjoint` | true | two in a group touch different cells |
+| `write_banks` | 8 | two writes in a group are to cells different modulo this; 0 any |
+| `early_second` | true | a branch second in its group may resolve early |
+| `early_store` | true | with `early_cells`, a store of values; false, only the zero bits |
 | `banks` | 32 | cells per line of banks, two cells in one bank of different lines conflicting; 0 none |
-| `penalty` | 9 | cycles lost to a misprediction |
+| `penalty` | 10 | cycles lost to a misprediction |
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
 | `io` | 7 | cycles an `IO` takes |
-| `early_penalty` | 6 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
+| `early_penalty` | 7 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
 | `late` | 4 | cycles after its writer issues that a value is known, at X, for `early_penalty` |
 | `forward` | `add` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds of constants to known values (`A`, `DJN`); `mul`, `MUL` by 1 or -1 of known values too |
 | `early_cells` | 4 | cells in a direct-mapped store the early values come from, each cell touched filling its slot, a cell read only once the D-cache has it at X; a branch whose cell is not there resolves at X; 0 the whole tape, wrong paths aside |
@@ -175,11 +181,12 @@ families' geometric means, with the families split into held-out folds.
 
 ```json
 {"issue": {"machines": [
-    {"name": "scalar"},
-    {"name": "dual", "width": 2, "penalty": 10},
-    {"name": "dual, aligned fetch", "width": 2, "penalty": 10, "fetch_line": 8},
-    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single"},
-    {"name": "dual, tournament", "width": 2, "penalty": 10,
+    {"name": "rtl"},
+    {"name": "scalar", "width": 1, "penalty": 9, "early_penalty": 6},
+    {"name": "rtl, aligned fetch", "fetch_line": 8},
+    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single",
+     "pair_simple": false, "branch_last": false, "pair_disjoint": false, "write_banks": 0},
+    {"name": "rtl, tournament",
      "predictor": {"kind": "tournament", "forget": true, "next": 64,
                    "components": [{"kind": "loop", "base": {"kind": "local"}}, {"kind": "gshare", "history": 8}]}}
 ]}}

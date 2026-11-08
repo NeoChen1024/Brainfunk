@@ -740,17 +740,24 @@ enum class MulMode { Split, PairUnit, Single };
 enum class Forward { None, Set, Add, Mul };
 constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add", "mul"};
 
-/* An in-order core that issues up to `width` instructions a cycle. The defaults are the scalar
- * core in rtl/ as it is; doc/analysis.md says what each field means. */
+/* An in-order core that issues up to `width` instructions a cycle. The defaults are the core in
+ * rtl/ as it is, which issues pairs of simple instructions; doc/analysis.md says what each field means. */
 struct MachineConfig {
     std::string     name = "machine";
-    unsigned        width = 1, reads = 2, writes = 2, branches = 1;
-    unsigned        raw = 1;            // same-cycle reads of a cell written in the group: 0 never, 1 cheap cases, 2 always
+    unsigned        width = 2, reads = 2, writes = 2, branches = 1;
+    unsigned        raw = 0;            // same-cycle reads of a cell written in the group: 0 never, 1 cheap cases, 2 always
     MulMode         mul = MulMode::PairUnit;
     bool            two_mul = true;     // two MUL destinations in a cycle
     unsigned        fetch_line = 0;     // a group stays within an aligned run of this many words; 0 any
+    bool            pair_simple = true;   // only A, S, M, JE and JN share a group
+    bool            branch_first = false; // a branch only opens a group
+    bool            branch_last = true;   // a branch closes its group
+    bool            pair_disjoint = true; // two in a group touch different cells
+    unsigned        write_banks = 8;      // two writes in a group are to cells different modulo this; 0 any
+    bool            early_second = true;  // a branch second in its group may resolve early
+    bool            early_store = true;   // with early_cells, a store of values; else only the zero bits
     unsigned        banks = 32;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
-    unsigned        penalty = 9, steer = 3;
+    unsigned        penalty = 10, steer = 3;
     unsigned        scan_base = 8, line_cells = 32, stride_limit = 16, io = 7;
     /* Branches resolved before X: once the cell's value is known, a misprediction costs early_penalty
      * (0: never early) plus the cycles until it is. Values are known `late` cycles after their writer
@@ -761,7 +768,7 @@ struct MachineConfig {
      * store, since the wrong path may have written it. With early_zero_bits, a branch
      * whose cell is not in the store tests a bit per cell of the whole tape instead, written in order
      * as values are known at X. */
-    unsigned        early_penalty = 6, late = 4, early_cells = 4;
+    unsigned        early_penalty = 7, late = 4, early_cells = 4;
     unsigned        zero_bits_penalty = 0;   // for a branch the zero bits resolve; 0 as early_penalty
     bool            early_flush = true, early_zero_bits = true;
     bool            early_partial = false;   // a branch whose value comes later resolves then; else at X
@@ -783,6 +790,13 @@ struct MachineConfig {
         else throw BrainfunkException("issue: mul is split, pair-unit or single, not " + mul);
         c.two_mul = j.value("two_mul", c.two_mul);
         c.fetch_line = j.value("fetch_line", c.fetch_line);
+        c.pair_simple = j.value("pair_simple", c.pair_simple);
+        c.branch_first = j.value("branch_first", c.branch_first);
+        c.branch_last = j.value("branch_last", c.branch_last);
+        c.pair_disjoint = j.value("pair_disjoint", c.pair_disjoint);
+        c.write_banks = j.value("write_banks", c.write_banks);
+        c.early_second = j.value("early_second", c.early_second);
+        c.early_store = j.value("early_store", c.early_store);
         c.banks = j.value("banks", c.banks);
         c.penalty = j.value("penalty", c.penalty);
         c.steer = j.value("steer", c.steer);
@@ -811,7 +825,9 @@ struct MachineConfig {
         static constexpr std::string_view MUL_NAMES[] = {"split", "pair-unit", "single"};
         return {{"name", name}, {"width", width}, {"reads", reads}, {"writes", writes}, {"branches", branches},
                 {"raw", raw}, {"mul", MUL_NAMES[static_cast<int>(mul)]}, {"two_mul", two_mul},
-                {"fetch_line", fetch_line}, {"banks", banks}, {"penalty", penalty}, {"steer", steer},
+                {"fetch_line", fetch_line}, {"pair_simple", pair_simple}, {"branch_first", branch_first},
+                {"branch_last", branch_last}, {"pair_disjoint", pair_disjoint}, {"write_banks", write_banks},
+                {"early_second", early_second}, {"early_store", early_store}, {"banks", banks}, {"penalty", penalty}, {"steer", steer},
                 {"scan_base", scan_base}, {"line_cells", line_cells}, {"stride_limit", stride_limit}, {"io", io},
                 {"early_penalty", early_penalty}, {"late", late}, {"early_cells", early_cells}, {"early_flush", early_flush}, {"early_zero_bits", early_zero_bits}, {"early_partial", early_partial}, {"zero_bits_penalty", zero_bits_penalty}, {"forward", FORWARD_NAMES[static_cast<int>(forward)]},
                 {"predictor", predictor}};
@@ -819,8 +835,8 @@ struct MachineConfig {
 };
 
 /* Why an instruction did not join the group before it. */
-enum Reason { JOINED, CLOSED, LATER, FULL, PORTS, BRANCHES, CONFLICT, DEPENDENCE, REASONS };
-constexpr std::string_view REASON_NAMES[] = {"joined", "closed", "later", "full", "ports", "branches", "conflict", "dependence"};
+enum Reason { JOINED, CLOSED, LATER, FULL, PORTS, BRANCHES, CONFLICT, DEPENDENCE, KIND, REASONS };
+constexpr std::string_view REASON_NAMES[] = {"joined", "closed", "later", "full", "ports", "branches", "conflict", "dependence", "kind"};
 
 class Machine {
 public:
@@ -889,6 +905,7 @@ public:
                 u.writes = e.writes ? 1 : 0;
                 u.write = e.write[0].cell;
                 u.branch = e.branch;
+                u.simple = op == Opcode::A || op == Opcode::S || op == Opcode::M || e.branch;
                 u.reader = e.branch ? READER_BRANCH : op == Opcode::A ? READER_ADD : READER_OTHER;
                 u.writer = op == Opcode::S ? WRITER_SET : (op == Opcode::A || op == Opcode::DJN) ? WRITER_ADD : WRITER_OTHER;
             }
@@ -923,7 +940,7 @@ public:
                     slot = cell;
                     if (read) known_[cell] = std::max(known_[cell], cycle_ + c_.late);
                 };
-                if (e.branch) held = slots_of_[e.read[0].cell & (c_.early_cells - 1)] == e.read[0].cell;
+                if (e.branch) held = c_.early_store && slots_of_[e.read[0].cell & (c_.early_cells - 1)] == e.read[0].cell;
                 /* As the core keeps them: not F's cells, and a MUL's source only when it reads it alone. */
                 if (op != Opcode::F) {
                     const unsigned reads = mul ? (pair || chained ? 0 : 1) : e.reads;
@@ -938,7 +955,7 @@ public:
         if (guess.mispredict) {
             closed_ = true;
             unsigned penalty = c_.penalty;
-            if (c_.early_penalty && (held || c_.early_zero_bits)) {
+            if (c_.early_penalty && (held || c_.early_zero_bits) && (c_.early_second || !second_)) {
                 const auto known = held ? known_[e.read[0].cell] : final_[e.read[0].cell];
                 const auto wait = known > cycle_ ? known - cycle_ : 0;
                 const unsigned early = !held && c_.zero_bits_penalty ? c_.zero_bits_penalty : c_.early_penalty;
@@ -1026,6 +1043,7 @@ private:
         unsigned               writes = 0;
         addr_t                 write = 0;
         bool                   branch = false;
+        bool                   simple = false;   // A, S, M, JE or JN
         Reader                 reader = READER_OTHER;
         Writer                 writer = WRITER_OTHER;
     };
@@ -1070,6 +1088,8 @@ private:
         if (slots_ >= c_.width) return FULL;
         if (reads_ + u.reads > c_.reads || writes_ + u.writes > c_.writes) return PORTS;
         if (u.branch && branches_ >= c_.branches) return BRANCHES;
+        if (u.branch && c_.branch_first && slots_ > 0) return BRANCHES;
+        if (c_.pair_simple && slots_ > 0 && !(u.simple && simple_)) return KIND;
         if (c_.fetch_line && pc_ / c_.fetch_line != first_pc_ / c_.fetch_line) return CONFLICT;
         for (unsigned i = 0; i < u.reads; ++i) {
             for (const auto& [cell, writer] : written_) {
@@ -1084,6 +1104,15 @@ private:
             if (conflicts(u.read[i])) return CONFLICT;
         }
         if (u.writes && conflicts(u.write)) return CONFLICT;
+        if (c_.pair_disjoint) {
+            for (const auto t : touched_) {
+                for (unsigned i = 0; i < u.reads; ++i) if (t == u.read[i]) return DEPENDENCE;
+                if (u.writes && t == u.write) return DEPENDENCE;
+            }
+        }
+        if (c_.write_banks && u.writes) {
+            for (const auto& [cell, writer] : written_) if (cell % c_.write_banks == u.write % c_.write_banks) return CONFLICT;
+        }
         return JOINED;
     }
 
@@ -1091,6 +1120,8 @@ private:
         const Reason why = why_not(u, at);
         ++reasons_[why];
         if (why != JOINED) open(next_cycle(at));
+        if (slots_ == 0) simple_ = u.simple;
+        second_ = slots_ > 0;
         ++slots_;
         reads_ += u.reads;
         for (unsigned i = 0; i < u.reads; ++i) touched_.push_back(u.read[i]);
@@ -1100,6 +1131,7 @@ private:
             touched_.push_back(u.write);
         }
         if (u.branch) ++branches_;
+        if (u.branch && c_.branch_last) closed_ = true;
     }
 
     MachineConfig c_;
@@ -1108,6 +1140,7 @@ private:
 
     std::uint64_t cycle_ = 0, ready_ = 0, source_cycle_ = 0;
     bool          closed_ = true;
+    bool          simple_ = false, second_ = false;   // the group's first uop is simple; the last one placed joined
     unsigned      slots_ = 0, reads_ = 0, writes_ = 0, branches_ = 0;
     std::vector<std::pair<addr_t, Writer>> written_;
     std::vector<addr_t>                    touched_;
@@ -1128,8 +1161,11 @@ private:
 class IssueAnalysis final : public Analysis {
 public:
     explicit IssueAnalysis(const json& config) {
-        const auto machines = config.value("machines", json::array({json{{"name", "scalar"}},
-                                                                     json{{"name", "dual"}, {"width", 2}, {"penalty", 10}, {"early_penalty", 7}}}));
+        const auto machines = config.value("machines", json::array({
+            json{{"name", "rtl"}},
+            json{{"name", "scalar"}, {"width", 1}, {"penalty", 9}, {"early_penalty", 6}},
+            json{{"name", "dual"}, {"raw", 1}, {"pair_simple", false}, {"branch_last", false}, {"pair_disjoint", false},
+                 {"write_banks", 0}}}));
         for (const auto& m : machines) machines_.emplace_back(MachineConfig::from(m));
         if (machines_.empty()) throw BrainfunkException("issue: no machines");
     }
