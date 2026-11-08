@@ -19,7 +19,7 @@ include(Catch)
 add_executable(test-libbrainfunk test-libbrainfunk.cpp)
 target_include_directories(test-libbrainfunk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test-libbrainfunk PRIVATE libbrainfunk brainfunk_warnings Catch2::Catch2WithMain)
-catch_discover_tests(test-libbrainfunk TEST_PREFIX "unit." PROPERTIES LABELS unit)
+catch_discover_tests(test-libbrainfunk TEST_PREFIX "unit." PROPERTIES LABELS unit TIMEOUT 300)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 

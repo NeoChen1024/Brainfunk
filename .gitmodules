@@ -13,3 +13,7 @@
 [submodule "3rdparty/bfcorpus"]
 	path = 3rdparty/bfcorpus
 	url = https://github.com/thaliaarchi/bfcorpus
+[submodule "3rdparty/json"]
+	path = 3rdparty/json
+	url = https://github.com/nlohmann/json
+	shallow = true

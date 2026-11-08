@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from conftest import RESULTS, assemble, corpus_program, cosim_json, run, COSIM
+from conftest import BRAINFUNK, RESULTS, assemble, corpus_program, cosim_json, run, COSIM
 
 CHUNK = 100
 
@@ -167,3 +167,20 @@ def test_corpus_program(tools, tmp_path, name, level):
 def test_stalls_on_a_real_program(tools, tmp_path):
     image = assemble(corpus_program("hello.b"), 2, tmp_path / "program.hex")
     assert cosim_json("--stall", image)["halted"]
+
+
+# How far the scalar machine of `brainfunk -m analyze -a issue` may be from the core, over the same first
+# instructions. The model has no caches, so LostKng.b, which waits on the instruction cache, is not here,
+# and mandel.b's branches cost the core more than the model sees: at the last count it was 7.3% short.
+# A design change that the model does not follow shows up here.
+MODEL_TOLERANCE = {"hanoi.b": 0.02, "long.b": 0.01, "fib.b": 0.03, "mandel.b": 0.08}
+
+
+@pytest.mark.parametrize("name", MODEL_TOLERANCE)
+def test_issue_model_follows_the_core(tools, tmp_path, name):
+    image = assemble(corpus_program(name), 2, tmp_path / f"{name}.hex")
+    core = cosim_json("--limit", CPI_PROGRAM_LENGTH, image)["cycles"]
+    report = tmp_path / "report.json"
+    run(BRAINFUNK, "-m", "analyze", "-a", "issue", "--limit", CPI_PROGRAM_LENGTH, "-b", image, "-o", report)
+    model = json.loads(report.read_text())["analyses"]["issue"]["machines"][0]["cycles"]
+    assert abs(model - core) <= MODEL_TOLERANCE[name] * core, f"model {model}, core {core}"

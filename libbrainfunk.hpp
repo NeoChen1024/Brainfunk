@@ -294,6 +294,8 @@ public:
     void dump(std::ostream& os, Format format = Format::BIT) const;
 
 private:
+    friend struct TraceRunner;   // the instrumented interpreter loop, trace.hpp
+
     addr_t                         base_ptr_ = 0;
     addr_t                         pc_  = 0;
     std::vector<memory_t>          memory_;

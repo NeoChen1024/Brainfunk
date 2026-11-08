@@ -1,4 +1,5 @@
 #include "libbrainfunk.hpp"
+#include "trace.hpp"
 #include "ctre.hpp"
 
 #include <algorithm>
@@ -368,78 +369,9 @@ std::uint64_t ExecutionStats::dynamic_total() const noexcept {
 }
 
 ExecutionStats Brainfunk::run_counted(std::istream& is, std::ostream& os) {
-    reset_state();
-
-    ExecutionStats stats;
-    for (const auto& instruction : bitcode_) {
-        ++stats.static_count[static_cast<std::size_t>(instruction.opcode())];
-    }
-
-    while (pc_ < bitcode_.size()) {
-        const auto& instruction = bitcode_[pc_];
-        const auto opcode = instruction.opcode();
-        ++stats.dynamic_count[static_cast<std::size_t>(opcode)];
-
-        switch (opcode) {
-        case Opcode::A:
-            ++stats.memory_reads;
-            ++stats.memory_writes;
-            break;
-        case Opcode::S:
-            ++stats.memory_writes;
-            break;
-        case Opcode::MUL:
-            stats.memory_reads += 2;
-            ++stats.memory_writes;
-            break;
-        case Opcode::F: {
-            /* One test per iteration, plus the one that ends the scan. */
-            auto base_ptr = base_ptr_;
-            const auto size = memory_.size();
-            ++stats.memory_reads;
-            while (memory_[effective_address(base_ptr, instruction.test_offset(), size)] != 0) {
-                base_ptr = effective_address(base_ptr, instruction.step(), size);
-                ++stats.scan_iterations;
-                ++stats.memory_reads;
-            }
-            break;
-        }
-        case Opcode::JE:
-        case Opcode::JN:
-            ++stats.memory_reads;
-            break;
-        case Opcode::IO:
-            if (instruction.data() == IO_IN) {
-                ++stats.memory_writes;
-            } else {
-                ++stats.memory_reads;
-            }
-            break;
-        case Opcode::MULC:
-            stats.memory_reads += 2;
-            stats.memory_writes += 2;
-            break;
-        case Opcode::DJN:
-            ++stats.memory_reads;
-            ++stats.memory_writes;
-            break;
-        case Opcode::MJN:
-            ++stats.memory_reads;
-            break;
-        case Opcode::SRUN:
-            stats.memory_writes += instruction.count();
-            break;
-        case Opcode::X:
-        case Opcode::M:
-        case Opcode::H:
-        case Opcode::Count:
-            break;
-        }
-
-        if (!step(is, os)) break;
-    }
-
-    return stats;
+    StatSink sink;
+    if (run_traced(*this, sink, is, os).trapped) throw BrainfunkException("Empty instruction");
+    return sink.stats;
 }
 
 // ------------------------------------------------------------------

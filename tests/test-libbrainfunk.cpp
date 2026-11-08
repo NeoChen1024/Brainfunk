@@ -1,5 +1,8 @@
 #include "libbrainfunk.hpp"
 #include "program_generator.hpp"
+#include "trace.hpp"
+#include "trace_file.hpp"
+#include "analysis.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -549,4 +552,211 @@ TEST_CASE("words and listing lines convert back to themselves", "[bijection]") {
         INFO("a move beyond 20 bits does not encode");
         CHECK_THROWS_AS((void)Bitcode::move(1 << 20).encode(), BrainfunkException);
     }
+}
+
+TEST_CASE("traced runs agree with the interpreter, and their events follow each other", "[trace]") {
+    /* Checks each event against the one before and against a shadow of the tape. */
+    struct Check {
+        std::vector<memory_t> tape;
+        addr_t pc = 0, base = 0;
+        std::uint64_t index = 0;
+        bool consistent = true;
+        void begin(const Brainfunk& bf) { tape.assign(bf.memory().size(), 0); }
+        void event(const TraceEvent& e) {
+            consistent = consistent && e.index == index++ && e.pc == pc && e.base_before == base;
+            for (unsigned i = 0; i < e.reads; ++i) consistent = consistent && tape[e.read[i].cell] == e.read[i].value;
+            for (unsigned i = 0; i < e.writes; ++i) tape[e.write[i].cell] = e.write[i].value;
+            for (unsigned i = 1; i < e.fill; ++i) tape[(e.write[0].cell + i) & (tape.size() - 1)] = e.write[0].value;
+            pc = e.next_pc;
+            base = e.base_after;
+        }
+        void end(const Brainfunk& bf, const TraceSummary&) {
+            consistent = consistent && std::equal(tape.begin(), tape.end(), bf.memory().begin());
+        }
+    };
+
+    constexpr std::string_view input = "Az\xff\x01?";
+    int compared = 0;
+    for (std::uint32_t seed = 1; seed <= 3000; ++seed) {
+        ProgramGenerator generator(seed);
+        const auto code = generator.program();
+        const std::size_t memory_size = seed % 2 == 0 ? std::size_t{16} : MEMSIZE;
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            Brainfunk plain(memory_size), traced(memory_size);
+            plain.translate(code);
+            plain.optimize(level);
+            traced.translate(code);
+            traced.optimize(level);
+
+            /* The plain run, as far as the traced one may go: a program that never halts is cut. */
+            std::istringstream plain_in{std::string(input)}, traced_in{std::string(input)};
+            std::ostringstream plain_out, traced_out;
+            Check check;
+            const auto summary = run_traced(traced, check, traced_in, traced_out, {0, 20000});
+            for (std::uint64_t i = 0; i < summary.executed; ++i) {
+                if (scan_never_ends(plain)) break;
+                (void)plain.step(plain_in, plain_out);
+            }
+            if (summary.endless) {
+                INFO("seed " << seed << " level " << level << ": an endless F, which the step loop must agree on");
+                CHECK(scan_never_ends(plain));
+            }
+            if (!summary.halted) continue;
+            ++compared;
+            INFO("seed " << seed << " level " << level << ": " << code);
+            CHECK(check.consistent);
+            CHECK(traced_out.str() == plain_out.str());
+            CHECK(traced.base_ptr() == plain.base_ptr());
+            CHECK(std::equal(traced.memory().begin(), traced.memory().end(), plain.memory().begin()));
+        }
+    }
+    CHECK(compared > 4000);
+}
+
+TEST_CASE("a trace range skips and stops", "[trace]") {
+    struct Count {
+        std::uint64_t events = 0, first = 0;
+        void begin(const Brainfunk&) {}
+        void event(const TraceEvent& e) { if (events++ == 0) first = e.index; }
+        void end(const Brainfunk&, const TraceSummary&) {}
+    };
+    Brainfunk bf;
+    bf.translate("++++++++[>+.<-]");   // a loop with output in it stays a loop
+    std::istringstream in;
+    std::ostringstream out;
+    Count count;
+    const auto summary = run_traced(bf, count, in, out, {10, 5});
+    CHECK(count.events == 5);
+    CHECK(count.first == 10);
+    CHECK(summary.executed == 15);
+    CHECK(!summary.halted);
+
+    Count all;
+    std::ostringstream whole;
+    const auto full = run_traced(bf, all, in, whole, {});
+    CHECK(full.halted);
+    CHECK(full.reported == full.executed);
+    CHECK(whole.str() == "\x01\x02\x03\x04\x05\x06\x07\x08");
+}
+
+namespace {
+
+/* A trace of a program on an input, into a string. */
+std::string trace_of(std::string_view code, const std::string& input, TraceRange range = {}) {
+    Brainfunk bf;
+    bf.translate(code);
+    bf.optimize(OPT_FOLD);
+    const auto words = encode_bincode(bf.bitcode());
+    std::ostringstream file;
+    TraceWriter writer(file, words, input, range);
+    std::istringstream in(input);
+    std::ostringstream out;
+    (void)run_traced(bf, writer, in, out, range);
+    return file.str();
+}
+
+/* Runs a trace file's program again, on the input given, against the file. */
+void replay(const std::string& file, std::optional<std::string> input = std::nullopt) {
+    std::istringstream stream(file);
+    TraceReader reader(stream);
+    const auto& header = reader.header();
+    Brainfunk bf(header.meta.at("memory").get<std::size_t>());
+    bf.load_bincode(header.words);
+    std::istringstream in(input.value_or(header.input));
+    std::ostringstream out;
+    TraceCheck check(reader);
+    (void)run_traced(bf, check, in, out, header.range());
+}
+
+} // namespace
+
+TEST_CASE("a trace file runs again the way it went", "[trace]") {
+    /* A word count: branches that depend on the input, and F. */
+    const std::string code = ",[>+<[>-]>[>]<<[-]>[-]+>,]" "+[>]<[<]";
+    const std::string input = "brainfunk traces this";
+    const auto file = trace_of(code, input);
+
+    std::istringstream stream(file);
+    TraceReader reader(stream);
+    CHECK(reader.header().input == input);
+    CHECK(reader.header().meta.at("skip") == 0);
+    CHECK(reader.header().meta.at("limit").is_null());
+    CHECK_NOTHROW(replay(file));
+
+    INFO("another input sends the branches another way");
+    CHECK_THROWS_AS(replay(file, std::string("short")), BrainfunkException);
+
+    INFO("a range is kept and runs again");
+    CHECK_NOTHROW(replay(trace_of(code, input, {7, 30})));
+
+    INFO("a file cut short is refused");
+    CHECK_THROWS_AS(replay(file.substr(0, file.size() - 8)), BrainfunkException);
+
+    INFO("something that is not a trace is refused");
+    CHECK_THROWS_AS(replay(std::string(64, 'x')), BrainfunkException);
+}
+
+TEST_CASE("a trace file records which way branches went and how far F went", "[trace]") {
+    const auto file = trace_of("+>+>+<<[>]+++[-]", "");
+    std::istringstream stream(file);
+    TraceReader reader(stream);
+    CHECK(reader.next_scan() == 3);     // F 0, 1 from cell 0 to cell 3
+    CHECK(reader.footer().at("halted") == true);
+}
+
+namespace {
+
+/* An analysis report of a program given as bincode words. */
+nlohmann::json analyze(std::initializer_list<std::uint32_t> words, std::string_view names, const nlohmann::json& config = {}) {
+    Brainfunk bf;
+    bf.load_bincode(std::vector<std::uint32_t>(words));
+    AnalysisSet set(names, config.is_null() ? nlohmann::json::object() : config);
+    std::istringstream in;
+    std::ostringstream out;
+    (void)run_traced(bf, set, in, out);
+    return set.report();
+}
+
+std::uint64_t cycles_of(const nlohmann::json& report, std::size_t machine) {
+    return report.at("analyses").at("issue").at("machines").at(machine).at("cycles").get<std::uint64_t>();
+}
+
+constexpr std::uint32_t add(unsigned cell) { return 0x10000000u | (cell << 8) | 1u; }
+constexpr std::uint32_t HALT = 0x90000000u;
+
+} // namespace
+
+TEST_CASE("the issue model counts cycles as the cores would take them", "[analysis]") {
+    /* Eight adds to eight cells, then H, which waits for everything. */
+    const auto independent = analyze({add(0), add(1), add(2), add(3), add(4), add(5), add(6), add(7), HALT}, "issue");
+    CHECK(cycles_of(independent, 0) == 9);    // scalar: one a cycle
+    CHECK(cycles_of(independent, 1) == 5);    // dual: in pairs
+
+    /* Adds to one cell, one after another: a pair would chain two adders, which only raw 2 allows. */
+    const nlohmann::json config = {{"issue", {{"machines", {{{"name", "strict"}, {"width", 2}, {"raw", 1}},
+                                                           {{"name", "chained"}, {"width", 2}, {"raw", 2}}}}}}};
+    const auto chain = analyze({add(0), 0x10000002u, add(0), 0x10000002u, HALT}, "issue", config);
+    CHECK(cycles_of(chain, 0) == 3);   // A+A of constants folds in D, so even raw 1 pairs them
+    CHECK(cycles_of(chain, 1) == 3);
+
+    const nlohmann::json narrow = {{"issue", {{"machines", {{{"width", 2}, {"writes", 1}}}}}}};
+    CHECK(cycles_of(analyze({add(0), add(1), add(2), add(3), HALT}, "issue", narrow), 0) == 5);   // one write a cycle
+
+    CHECK_THROWS_AS(analyze({HALT}, "issue", {{"issue", {{"machines", {{{"mul", "fast"}}}}}}}), BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "nonsense"), BrainfunkException);
+}
+
+TEST_CASE("analyses report what the run did", "[analysis]") {
+    /* [0] = 3, then count it down: S, then A and JN three times, then H. */
+    const auto report = analyze({0x20000003u, 0x100000FFu, 0x700FFFFEu, HALT}, "stat,profile,ngram,deps,values");
+    const auto& a = report.at("analyses");
+    CHECK(report.at("run").at("halted") == true);
+    CHECK(a.at("stat").at("dynamic_total") == 8);
+    CHECK(a.at("stat").at("dynamic").at("JN") == 3);
+    CHECK(a.at("profile").at("branches") == 3);
+    CHECK(a.at("profile").at("taken") == 2);
+    CHECK(a.at("profile").at("hot").at(0).at("count") == 3);
+    CHECK(a.at("ngram").at("2").at("top").at(0).at("pattern") == "A raw JN");
+    CHECK(a.at("deps").at("loop_trips").at("total") == 1);
+    CHECK(a.at("values").at("branch_tests") == 3);
 }

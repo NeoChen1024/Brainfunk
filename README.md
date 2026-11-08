@@ -65,6 +65,10 @@ packed image file
 `stat`: run the program and report per-opcode static and dynamic instruction counts, scan
 iterations, and memory reads and writes
 
+`-m trace` keeps a run in a file that runs again checked, and `-m analyze` reports what a run did,
+as JSON: profiles, opcode n-grams, dependence distances, values, and cycle estimates for configurable
+cores. See [doc/analysis.md](doc/analysis.md).
+
 `tests/stat-compare.sh` compares those numbers across optimization levels:
 
 ```shell

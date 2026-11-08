@@ -13,6 +13,8 @@
 #include "svdpi.h"
 #include "verilated.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -343,26 +345,24 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
 }
 
 void print_json(const Result& result) {
-    std::printf("{\"retired\":%llu,\"cycles\":%llu,\"halted\":%s,\"trapped\":%s,\"truncated\":%s,\"ops\":{",
-                static_cast<unsigned long long>(result.retired), static_cast<unsigned long long>(result.cycles),
-                result.halted ? "true" : "false", result.trapped ? "true" : "false", result.truncated ? "true" : "false");
-    const char* separator = "";
+    nlohmann::json ops = nlohmann::json::object();
     for (std::size_t op = 0; op < result.count_per_op.size(); ++op) {
         if (result.count_per_op[op] == 0) continue;
-        const auto name = opcode_name(static_cast<Opcode>(op));
-        std::printf("%s\"%.*s\":{\"count\":%llu,\"cycles\":%llu}", separator, static_cast<int>(name.size()), name.data(),
-                    static_cast<unsigned long long>(result.count_per_op[op]), static_cast<unsigned long long>(result.cycles_per_op[op]));
-        separator = ",";
+        ops[std::string(opcode_name(static_cast<Opcode>(op)))] = {{"count", result.count_per_op[op]},
+                                                                   {"cycles", result.cycles_per_op[op]}};
     }
-    std::printf("}}\n");
+    const nlohmann::json out = {{"retired", result.retired}, {"cycles", result.cycles}, {"halted", result.halted},
+                                {"trapped", result.trapped}, {"truncated", result.truncated}, {"ops", ops}};
+    std::cout << out.dump() << std::endl;
 }
 
 void print_batch(bool json, const char* what, std::uint32_t count, std::uint64_t halted, std::uint64_t truncated,
                  std::uint64_t trapped, std::uint64_t retired) {
     const auto ull = [](std::uint64_t value) { return static_cast<unsigned long long>(value); };
     if (json) {
-        std::printf("{\"programs\":%u,\"halted\":%llu,\"truncated\":%llu,\"trapped\":%llu,\"retired\":%llu}\n", count,
-                    ull(halted), ull(truncated), ull(trapped), ull(retired));
+        const nlohmann::json out = {{"programs", count}, {"halted", halted}, {"truncated", truncated},
+                                    {"trapped", trapped}, {"retired", retired}};
+        std::cout << out.dump() << std::endl;
     } else {
         std::printf("%u %s: %llu halted, %llu truncated, %llu trapped, %llu instructions compared\n", count, what, ull(halted),
                     ull(truncated), ull(trapped), ull(retired));
