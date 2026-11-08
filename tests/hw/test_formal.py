@@ -13,5 +13,7 @@ def test_formal_task(task):
     prefix = BUILD / "formal" / task
     prefix.parent.mkdir(parents=True, exist_ok=True)
     result = run("sby", "-f", "--prefix", prefix, "core.sby", task, cwd=ROOT / "formal", check=False)
+    if result.returncode == 8:
+        pytest.fail(f"{task} timed out, see {prefix}")
     if result.returncode != 0:
         pytest.fail(f"{task} failed, see {prefix}\n" + "\n".join(line for line in result.stdout.splitlines() if "Assert failed" in line or "Unreached" in line))

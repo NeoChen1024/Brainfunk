@@ -19,6 +19,9 @@ latency
 cover
 
 [options]
+# A run that has not finished in an hour is not going to: each BMC step takes two to three times as
+# long as the one before. sby stops its solvers itself and reports TIMEOUT.
+timeout 3600
 prove: mode prove
 prove: depth 3
 prove_lines: mode prove

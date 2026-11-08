@@ -99,6 +99,7 @@ def test_formal_catches(tmp_path, name):
     (tmp_path / "check.sby").write_text(f"""[options]
 mode prove
 depth 3
+timeout 600
 
 [engines]
 smtbmc --nopresat bitwuzla
@@ -113,8 +114,10 @@ prep -top brainfunk_core
 {tmp_path}/core_props.svh
 {tmp_path}/core_invariants.svh
 """)
-    result = run("sby", "-f", "check.sby", cwd=tmp_path, check=False, timeout=600)
-    assert result.returncode != 0, f"formal did not catch: {name}"
+    # sby's own timeout, not run()'s: killing sby would leave its solver running. Only FAIL (2) and a
+    # failed induction (4) are catches; a timeout (8) or an error (16) says nothing about the mutant.
+    result = run("sby", "-f", "check.sby", cwd=tmp_path, check=False)
+    assert result.returncode in (2, 4), f"formal did not catch: {name} (sby exited {result.returncode})"
 
 
 @pytest.mark.parametrize("name,file,text,replacement", LOADER_MUTANTS, ids=[mutant[0] for mutant in LOADER_MUTANTS])
