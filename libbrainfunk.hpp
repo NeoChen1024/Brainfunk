@@ -31,6 +31,14 @@ inline constexpr std::size_t MEMSIZE = 1 << 16;   // Default memory size
 inline constexpr memory_t IO_IN  = 0;
 inline constexpr memory_t IO_OUT = 1;
 
+/* What input stores once there is none left: 0, 255 (C's EOF, -1, as a byte), or nothing, leaving
+ * the cell as it was.  Programs assume one or another; "0" is the default. */
+enum class EofMode : std::uint8_t { Zero, MinusOne, Keep };
+
+/* "0", "255" or "keep". */
+[[nodiscard]] std::optional<EofMode> parse_eof_mode(std::string_view text) noexcept;
+[[nodiscard]] std::string_view eof_mode_name(EofMode mode) noexcept;
+
 /* Instruction field widths; doc/bincode.txt is the normative layout. */
 inline constexpr unsigned ADDR_OFFSET_BITS = 12;
 inline constexpr unsigned SRC_OFFSET_BITS  = 8;
@@ -273,6 +281,10 @@ public:
     /* Execute exactly one bitcode instruction. Returns false on halt. */
     [[nodiscard]] bool step(std::istream& is = std::cin, std::ostream& os = std::cout);
 
+    /* What input stores at the end of input, for running and for the code generators. */
+    void set_eof(EofMode mode) noexcept { eof_ = mode; }
+    [[nodiscard]] EofMode eof() const noexcept { return eof_; }
+
     /* Reset execution state (memory + pc + base_ptr) without clearing bitcode */
     void reset_state();
 
@@ -292,6 +304,7 @@ private:
     friend struct TraceRunner;   // the instrumented interpreter loop, trace.hpp
 
     addr_t                         base_ptr_ = 0;
+    EofMode                        eof_ = EofMode::Zero;
     addr_t                         pc_  = 0;
     std::vector<memory_t>          memory_;
     std::vector<Bitcode>           bitcode_;

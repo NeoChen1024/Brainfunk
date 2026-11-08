@@ -242,7 +242,7 @@ void TraceWriter::begin(const Brainfunk& bf) {
     auto& w = *impl_;
     json meta = w.extra;
     meta["memory"] = bf.memory().size();
-    meta["eof"] = "0";
+    meta["eof"] = std::string(eof_mode_name(bf.eof()));
     meta["skip"] = w.range.skip;
     meta["limit"] = w.range.limit == TraceRange{}.limit ? json(nullptr) : json(w.range.limit);
     meta["words"] = w.words.size();

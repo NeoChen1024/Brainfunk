@@ -8,7 +8,7 @@ from sw_support import CC, CLANG, LLVM_AS, LLVM_OPT, ROOT, brainfunk, needs_llvm
 
 EMPTY = b""
 
-# name: (source, input)
+# name: (source, input), or (source, input, EOF mode) for what is stored at the end of input
 PROGRAMS = {
     "hello": ("++++++++[>++++++++<-]>+.+.+.", EMPTY),
     "io": (",.,.", b"Z"),
@@ -37,6 +37,13 @@ PROGRAMS = {
     "fit-src": ("+" + ">" * 127 + "++[->+<]" + ">" * 2 + ".", EMPTY),
     "overflow-src": ("+" + ">" * 128 + "++[->+<]" + ">" + ".", EMPTY),
     "overflow-move": (">" * 100 + "+" + ">" * 524287 + ".", EMPTY),
+    # The end of input, in each mode, and the loops that rely on it.
+    "eof-0": (",.,.,.", b"A", "0"),
+    "eof-255": (",.,.,.", b"A", "255"),
+    "eof-keep": (",.,.,.", b"A", "keep"),
+    "cat-0": (",[.,]", b"cat", "0"),
+    "cat-255": (",+[-.,+]", b"cat", "255"),
+    "eof-keep-pending": (">>,<<+>>,<<.>>.", b"Q", "keep"),
 }
 
 # Real programs from programs/ and the 3rdparty/ submodules, when checked out.
@@ -58,7 +65,7 @@ CASES = [pytest.param(name, level, id=f"{name}-O{level}") for name in [*PROGRAMS
 def sources(tmp_path_factory):
     directory = tmp_path_factory.mktemp("sources")
     paths = {}
-    for name, (code, _) in PROGRAMS.items():
+    for name, (code, *_) in PROGRAMS.items():
         paths[name] = directory / f"{name}.bf"
         paths[name].write_text(code)
     for path in CORPUS:
@@ -77,22 +84,27 @@ def input_of(name):
     return PROGRAMS[name][1] if name in PROGRAMS else EMPTY
 
 
+def eof_of(name):
+    """The -e option for a program: its EOF mode, which the code generators build in."""
+    return ["-e", PROGRAMS[name][2]] if name in PROGRAMS and len(PROGRAMS[name]) > 2 else []
+
+
 @functools.cache
-def reference(path, stdin):
+def reference(path, stdin, eof=()):
     """What the unoptimized interpreter prints."""
-    return brainfunk("-O0", "-f", path, input=stdin).stdout
+    return brainfunk("-O0", *eof, "-f", path, input=stdin).stdout
 
 
 @pytest.mark.parametrize("name,level", CASES)
 def test_interpreter(sources, name, level):
-    path, stdin = source_of(sources, name), input_of(name)
-    assert brainfunk(f"-O{level}", "-f", path, input=stdin).stdout == reference(path, stdin)
+    path, stdin, eof = source_of(sources, name), input_of(name), eof_of(name)
+    assert brainfunk(f"-O{level}", *eof, "-f", path, input=stdin).stdout == reference(path, stdin, tuple(eof))
 
 
 @pytest.mark.parametrize("name,level", CASES)
 def test_image_forms(sources, tmp_path, name, level):
     """Every form of the image converts to every other without loss, and runs the same."""
-    path, stdin = source_of(sources, name), input_of(name)
+    path, stdin, eof = source_of(sources, name), input_of(name), eof_of(name)
     base = tmp_path / "program"
     listing = brainfunk(f"-O{level}", "-m", "bit", "-f", path).stdout
     hexwords = brainfunk(f"-O{level}", "-m", "hex", "-f", path).stdout
@@ -106,31 +118,31 @@ def test_image_forms(sources, tmp_path, name, level):
     assert brainfunk("-b", packed, "-m", "bin").stdout == binary.read_bytes()
     assert brainfunk("-b", packed, "-m", "bit").stdout == listing
     for image in (bit, hexfile, binary, packed):
-        assert brainfunk("-b", image, input=stdin).stdout == reference(path, stdin), image.suffix
+        assert brainfunk(*eof, "-b", image, input=stdin).stdout == reference(path, stdin, tuple(eof)), image.suffix
 
 
 @pytest.mark.parametrize("name,level", CASES)
 def test_c_backend(sources, tmp_path, name, level):
-    path, stdin = source_of(sources, name), input_of(name)
+    path, stdin, eof = source_of(sources, name), input_of(name), eof_of(name)
     c_file, executable = tmp_path / "program.c", tmp_path / "program"
-    brainfunk(f"-O{level}", "-m", "bfc", "-f", path, "-o", c_file)
+    brainfunk(f"-O{level}", *eof, "-m", "bfc", "-f", path, "-o", c_file)
     run(CC, "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic", c_file, "-o", executable)
-    assert run(executable, input=stdin).stdout == reference(path, stdin)
+    assert run(executable, input=stdin).stdout == reference(path, stdin, tuple(eof))
 
 
 @needs_llvm
 @pytest.mark.parametrize("name,level", CASES)
 def test_llvm_backend(sources, tmp_path, name, level):
-    path, stdin = source_of(sources, name), input_of(name)
+    path, stdin, eof = source_of(sources, name), input_of(name), eof_of(name)
     ir, executable = tmp_path / "program.ll", tmp_path / "program"
-    brainfunk(f"-O{level}", "-m", "llvm", "-f", path, "-o", ir)
+    brainfunk(f"-O{level}", *eof, "-m", "llvm", "-f", path, "-o", ir)
     assert not any(line.startswith(("target triple", "target datalayout")) for line in ir.read_text().splitlines()), \
         "portable LLVM IR contains target metadata"
     run(LLVM_AS, ir, "-o", tmp_path / "program.bc")
     run(LLVM_OPT, "-passes=verify", ir, "-disable-output")
     run(CLANG, "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic", "-Wno-override-module",
         ROOT / "llvm-ir-wrapper.c", ir, "-o", executable)
-    assert run(executable, input=stdin).stdout == reference(path, stdin)
+    assert run(executable, input=stdin).stdout == reference(path, stdin, tuple(eof))
 
 
 @pytest.mark.parametrize("mnemonic", ["MULC", "DJN", "MJN", "SRUN"])
@@ -163,3 +175,13 @@ def test_compile_c_script(sources, tmp_path):
     executable = tmp_path / "hello"
     run("sh", ROOT / "compile.sh", sources["hello"], executable)
     assert run(executable).stdout == reference(sources["hello"], EMPTY)
+
+
+@pytest.mark.parametrize("mode,expected", [("0", b"A\0\0"), ("255", b"A\xff\xff"), ("keep", b"AAA")])
+def test_eof_mode_stores(mode, expected):
+    """The reference itself: what each mode stores once input runs out."""
+    assert brainfunk("-O0", "-e", mode, "-s", ",.,.,.", input=b"A").stdout == expected
+
+
+def test_eof_mode_is_checked():
+    assert brainfunk("-e", "-1", "-s", ",", check=False).returncode != 0

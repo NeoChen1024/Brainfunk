@@ -98,3 +98,13 @@ def test_analyze_reports_json(tmp_path):
 
 def test_analyze_refuses_an_unknown_analysis():
     assert brainfunk("-m", "analyze", "-a", "nonsense", "-s", "+", check=False).returncode != 0
+
+
+def test_trace_keeps_the_eof_mode(tmp_path):
+    """Run again from a trace, input at its end stores what the traced run stored."""
+    source = tmp_path / "keep.bf"
+    source.write_text(",[.,]")   # with keep, the last byte repeats until the limit
+    trace = tmp_path / "keep.bft"
+    traced = brainfunk("-e", "keep", "-m", "trace", "--limit", "20", "-f", source, "-o", trace, input=b"ab")
+    assert traced.stdout.startswith(b"abb")
+    assert brainfunk("-m", "analyze", "-t", trace).stdout == traced.stdout

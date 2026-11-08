@@ -22,6 +22,22 @@
 // Construction / destruction
 // ------------------------------------------------------------------
 
+std::optional<EofMode> parse_eof_mode(std::string_view text) noexcept {
+    if (text == "0") return EofMode::Zero;
+    if (text == "255") return EofMode::MinusOne;
+    if (text == "keep") return EofMode::Keep;
+    return std::nullopt;
+}
+
+std::string_view eof_mode_name(EofMode mode) noexcept {
+    switch (mode) {
+    case EofMode::Zero: return "0";
+    case EofMode::MinusOne: return "255";
+    case EofMode::Keep: return "keep";
+    }
+    return "?";
+}
+
 Brainfunk::Brainfunk(std::size_t memsize) {
     if (!std::has_single_bit(memsize)) {
         throw BrainfunkException("Memory size must be a power of two");
@@ -303,7 +319,9 @@ void Brainfunk::dump(std::ostream& os, Format format) const {
               "{\n"
               "\tif (arg == 0) {\n"
               "\t\tconst int input = getchar();\n"
-              "\t\tmemory[address] = input == EOF ? 0 : (uint8_t)input;\n"
+              << (eof_ == EofMode::Keep     ? "\t\tif (input != EOF) memory[address] = (uint8_t)input;\n"
+                  : eof_ == EofMode::Zero   ? "\t\tmemory[address] = input == EOF ? 0 : (uint8_t)input;\n"
+                                            : "\t\tmemory[address] = (uint8_t)input;   /* EOF is -1, stored as 255 */\n") <<
               "\t} else {\n"
               "\t\tputchar(memory[address]);\n"
               "\t\tfflush(stdout);\n"
@@ -509,8 +527,11 @@ bool Brainfunk::interpret_(std::istream& is, std::ostream& os) {
         if (instruction->data_ == IO_IN) {
             memory_t input = 0;
             is >> std::noskipws >> input;
-            if (is.eof()) input = 0;
-            memory[ea(instruction->wide_)] = input;
+            if (!is.eof()) {
+                memory[ea(instruction->wide_)] = input;
+            } else if (eof_ != EofMode::Keep) {
+                memory[ea(instruction->wide_)] = eof_ == EofMode::Zero ? 0 : 255;
+            }
         } else {
             os << static_cast<char>(memory[ea(instruction->wide_)]) << std::flush;
         }

@@ -181,6 +181,7 @@ public:
 
     /* Load Brainfuck source from a file or string */
     void set_opt_level(int level) { opt_level_ = level; }
+    void set_eof(EofMode mode) noexcept { bf_.set_eof(mode); }
 
     void load_file(const std::string& path) {
         std::ifstream input(path);
@@ -598,12 +599,13 @@ private:
 [[noreturn]] static void helpmsg(char** argv, int status = 0) {
     std::cerr
         << "Usage: " << argv[0]
-        << " [-h] [-f file] [-s code] [-b image] [-t msec] [-O level]\n"
+        << " [-h] [-f file] [-s code] [-b image] [-t msec] [-O level] [-e mode]\n"
         << "  -f file    Read Brainfuck source from file\n"
         << "  -s code    Inline Brainfuck code\n"
         << "  -b image   A program image, in any form brainfunk -b reads; -O does not apply\n"
         << "  -t msec    Initial delay per step in milliseconds (default 100)\n"
         << "  -O level   Optimization level, 0 to " << OPT_MAX << " (default 0)\n"
+        << "  -e mode    What input stores at the end of input: 0 (default), 255, or keep\n"
         << "  -h         Show this help\n"
         << "\n"
         << "TUI Controls:\n"
@@ -622,9 +624,10 @@ int main(int argc, char** argv) {
     auto delay = std::chrono::milliseconds{100};
     bool valid = false;
     int opt_level = OPT_NONE;
+    EofMode eof = EofMode::Zero;
 
     int opt;
-    while ((opt = ::getopt(argc, argv, "hf:s:b:t:O:")) != -1) {
+    while ((opt = ::getopt(argc, argv, "hf:s:b:t:O:e:")) != -1) {
         switch (opt) {
         case 'O': {
             const auto level = parse_opt_level(optarg);
@@ -635,6 +638,14 @@ int main(int argc, char** argv) {
             opt_level = *level;
             break;
         }
+        case 'e':
+            if (const auto mode = parse_eof_mode(optarg)) {
+                eof = *mode;
+            } else {
+                std::cerr << "Invalid EOF mode: " << optarg << '\n';
+                return 1;
+            }
+            break;
         case 'f':
             filename = optarg;
             valid = true;
@@ -677,6 +688,7 @@ int main(int argc, char** argv) {
     try {
         VisualBrainfunk vbf(delay);
         vbf.set_opt_level(opt_level);
+        vbf.set_eof(eof);
 
         if (!image.empty()) {
             vbf.load_image(image);

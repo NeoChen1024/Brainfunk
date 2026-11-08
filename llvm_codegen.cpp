@@ -177,11 +177,19 @@ void Brainfunk::dump_llvm_ir(std::ostream& os) const {
             emit_load_base(os, pc);
             emit_cell_ptr(os, "cell", pc, instruction.addr_offset(), memory_.size());
             if (instruction.data() == IO_IN) {
+                /* At the end of input: 0, -1 truncated to 255, or the cell as it was. */
                 os << "  %input." << pc << " = call i32 %read_byte(ptr %io_context)\n"
-                   << "  %input.eof." << pc << " = icmp eq i32 %input." << pc << ", -1\n"
-                   << "  %input.value." << pc << " = select i1 %input.eof." << pc
-                   << ", i32 0, i32 %input." << pc << '\n'
-                   << "  %input.byte." << pc << " = trunc i32 %input.value." << pc << " to i8\n"
+                   << "  %input.eof." << pc << " = icmp eq i32 %input." << pc << ", -1\n";
+                if (eof_ == EofMode::Keep) {
+                    os << "  %input.old." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'
+                       << "  %input.old32." << pc << " = zext i8 %input.old." << pc << " to i32\n"
+                       << "  %input.value." << pc << " = select i1 %input.eof." << pc
+                       << ", i32 %input.old32." << pc << ", i32 %input." << pc << '\n';
+                } else {
+                    os << "  %input.value." << pc << " = select i1 %input.eof." << pc
+                       << ", i32 " << (eof_ == EofMode::Zero ? 0 : 255) << ", i32 %input." << pc << '\n';
+                }
+                os << "  %input.byte." << pc << " = trunc i32 %input.value." << pc << " to i8\n"
                    << "  store i8 %input.byte." << pc << ", ptr %cell.ptr." << pc << '\n';
             } else {
                 os << "  %output.byte." << pc << " = load i8, ptr %cell.ptr." << pc << '\n'

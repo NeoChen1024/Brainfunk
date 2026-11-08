@@ -44,7 +44,7 @@ struct TraceEvent {
                                    // last zero, the rest not.
     unsigned      fill   = 0;      // SRUN: cells written from write[0].cell on, each write[0].value
     bool          input  = false;  // IO input: the byte is write[0].value
-    bool          eof    = false;  // ...and there was none, so it is 0
+    bool          eof    = false;  // ...and there was none, so it is what the EOF mode says
 
     [[nodiscard]] Opcode opcode() const noexcept { return instruction->opcode(); }
 };
@@ -208,7 +208,7 @@ struct TraceRunner {
                     memory_t byte = 0;
                     is >> std::noskipws >> byte;
                     e.eof = is.eof();
-                    if (e.eof) byte = 0;
+                    if (e.eof) byte = bf.eof_ == EofMode::Zero ? 0 : bf.eof_ == EofMode::MinusOne ? 255 : memory[cell];
                     memory[cell] = byte;
                     e.input = true;
                     e.writes = 1;

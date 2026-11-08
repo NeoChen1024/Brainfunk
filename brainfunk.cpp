@@ -53,6 +53,8 @@ static void readcode(string& code, const std::string& filename) {
         << "            words, told apart by content; '-' is standard input. -O does not apply\n"
         << "  -t trace  a trace file instead: its program runs again on its input, over its range,\n"
         << "            and must go the way it went. -O, --skip and --limit do not apply\n"
+        << "  -e mode   what input stores at the end of input: 0 (default), 255, or keep, which\n"
+        << "            leaves the cell as it was; bfc and llvm build it in\n"
         << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n"
         << "  -o out    where the output of a mode that writes one goes (default standard output)\n"
         << "  -m mode   what to do (default run):\n"
@@ -98,6 +100,7 @@ int main(int argc, char** argv) {
     TraceRange range;
     bool ranged = false;
     string analyses = "stat", config_path;
+    EofMode eof = EofMode::Zero;
 
     const auto count_of = [&](const char* text) -> std::uint64_t {
         std::size_t used = 0;
@@ -116,10 +119,18 @@ int main(int argc, char** argv) {
                                           {"help", no_argument, nullptr, 'h'},
                                           {nullptr, 0, nullptr, 0}};
     int opt;
-    while ((opt = ::getopt_long(argc, argv, "hm:O:s:f:b:o:t:a:", long_options, nullptr)) != -1) {
+    while ((opt = ::getopt_long(argc, argv, "hm:O:s:f:b:o:t:a:e:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'a':
             analyses = optarg;
+            break;
+        case 'e':
+            if (const auto mode = parse_eof_mode(optarg)) {
+                eof = *mode;
+            } else {
+                cerr << "Invalid EOF mode: " << optarg << " (0, 255 or keep)\n";
+                return 1;
+            }
             break;
         case 'C':
             config_path = optarg;
@@ -229,6 +240,9 @@ int main(int argc, char** argv) {
             const auto& header = reader.header();
             Brainfunk bf(header.meta.at("memory").get<std::size_t>());
             bf.load_bincode(header.words);
+            const auto recorded = parse_eof_mode(header.meta.at("eof").get<std::string>());
+            if (!recorded) throw BrainfunkException("the trace file's EOF mode is not known");
+            bf.set_eof(*recorded);
             std::istringstream in(header.input);
             TraceCheck check(reader);
             if (mode == "analyze") {
@@ -271,6 +285,7 @@ int main(int argc, char** argv) {
         }
 
         Brainfunk bf(MEMSIZE);
+        bf.set_eof(eof);
         std::vector<std::uint32_t> words;
         if (!image.empty()) {
             words = read_image_file(image);
