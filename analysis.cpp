@@ -70,7 +70,8 @@ private:
 
 class ProfileAnalysis final : public Analysis {
 public:
-    explicit ProfileAnalysis(const json& config) : top_(config.value("top", std::size_t{30})) {}
+    explicit ProfileAnalysis(const json& config)
+        : top_(config.value("top", std::size_t{30})), counts_(config.value("counts", false)) {}
 
     void begin(const Brainfunk& bf) override {
         code_.assign(bf.bitcode().begin(), bf.bitcode().end());
@@ -99,19 +100,40 @@ public:
             const auto pc = order[i];
             json row = {{"pc", pc}, {"instruction", code_[pc].to_string()}, {"count", count_[pc]},
                         {"share", share(count_[pc], total_)}};
-            if (opcode_layout(code_[pc].opcode()) == OperandLayout::Branch ||
-                opcode_layout(code_[pc].opcode()) == OperandLayout::MoveBranch) {
-                row["taken"] = taken_[pc];
-            }
+            if (is_branch(code_[pc])) row["taken"] = taken_[pc];
             hot.push_back(row);
         }
-        const auto reached = static_cast<std::uint64_t>(std::count_if(count_.begin(), count_.end(), [](auto c) { return c; }));
-        return {{"instructions", total_}, {"words", code_.size()}, {"words_run", reached},
-                {"branches", branches_}, {"taken", taken_total_}, {"hot", hot}};
+        /* Coverage: which words ran, and which branches went each way. */
+        std::uint64_t reached = 0, static_branches = 0, both = 0, taken_only = 0, not_taken_only = 0;
+        for (std::size_t pc = 0; pc < code_.size(); ++pc) {
+            reached += count_[pc] != 0;
+            if (!is_branch(code_[pc])) continue;
+            ++static_branches;
+            if (count_[pc] == 0) continue;
+            if (taken_[pc] == 0) ++not_taken_only;
+            else if (taken_[pc] == count_[pc]) ++taken_only;
+            else ++both;
+        }
+        json out = {{"instructions", total_}, {"words", code_.size()}, {"words_run", reached},
+                    {"branches", branches_}, {"taken", taken_total_}, {"hot", hot},
+                    {"coverage", {{"words", share(reached, code_.size())},
+                                  {"branches", {{"total", static_branches}, {"both_ways", both},
+                                                {"taken_only", taken_only}, {"not_taken_only", not_taken_only},
+                                                {"never_run", static_branches - both - taken_only - not_taken_only}}}}}};
+        if (counts_) {
+            out["counts"] = count_;
+            out["taken_counts"] = taken_;
+        }
+        return out;
     }
 
 private:
+    static bool is_branch(const Bitcode& b) {
+        return opcode_layout(b.opcode()) == OperandLayout::Branch || opcode_layout(b.opcode()) == OperandLayout::MoveBranch;
+    }
+
     std::size_t                top_;
+    bool                       counts_;
     std::vector<Bitcode>       code_;
     std::vector<std::uint64_t> count_, taken_;
     std::uint64_t              total_ = 0, branches_ = 0, taken_total_ = 0;

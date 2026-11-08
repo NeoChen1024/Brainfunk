@@ -67,7 +67,7 @@ differ from its defaults. The report has `run` (how it ended), `program` (where 
 | Analysis | Configuration | Reports |
 |---|---|---|
 | `stat` | | counts per opcode, static and dynamic; cell reads and writes; `F` strides |
-| `profile` | `top`: rows, 30 | the hottest instructions, with how often each branch was taken |
+| `profile` | `top`: rows, 30; `counts`: every counter, false | the hottest instructions, with how often each branch was taken; coverage: the share of words that ran, and how many branches went both ways, one way, or never ran. With `counts`, a run count and a taken count for every word, which add up across runs |
 | `ngram` | `n`: lengths, `[2, 3, 4]`; `top`: rows, 30 | the commonest runs of opcodes, each with how its cells relate to the instruction before: `raw` reads a cell it wrote, `same` shares a cell, `near` touches a neighbour |
 | `deps` | | how many instructions back a read's cell was written; basic block lengths; instructions between taken branches; loop trip counts |
 | `values` | | values read and written, how often a branch's test is zero, how often `F` starts on a zero |

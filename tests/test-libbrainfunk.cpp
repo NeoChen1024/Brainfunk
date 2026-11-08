@@ -758,6 +758,20 @@ TEST_CASE("analyses report what the run did", "[analysis]") {
     CHECK(a.at("profile").at("branches") == 3);
     CHECK(a.at("profile").at("taken") == 2);
     CHECK(a.at("profile").at("hot").at(0).at("count") == 3);
+    CHECK(a.at("profile").at("words_run") == 4);
+    CHECK(a.at("profile").at("coverage").at("branches").at("both_ways") == 1);
+    CHECK(!a.at("profile").contains("counts"));
+
+    /* Every counter, for adding up runs; the JN at pc 2 ran three times and went back twice. */
+    const auto counted = analyze({0x20000003u, 0x100000FFu, 0x700FFFFEu, HALT}, "profile",
+                                 {{"profile", {{"counts", true}}}});
+    const auto& profile = counted.at("analyses").at("profile");
+    CHECK(profile.at("counts") == nlohmann::json({1, 3, 3, 1}));
+    CHECK(profile.at("taken_counts").at(2) == 2);
+
+    /* A forward branch that always falls through went one way only. */
+    const auto skipped = analyze({0x20000001u, 0x60000001u, 0x20000002u, HALT}, "profile");
+    CHECK(skipped.at("analyses").at("profile").at("coverage").at("branches").at("not_taken_only") == 1);
     CHECK(a.at("ngram").at("2").at("top").at(0).at("pattern") == "A raw JN");
     CHECK(a.at("deps").at("loop_trips").at("total") == 1);
     CHECK(a.at("values").at("branch_tests") == 3);
