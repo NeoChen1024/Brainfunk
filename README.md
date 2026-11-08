@@ -10,11 +10,12 @@ pytest-xdist; the hardware ones also Verilator, and formal SymbiYosys and Bitwuz
 ```shell
 cmake --workflow --preset default    # configure, build into build/, run every test that needs no board
 cmake --workflow --preset sw         # the software only: unit and end-to-end tests, under a minute
+ctest --preset corpus                # the corpus programs on their inputs, at every level, 4 minutes
 ctest --preset hw                    # the hardware: cosimulation, testbenches and formal
 cmake --workflow --preset sanitize   # the software under ASan and UBSan, in build-sanitize/
 ```
 
-Programs end up in `build/bin`. Tests are labelled `unit`, `sw`, `hw`, `formal`, and, when enabled
+Programs end up in `build/bin`. Tests are labelled `unit`, `sw`, `corpus`, `hw`, `formal`, and, when enabled
 at configure time, `mutation` and `board`; see [tests/CMakeLists.txt](tests/CMakeLists.txt).
 
 # Features

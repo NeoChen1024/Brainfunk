@@ -42,6 +42,12 @@
             "filter": { "include": { "label": "^(unit|sw)$" } }
         },
         {
+            "name": "corpus",
+            "displayName": "The corpus programs on their inputs, against inputs.lock",
+            "inherits": "default",
+            "filter": { "include": { "label": "^corpus$" } }
+        },
+        {
             "name": "hw",
             "displayName": "The hardware: cosimulation, testbenches and formal",
             "inherits": "default",

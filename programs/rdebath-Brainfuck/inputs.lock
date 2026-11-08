@@ -1,0 +1,274 @@
+{
+ "3rdparty/rdebath-Brainfuck/testing/Beer.b Beer eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "0142571b27edcc0fc9e9082047cf0b79f5f6dc29b9d6c844eee9f160119bdf4b",
+  "output_bytes": 11354,
+  "tape_crc32": 3635557613
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Bench.b Bench eof=0": {
+  "base_ptr": 3,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "984862d357e43075d4b5ad07dcac7729625f9c4b7c9c35f3ec07999530cb4585",
+  "output_bytes": 2,
+  "tape_crc32": 3477640989
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Collatz.b Collatz eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "309280a7076f9d462836ce5c7ebe2665b287b8923baee804b44f0fecf2833c8e",
+  "output": "b4e21924b7a17231aea2dfe034f0ea5b535cf7a96888e72d40d14a01c99646c2",
+  "output_bytes": 6,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Counter.b Counter eof=0": {
+  "base_ptr": 2,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "0773cc045eec1f2c8c15e84f1c6f740d48498e76d27081b14390ab5922ca4ca8",
+  "output_bytes": 3,
+  "tape_crc32": 1103426266
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Endtest.b Endtest eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "295192ea1ec8566d563b1a7587e5f0198580cdbd043842f5090a4c197c20c67a",
+  "output": "3e0fa4841adfc1b463fe72e627e3a069de301fb80dbb7a133dd566b556cbe87c",
+  "output_bytes": 10,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Euler1.b Euler1 eof=0": {
+  "base_ptr": 2,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "bd4e0afc234527c4d1ad2da380da1f5d846b8c9a86331023f0837bf2458364f0",
+  "output_bytes": 245,
+  "tape_crc32": 3969037491
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Euler5.b Euler5 eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "4d212bed8623f3fa1f2ef2cbe99df40f9076436f74c286ad70c136ef3ce20fe1",
+  "output_bytes": 264,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Factor.b Factor eof=0": {
+  "base_ptr": 20,
+  "ending": "halted",
+  "input": "0e02a22a3ad45a3d8879ed258f4a17fdb72c32ff33747560745d49a74ae20791",
+  "output": "aac6f6247f1485e99b87b6eabf461584e11a7b255a0495a4a3af5a37a3c52e22",
+  "output_bytes": 51,
+  "tape_crc32": 3878432790
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Golden.b Golden eof=0": {
+  "base_ptr": 142,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "02cc327743fafbbdfcaca983d43195b4442baf1ac5c6250a0459f9366f9a7566",
+  "output_bytes": 38,
+  "tape_crc32": 4159484871
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Hanoi.b Hanoi eof=0": {
+  "base_ptr": 287,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "10d40686b877bafb2294fc9a9df420035b7411b16f5d445b00f4a5f081447888",
+  "output_bytes": 19090,
+  "tape_crc32": 2840155891
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Hello.b Hello eof=0": {
+  "base_ptr": 6,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "92dcc6e2e78a357dace30009e4edd612fb3e60c24dc9318724a3c023fd1eb9fe",
+  "output_bytes": 13,
+  "tape_crc32": 472732629
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Hello2.b Hello2 eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "92dcc6e2e78a357dace30009e4edd612fb3e60c24dc9318724a3c023fd1eb9fe",
+  "output_bytes": 13,
+  "tape_crc32": 705775379
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Impeccable.b Impeccable eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "565bdefa85b7e06b6981d40525f2fa051ee46752e79c30b18c8ffa77fa7de345",
+  "output_bytes": 19840,
+  "tape_crc32": 3106904756
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Life.b Life eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "31d4ecd888fc3fc7bf5f4bd32251f7c93d545e18803cba9aec7250fc89a220bd",
+  "output": "4e08d211aca96f4acfe286e7d1fcb079f4b0a312c1caf80f1ae6b348ee97ea0c",
+  "output_bytes": 3591,
+  "tape_crc32": 2635836486
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Long.b Long eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "4da72462973feec49125759d5ba83a0c61683dc839f4ae706b8b4501ba2f5182",
+  "output_bytes": 1,
+  "tape_crc32": 1656430215
+ },
+ "3rdparty/rdebath-Brainfuck/testing/LostKng.b LostKng eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "8950512ea549880e2c921a22e5f70a4e66110753f4dfcfb723961fad61c877ea",
+  "output": "c3fbc6f05fcaf5700338c160d1e2f4768b3c7e15fdbad72e12e99bc4be9cb3ba",
+  "output_bytes": 3438,
+  "tape_crc32": 1902642918
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b Mandelbrot eof=0": {
+  "base_ptr": 10,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "76f28b8e31fae32f63f55430c7d4e85be75d90d12b9eab2417844fbb5819791a",
+  "output_bytes": 6240,
+  "tape_crc32": 224340476
+ },
+ "3rdparty/rdebath-Brainfuck/testing/OptimTease.b OptimTease eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "38d5445421bfd60d4d48ff2a7acb3ed412e43e68e66cdb2bb86f604ec6e6caa0",
+  "output": "d86026cc6c14a9036dfedae038540a252780ecc59e2be5d15dc57cb1d1e58194",
+  "output_bytes": 2420,
+  "tape_crc32": 919293989
+ },
+ "3rdparty/rdebath-Brainfuck/testing/OptimTease.b OptimTease2 eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "fa82ccccf66e026c4fd46a2c1b35e3d5d34aa4380f2a7015f7e68cc93f82bc2e",
+  "output": "d86026cc6c14a9036dfedae038540a252780ecc59e2be5d15dc57cb1d1e58194",
+  "output_bytes": 2420,
+  "tape_crc32": 919293989
+ },
+ "3rdparty/rdebath-Brainfuck/testing/PIdigits.b PIdigits eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "a73bbb14998d49cc28a500a1e3bb40a7d1a51a685ad5ca7a1ec75fa855304ddb",
+  "output": "07deeea7757f8e2e37fa0b7fa9fdabc5fe92cf821f80291972d10d44b56fb7b0",
+  "output_bytes": 231,
+  "tape_crc32": 2125751367
+ },
+ "3rdparty/rdebath-Brainfuck/testing/PIdigits.b PIdigits2 eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "036fa1a0b7d05b20e952687cbc7b466b6dc50037e392a297fb9e8605603212e1",
+  "output": "e2c0228af23fb558764188e95075f9fdb3df49c22e2b1e4d1c912d8470598d22",
+  "output_bytes": 81,
+  "tape_crc32": 5355465
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Prime.b Prime eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "2899167c6224a4f2888afe05522ab5acb881d74122ae43e8d7870ec40d32636b",
+  "output": "c88c3b546d5a0fd82760d1875ed0b787b6e34956cd35f0da91de59ff1be69ff1",
+  "output_bytes": 21,
+  "tape_crc32": 2539517780
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Prime.b Prime8 eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "f97f7a81eccfb17ea15dff7cec842ff6b966e44b43f151c1b5afa94fb7935c6f",
+  "output": "7ac954d11751475fe15fca4616c017ee79b2ddf131e7e69f03a834f1d6f0bcf9",
+  "output_bytes": 202,
+  "tape_crc32": 2221678588
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Prime2.b Prime2 eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "1b3b74f600bdbea049609cb503b889cebdcec9c6c45bde8b96b53c579473857c",
+  "output": "1d3480518410faf341fb25093aae2fa60a627bd7a9e3f2e7c3dd4ca37ca075a0",
+  "output_bytes": 114,
+  "tape_crc32": 3141928436
+ },
+ "3rdparty/rdebath-Brainfuck/testing/SelfInt.b SelfInt eof=0": {
+  "base_ptr": 424,
+  "ending": "halted",
+  "input": "0a914d1c9944bf42fce08ef7b8d335f3444094c90a1d4783410014f1d48bbf40",
+  "output": "5ca7815adcb484e9a136c11efe69c1d530176d549b5d18d038eb5280b4b3470c",
+  "output_bytes": 12,
+  "tape_crc32": 1850752285
+ },
+ "3rdparty/rdebath-Brainfuck/testing/Zozotez.b Zozotez eof=0": {
+  "base_ptr": 1531,
+  "ending": "halted",
+  "input": "6fc01dd1bb98dbccea4af39933e87d46a1d605d6d764e8364bd3b4c855bae9d1",
+  "output": "66f0a967a8afe8fb433c9304f7f2d4363abac65ea3d8548195f317aa64937bd5",
+  "output_bytes": 91,
+  "tape_crc32": 626655706
+ },
+ "3rdparty/rdebath-Brainfuck/testing/awib-0.4.b awib-0.4 eof=0": {
+  "base_ptr": 30631,
+  "ending": "halted",
+  "input": "80af4f4ca39c4966a4458dee70f3c2434838c868688a6b235a321cf236995500",
+  "output": "895f002dcfc44be9f21edc217ca4cf35513ca96c4be9b25130da53859f88ac97",
+  "output_bytes": 92759,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/rdebath-Brainfuck/testing/cristofd-endtest.b cristofd-endtest eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "295192ea1ec8566d563b1a7587e5f0198580cdbd043842f5090a4c197c20c67a",
+  "output": "af33c1700668c07223b443dd7ff9eb69bb4fc3bb146f97ca46ac44d7f3ad2fb4",
+  "output_bytes": 6,
+  "tape_crc32": 3675882117
+ },
+ "3rdparty/rdebath-Brainfuck/testing/fibint.b fibint eof=0": {
+  "base_ptr": 6,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "c8efad313a13d62b815e8049198d6b0e6c332b6e56883b9061edfc2509446f84",
+  "output_bytes": 337,
+  "tape_crc32": 1685929978
+ },
+ "3rdparty/rdebath-Brainfuck/testing/numwarp.b numwarp eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "ae4dc8adf014c25b643a8c6570c84a130810f3565b9614ae80b7e8233941827a",
+  "output": "f47517426c5b647de434bbcb4d0163c6fb352d69ad0189e0861834bae3e4cc27",
+  "output_bytes": 1243,
+  "tape_crc32": 3299405496
+ },
+ "3rdparty/rdebath-Brainfuck/testing/oobrain.b oobrain eof=0": {
+  "base_ptr": 118,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "8f9d447e94a78c3af10dbc60e1207d7119f3827f8a8cc24fdbc3600bf0785813",
+  "output_bytes": 230,
+  "tape_crc32": 3318269866
+ },
+ "3rdparty/rdebath-Brainfuck/testing/squaresums.b squaresums eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "fce96a9d18d5ec86bbc9e2a354dd9915155533186a6c18d22d1a43d79a92248e",
+  "output_bytes": 4,
+  "tape_crc32": 1519953833
+ },
+ "3rdparty/rdebath-Brainfuck/testing/too-slow.b too-slow eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "07f4a2e242035622a392812421e2aaf3d450939ea7c5bd600dcd49ce001e56f4",
+  "output_bytes": 54,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/rdebath-Brainfuck/testing/utm.b utm eof=0": {
+  "base_ptr": 394,
+  "ending": "halted",
+  "input": "eff02e6b9207352ededd2705f83ba72ce4fac242b003e289ecf01fba66997a6d",
+  "output": "093afba79c957acdf4682e830d89cfa9527767a730680d627a043abcc428bced",
+  "output_bytes": 114,
+  "tape_crc32": 932357202
+ }
+}

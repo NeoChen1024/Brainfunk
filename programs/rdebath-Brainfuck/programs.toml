@@ -520,8 +520,8 @@ author = "Pål Wester"
 family = "wester"
 origin = "macro"
 halts = "with-input"
-cases = [{ input = "testing/Zozotez.in", expect = "testing/Zozotez.out" }]
-notes = "LISP interpreter. Output differs with EOF as 0; check other EOF modes."
+cases = [{ input = "testing/Zozotez.in", expect = "testing/Zozotez.out", expect_unmatched = "no EOF mode gives it, and bf.cpp agrees with brainfunk, so it needs something of the author's interpreter we do not know" }]
+notes = "LISP interpreter. Its expected output matches under no EOF mode here."
 
 [[program]]
 file = "extras/bf2c_v1.b"

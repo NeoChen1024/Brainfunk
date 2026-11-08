@@ -77,7 +77,7 @@ cases = [{ input = "inputs/dbfi/hello.in", expect = "inputs/dbfi/hello.out" }]
 | `eof` | list of `"0"`, `"255"`, `"keep"` | End-of-input behaviours the program handles. Absent means unknown. |
 | `tape_left` | boolean | Whether the program moves left of its starting cell. |
 | `tape_cells` | integer | Cells the program needs, when that is more than usual. |
-| `cases` | list of `{input, expect, expect_cell_bits}` | Inputs and expected outputs, relative to the source root. `expect_cell_bits` marks an expected output that only matches with wider cells. |
+| `cases` | list of `{input, expect, expect_cell_bits}` | Inputs and expected outputs, relative to the source root. `expect_cell_bits` marks an expected output that only matches with wider cells; `expect_unmatched`, with the reason, one that matches under no setting here. Either way the case still runs, against inputs.lock. |
 | `license_note` | text | A license statement copied verbatim from the source, when it is not a plain SPDX identifier. |
 | `reviewed` | boolean | `false` on drafted entries whose metadata nobody has checked yet. |
 | `license`, `author`, `notes`, `url`, `generated_from` | | Per-program details. |
@@ -108,3 +108,45 @@ have a Jaccard similarity of 0.9 or more are near duplicates. Both kinds join on
 named after its first member, and `list --unique` keeps one program per cluster.
 
 The tools need Python 3.11 or later with `blake3`, `click` and `tqdm`.
+
+## Inputs
+
+A program that reads input runs on the inputs its source ships, its manifest's `cases`, and on the
+ones written here, in an `inputs.toml` next to the manifest. Both kinds run once per EOF mode the
+program handles: its `eof`, or `0` when that is absent. The inputs here are this project's own work,
+under the repository's license, whatever the program's.
+
+```toml
+[[input]]
+program = "wc.b"              # a file listed by a manifest in this directory; `manifest` when two do
+name = "paragraph"            # unique for the program
+text = "one two\n\tthree\n"  # or hex = "00ff", or file = "inputs/wc/big.txt", or generate, below
+covers = "what in the program this input is there to reach"
+eof = ["0"]                   # optional: a subset of the program's
+limit = 2000000               # optional: stop after this many instructions, for a program without end
+```
+
+| Generator | Fields | Gives |
+|---|---|---|
+| `random` | `bytes`, `seed`, `alphabet` (optional) | BLAKE3 output for the seed, the same everywhere; with `alphabet`, each byte mapped onto its characters |
+| `repeat` | `text` or `hex`, `count` | the text `count` times |
+| `concat` | `parts`: names of the program's other inputs, and `{text}` or `{hex}` tables | them in a row |
+
+`inputs.lock`, next to the manifests, holds what every case gives at `-O0`: the BLAKE3 of its input and
+output, how it ended (`halted`, `limit`, `endless`, `trapped`), and for a run that ended by itself, the
+tape's CRC-32 and `base_ptr`. It holds nothing about how the interpreter got there, such as instruction
+counts, so that changes to translation or the optimizer leave it alone. A source's expected output is
+checked when the lock is made.
+
+```sh
+tools/corpus/corpus.py inputs lock [--match GLOB]    # run cases at -O0, record them
+tools/corpus/corpus.py inputs verify                 # definitions, and the lock up to date
+tools/corpus/corpus.py inputs check [--levels 0,2]   # every level, analyzed and plain, against the lock
+tools/corpus/corpus.py inputs coverage programs/brainfuck.org/wc.b
+tools/corpus/corpus.py inputs show programs/brainfuck.org/wc.b paragraph > input.txt
+```
+
+`check` runs under ctest as `corpus.inputs`, label `corpus`. A run cut off by its limit stops at another
+point at each level, so only `-O0` is held to the lock for those. `coverage` runs every input of a program
+at `-O0` and gives, for each, the words and branch directions it reaches and how many of those no other
+input does: an input that adds nothing is one to drop, and what none reaches is where to write the next.

@@ -1,4 +1,5 @@
 #include "analysis.hpp"
+#include "trace_file.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -744,8 +745,7 @@ void AnalysisSet::event(const TraceEvent& e) {
 
 void AnalysisSet::end(const Brainfunk& bf, const TraceSummary& summary) {
     for (auto& [name, a] : analyses_) a->end(bf, summary);
-    summary_ = {{"executed", summary.executed}, {"reported", summary.reported}, {"halted", summary.halted},
-                {"trapped", summary.trapped}, {"endless", summary.endless}};
+    summary_ = trace_footer(bf, summary);   // how it ended, where, and the tape's CRC-32
 }
 
 json AnalysisSet::report() const {

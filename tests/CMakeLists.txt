@@ -2,6 +2,7 @@
 #
 #   unit       the library, in Catch2: one ctest test per TEST_CASE
 #   sw         the programs end to end, in pytest (tests/sw)
+#   corpus     every input of every corpus program, at every level, against inputs.lock
 #   hw         cosimulation and the board's testbenches, in pytest (tests/hw)
 #   formal     SymbiYosys
 #   mutation   broken designs the tests must catch, with BRAINFUNK_TEST_MUTATION
@@ -58,6 +59,22 @@ endif()
 brainfunk_pytest(sw.codegen LABEL sw PROCESSORS 8 FILES tests/sw/test_codegen.py)
 brainfunk_pytest(sw.listing LABEL sw PROCESSORS 2 FILES tests/sw/test_listing.py)
 brainfunk_pytest(sw.programs LABEL sw PROCESSORS 2 FILES tests/sw/test_programs.py)
+
+# The corpus: every input of every program, at every level, against what inputs.lock says it gives.
+# Needs the corpus tool's packages, and the submodules checked out.
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import blake3, click, tqdm"
+                RESULT_VARIABLE corpus_tool_missing OUTPUT_QUIET ERROR_QUIET)
+if(corpus_tool_missing)
+    message(STATUS "python blake3, click or tqdm missing: the corpus tests are not registered")
+else()
+    set(corpus_tool ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/corpus/corpus.py)
+    add_test(NAME corpus.verify COMMAND ${corpus_tool} inputs verify WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    add_test(NAME corpus.inputs COMMAND ${corpus_tool} inputs check --jobs 8 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(corpus.verify corpus.inputs PROPERTIES
+        LABELS corpus
+        ENVIRONMENT "BRAINFUNK=${PROJECT_BINARY_DIR}/bin/brainfunk")
+    set_tests_properties(corpus.inputs PROPERTIES PROCESSORS 8 TIMEOUT 1800)
+endif()
 
 if(NOT TARGET cosim)
     return()

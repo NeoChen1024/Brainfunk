@@ -61,7 +61,8 @@ little: `mandel.b` at `-O2`, 1.4 billion instructions, traces in 5 seconds into 
 ## Analyses
 
 `-a` takes a comma-separated list; `--config` a JSON object with a member for each analysis that is to
-differ from its defaults. The report has `run` (how it ended), `program` (where it came from) and
+differ from its defaults. The report has `run` (how it ended, as a trace file's footer says: `pc`,
+`base_ptr` and the tape's CRC-32 too), `program` (where it came from) and
 `analyses`, a member for each.
 
 | Analysis | Configuration | Reports |

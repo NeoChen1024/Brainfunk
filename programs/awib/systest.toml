@@ -30,6 +30,8 @@ cases = [{ expect = "systest/empty.out" }]
 
 [[program]]
 file = "systest/endoffile.b"
+eof = ["keep"]
+notes = "Tests that input at the end leaves the cell alone; its expected output is for that."
 cases = [{ expect = "systest/endoffile.out" }]
 
 [[program]]

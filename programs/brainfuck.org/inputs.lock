@@ -1,0 +1,216 @@
+{
+ "programs/brainfuck.org/bsort.b empty eof=0": {
+  "base_ptr": 4,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output_bytes": 0,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/bsort.b words eof=0": {
+  "base_ptr": 92,
+  "ending": "halted",
+  "input": "2eacf908997728ba564ffe34c4b8e55d22c3c0fb58b58403305f0af80a9cd419",
+  "output": "75c52d857f611a779cefc14a8a3f000f50ba6a9aaada877899345ae72dfbbf8e",
+  "output_bytes": 44,
+  "tape_crc32": 565876301
+ },
+ "programs/brainfuck.org/chessboard.b opening eof=0": {
+  "base_ptr": 9,
+  "ending": "halted",
+  "input": "80ad74b6bffcb69aeb9bbe8cc7fbd3c4ed1559f87c058605f3600c1250eab76c",
+  "output": "8316d3d256450fac2379a3dd68a783297f027f819b9b63d14117ef5bf3deb688",
+  "output_bytes": 2706,
+  "tape_crc32": 1842532387
+ },
+ "programs/brainfuck.org/collatz.b 27 eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "0502fedc00d14064bbcf063407b81ead52af0ef460e1da36ac2ac8643a97f4de",
+  "output": "f71c791ab12a75560d16903b63f2a18c60cf98fd5fc478651f16de1403f75a12",
+  "output_bytes": 4,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/collatz.b 27 eof=keep": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "0502fedc00d14064bbcf063407b81ead52af0ef460e1da36ac2ac8643a97f4de",
+  "output": "f71c791ab12a75560d16903b63f2a18c60cf98fd5fc478651f16de1403f75a12",
+  "output_bytes": 4,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/collatz.b several eof=0": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "e202115e4b50b51f8f4a49e9878b98e9d53ca4883ee6662d02f454194777cd03",
+  "output": "43fda79a44d34ddef9ef132fa9d0a7b8411eb3dbc554d626dd9348c24f6ee222",
+  "output_bytes": 12,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/collatz.b several eof=keep": {
+  "base_ptr": 1,
+  "ending": "halted",
+  "input": "e202115e4b50b51f8f4a49e9878b98e9d53ca4883ee6662d02f454194777cd03",
+  "output": "43fda79a44d34ddef9ef132fa9d0a7b8411eb3dbc554d626dd9348c24f6ee222",
+  "output_bytes": 12,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/dbfi.b echo eof=0": {
+  "base_ptr": 6,
+  "ending": "halted",
+  "input": "17b15a419077b9fc4ddf895098f837043c8819a950cc2576dde1216b781b4a0d",
+  "output": "f415a6b5c39e82ca1fefad76aa2a05c837d2f9cbfea2c7824d6e84ee1c2014fc",
+  "output_bytes": 16,
+  "tape_crc32": 1390290218
+ },
+ "programs/brainfuck.org/dbfi.b hello eof=0": {
+  "base_ptr": 107,
+  "ending": "halted",
+  "input": "a968b9567ffd535ad6919bda2c8b482e5cad34faa77c07458315ea066a569806",
+  "output": "92dcc6e2e78a357dace30009e4edd612fb3e60c24dc9318724a3c023fd1eb9fe",
+  "output_bytes": 13,
+  "tape_crc32": 3165399710
+ },
+ "programs/brainfuck.org/dvorak.b pangram eof=0": {
+  "base_ptr": 511,
+  "ending": "halted",
+  "input": "9341d2fc7b4232e3ed4bc2176b6dea71271d434e7c240c1f95468880bfac3365",
+  "output": "cf9a767f6f4c1be88d36d96a3f031364cba35a5eaf59c7dde30b34ac30787d47",
+  "output_bytes": 45,
+  "tape_crc32": 1971438442
+ },
+ "programs/brainfuck.org/dvorak.b pangram eof=keep": {
+  "base_ptr": 511,
+  "ending": "halted",
+  "input": "9341d2fc7b4232e3ed4bc2176b6dea71271d434e7c240c1f95468880bfac3365",
+  "output": "cf9a767f6f4c1be88d36d96a3f031364cba35a5eaf59c7dde30b34ac30787d47",
+  "output_bytes": 45,
+  "tape_crc32": 1971438442
+ },
+ "programs/brainfuck.org/e.b digits eof=0": {
+  "ending": "limit",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "2666357bb4cd3a221f7ce338598c76e0cdded881463c8d4c87ec27a802e01e05",
+  "output_bytes": 64
+ },
+ "programs/brainfuck.org/head.b twelve-lines eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "09ae943528b308286aa3ad025c2957ee92e27c47cbdb73a7859f531c651dea6a",
+  "output": "27721739194478481c390f5118ac1f64efeea6ce0290ae2f84c8fc26707e4f93",
+  "output_bytes": 150,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/isort.b reversed eof=0": {
+  "base_ptr": 417,
+  "ending": "halted",
+  "input": "0dc8da69f0ac989d9830761e7b916b008e2fae2202334b539bfa6f8d4c1c5549",
+  "output": "181b7858d9b618136238b612c11e0e810da8604cded618ba7a26e89ab57e9eb7",
+  "output_bytes": 208,
+  "tape_crc32": 737451139
+ },
+ "programs/brainfuck.org/isort.b words eof=0": {
+  "base_ptr": 89,
+  "ending": "halted",
+  "input": "2eacf908997728ba564ffe34c4b8e55d22c3c0fb58b58403305f0af80a9cd419",
+  "output": "75c52d857f611a779cefc14a8a3f000f50ba6a9aaada877899345ae72dfbbf8e",
+  "output_bytes": 44,
+  "tape_crc32": 1460086243
+ },
+ "programs/brainfuck.org/numwarp.b digits eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "835b4af06401cfa49e9852457e92095a1f1b21e2728cdfbba05a0a7dbd74d807",
+  "output": "33178c92f30b6b9461f80c368452730de211daffe9ccf3ab68027f044a0d4443",
+  "output_bytes": 505,
+  "tape_crc32": 2814027803
+ },
+ "programs/brainfuck.org/qsort.b random eof=0": {
+  "base_ptr": 907,
+  "ending": "halted",
+  "input": "744f68f3dea90c8a96907750c69473c1d29b9e9e8026f711c1f726bb13ae6d11",
+  "output": "152668933c0b295935e5f177751d2b362dea2c751895efe0509b1f708d97e255",
+  "output_bytes": 300,
+  "tape_crc32": 72859864
+ },
+ "programs/brainfuck.org/qsort.b words eof=0": {
+  "base_ptr": 139,
+  "ending": "halted",
+  "input": "2eacf908997728ba564ffe34c4b8e55d22c3c0fb58b58403305f0af80a9cd419",
+  "output": "75c52d857f611a779cefc14a8a3f000f50ba6a9aaada877899345ae72dfbbf8e",
+  "output_bytes": 44,
+  "tape_crc32": 1139706740
+ },
+ "programs/brainfuck.org/rot13.b every-byte eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "45eaa5b1b63bec8c18a36ca08c892f391c6fadb8b3a23474ba0de600b79a1b34",
+  "output": "cb59e9fd963300534cc4125b6ac9fed4a4900896e6c7ef3b9cd365018b2dd392",
+  "output_bytes": 114,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/rot13.b mixed eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "339f367e6d4fa4d0d2cc919dfb9847f6367ecaf7ff9b0ca15629c67d247e8126",
+  "output": "a28bc7992566c85d3b3bbe98b02b46b1350f2f9ed98c3c827eeae64e175bba64",
+  "output_bytes": 58,
+  "tape_crc32": 3617033963
+ },
+ "programs/brainfuck.org/wc.b long-lines eof=0": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "82ab853fef796a6fa9017aca7d866a5e581501dd002a47abb440e67676ce845e",
+  "output": "9e1a8a77e3ca5b4bea2993bbfeb9fb10aaf643903ad852086afa0bb1553c4437",
+  "output_bytes": 14,
+  "tape_crc32": 3916855744
+ },
+ "programs/brainfuck.org/wc.b long-lines eof=keep": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "82ab853fef796a6fa9017aca7d866a5e581501dd002a47abb440e67676ce845e",
+  "output": "9e1a8a77e3ca5b4bea2993bbfeb9fb10aaf643903ad852086afa0bb1553c4437",
+  "output_bytes": 14,
+  "tape_crc32": 3916855744
+ },
+ "programs/brainfuck.org/wc.b no-newline eof=0": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "73fd2d9387c30b6547ee2f8cd628b6bde9d0410b32209dc70b6063ef2ae566b1",
+  "output": "a631892b9e0212493c29ee40027d4ef06463c5d8f3289583a3fa46a8df16118d",
+  "output_bytes": 8,
+  "tape_crc32": 3815032835
+ },
+ "programs/brainfuck.org/wc.b no-newline eof=keep": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "73fd2d9387c30b6547ee2f8cd628b6bde9d0410b32209dc70b6063ef2ae566b1",
+  "output": "a631892b9e0212493c29ee40027d4ef06463c5d8f3289583a3fa46a8df16118d",
+  "output_bytes": 8,
+  "tape_crc32": 3815032835
+ },
+ "programs/brainfuck.org/wc.b paragraph eof=0": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "e417214970e8884aafb76c0ae276857ff8025ac32fb20e645897d3a1cf68110f",
+  "output": "67967a1c4cbd212635f4dc850c91147ec3bddc49f8c45d344c2f2b12ccbfd750",
+  "output_bytes": 8,
+  "tape_crc32": 3349530281
+ },
+ "programs/brainfuck.org/wc.b paragraph eof=keep": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "e417214970e8884aafb76c0ae276857ff8025ac32fb20e645897d3a1cf68110f",
+  "output": "67967a1c4cbd212635f4dc850c91147ec3bddc49f8c45d344c2f2b12ccbfd750",
+  "output_bytes": 8,
+  "tape_crc32": 3349530281
+ },
+ "programs/brainfuck.org/xmastree.b 5 eof=0": {
+  "base_ptr": 8,
+  "ending": "halted",
+  "input": "ec2c76a158a4c8ef05a9bfd56c9e9fa993fef6de549c9e0a62791a0e5c592eb1",
+  "output": "6c15ab649db9e052dc0f745b43334b26e39778102b10a8d8e6e4f7999cb47ab4",
+  "output_bytes": 248,
+  "tape_crc32": 3773555838
+ }
+}

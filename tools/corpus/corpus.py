@@ -10,6 +10,12 @@ programs it contributes. This tool hashes and deduplicates them into programs/in
     tools/corpus/corpus.py fetch MANIFEST  download programs that have a url but no file
     tools/corpus/corpus.py list [filters]  print program paths, for other scripts
     tools/corpus/corpus.py draft DIR OUT   draft a manifest for a submodule directory
+    tools/corpus/corpus.py inputs ...      inputs, their expected results, and coverage; see below
+
+Inputs come from two places: `cases` in a manifest's program entry, which point at the input and
+expected output files a source provides, and inputs.toml next to the manifests, which this project
+writes. Every case runs once per EOF mode. inputs.lock, next to them, holds what each run must
+give: the output, how it ended, and the tape at the end.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import tomllib
 import urllib.request
 from pathlib import Path
@@ -72,8 +79,12 @@ def fail(message: str) -> NoReturn:
     raise click.ClickException(message)
 
 
+INPUTS = "inputs.toml"
+LOCK = "inputs.lock"
+
+
 def manifests() -> list[Path]:
-    return sorted(PROGRAMS.rglob("*.toml"))
+    return sorted(p for p in PROGRAMS.rglob("*.toml") if p.name != INPUTS)
 
 
 def source_root(manifest: Path, source: dict) -> Path:
@@ -525,6 +536,398 @@ def draft(directory: Path, out: Path, timeout: float, jobs: int, force: bool) ->
         lines.append("")
     out.write_text("\n".join(lines))
     click.echo(f"wrote {out}: {len(files)} programs", err=True)
+
+
+# ------------------------------------------------------------------ inputs
+
+GENERATORS = {"random", "repeat", "concat"}
+INPUT_SOURCES = ("text", "hex", "file", "generate")
+TIMEOUT = 600.0
+
+
+@dataclasses.dataclass
+class Case:
+    """One input of one program, under one EOF mode."""
+    program: Program
+    name: str
+    eof: str
+    spec: dict                       # the inputs.toml entry, or the manifest case
+    base: Path                       # what file paths in spec are relative to
+    lock: Path                       # the inputs.lock this case's result goes in
+    limit: int | None = None
+    expect: Path | None = None       # an expected output the source provides
+    siblings: dict | None = None     # the program's other inputs by name, for concat
+
+    @property
+    def key(self) -> str:
+        return f"{self.program.rel} {self.name} eof={self.eof}"
+
+    def data(self, seen: tuple[str, ...] = ()) -> bytes:
+        spec = self.spec
+        if "text" in spec:
+            return spec["text"].encode()
+        if "hex" in spec:
+            return bytes.fromhex(spec["hex"])
+        if "file" in spec:
+            return (self.base / spec["file"]).read_bytes()
+        gen = spec["generate"]
+        kind = gen["kind"]
+        if kind == "random":
+            # BLAKE3 as an extendable output function: the same bytes on every machine and version.
+            raw = blake3.blake3(f"brainfunk input {gen.get('seed', 0)}".encode()).digest(length=gen["bytes"])
+            alphabet = gen.get("alphabet")
+            if alphabet is None:
+                return raw
+            symbols = alphabet.encode()
+            return bytes(symbols[b % len(symbols)] for b in raw)
+        if kind == "repeat":
+            unit = gen["text"].encode() if "text" in gen else bytes.fromhex(gen["hex"])
+            return unit * gen["count"]
+        if kind == "concat":
+            out = b""
+            for part in gen["parts"]:
+                if isinstance(part, str):
+                    if part in seen or part not in (self.siblings or {}):
+                        fail(f"{self.key}: concat of {part}, which is not another input of the program")
+                    out += self.siblings[part].data(seen + (self.name,))
+                else:
+                    out += part["text"].encode() if "text" in part else bytes.fromhex(part["hex"])
+            return out
+        fail(f"{self.key}: unknown generator {kind}")
+
+
+def program_eofs(program: Program) -> list[str]:
+    return list(program.meta.get("eof", ["0"]))
+
+
+def input_errors(spec: dict, where: str, base: Path) -> list[str]:
+    """What is wrong with an input's definition, before running anything."""
+    errors = []
+    given = [key for key in INPUT_SOURCES if key in spec]
+    if len(given) != 1:
+        errors.append(f"{where}: give exactly one of {', '.join(INPUT_SOURCES)}")
+    if "file" in spec and not (base / spec["file"]).is_file():
+        errors.append(f"{where}: file {spec['file']} not found")
+    if "hex" in spec:
+        try:
+            bytes.fromhex(spec["hex"])
+        except ValueError:
+            errors.append(f"{where}: hex is not hexadecimal")
+    gen = spec.get("generate")
+    if gen is not None:
+        kind = gen.get("kind")
+        if kind not in GENERATORS:
+            errors.append(f"{where}: generate.kind must be one of {sorted(GENERATORS)}")
+        elif kind == "random" and not isinstance(gen.get("bytes"), int):
+            errors.append(f"{where}: random needs bytes, a count")
+        elif kind == "repeat" and not (("text" in gen or "hex" in gen) and isinstance(gen.get("count"), int)):
+            errors.append(f"{where}: repeat needs text or hex, and count")
+        elif kind == "concat" and not isinstance(gen.get("parts"), list):
+            errors.append(f"{where}: concat needs parts, a list of input names and {{text}} or {{hex}} tables")
+    if "limit" in spec and not (isinstance(spec["limit"], int) and spec["limit"] > 0):
+        errors.append(f"{where}: limit must be a positive number of instructions")
+    return errors
+
+
+def load_cases(programs: list[Program] | None = None) -> tuple[list[Case], list[str]]:
+    """Every case of every program, and what is wrong with their definitions."""
+    programs = programs if programs is not None else load_all()
+    errors: list[str] = []
+    cases: list[Case] = []
+
+    # From the manifests: the inputs and expected outputs a source ships.
+    for program in programs:
+        source, _ = load(program.manifest)
+        root = source_root(program.manifest, source)
+        for case in program.meta.get("cases", []):
+            name = Path(case.get("input") or case.get("expect") or "empty").stem
+            spec = {"file": case["input"]} if "input" in case else {"text": ""}
+            # An expected output for wider cells, or one known not to match, is not compared.
+            expect = (root / case["expect"] if "expect" in case and "expect_cell_bits" not in case
+                      and "expect_unmatched" not in case else None)
+            for eof in program_eofs(program):
+                cases.append(Case(program, name, eof, spec, root, program.manifest.parent / LOCK, expect=expect))
+
+    # From inputs.toml: the ones written here.
+    by_dir: dict[Path, list[Program]] = {}
+    for program in programs:
+        by_dir.setdefault(program.manifest.parent, []).append(program)
+    for inputs in sorted(PROGRAMS.rglob(INPUTS)):
+        where = inputs.relative_to(REPO)
+        with inputs.open("rb") as f:
+            entries = tomllib.load(f).get("input", [])
+        mine: dict[str, list[tuple[dict, Program]]] = {}
+        for spec in entries:
+            label = f"{where}: {spec.get('program', '?')} {spec.get('name', '?')}"
+            if "program" not in spec or "name" not in spec:
+                errors.append(f"{label}: an input needs program and name")
+                continue
+            found = [p for p in by_dir.get(inputs.parent, []) if p.meta["file"] == spec["program"] and
+                     ("manifest" not in spec or p.manifest.name == spec["manifest"])]
+            if len(found) != 1:
+                errors.append(f"{label}: {'no' if not found else 'more than one'} program of that file next to it"
+                              + ("; say which manifest" if found else ""))
+                continue
+            errors += input_errors(spec, label, inputs.parent)
+            program = found[0]
+            eofs = spec.get("eof", program_eofs(program))
+            eofs = [eofs] if isinstance(eofs, str) else eofs
+            for eof in eofs:
+                if eof not in EOFS or ("eof" in program.meta and eof not in program.meta["eof"]):
+                    errors.append(f"{label}: eof {eof} is not one the program handles")
+            mine.setdefault(program.rel, []).append((spec, program))
+        for rel, specs in mine.items():
+            names = [spec["name"] for spec, _ in specs]
+            for name in sorted({n for n in names if names.count(n) > 1}):
+                errors.append(f"{where}: {rel} has two inputs called {name}")
+            siblings: dict[str, Case] = {}
+            for spec, program in specs:
+                eofs = spec.get("eof", program_eofs(program))
+                for eof in [eofs] if isinstance(eofs, str) else eofs:
+                    case = Case(program, spec["name"], eof, spec, inputs.parent, inputs.parent / LOCK,
+                                limit=spec.get("limit"), siblings=siblings)
+                    siblings.setdefault(spec["name"], case)
+                    cases.append(case)
+    return cases, errors
+
+
+def run_case(case: Case, level: int, fast: bool = False) -> dict:
+    """The case at a level: through the analyzing loop, or with fast, through run() alone."""
+    if not BRAINFUNK.is_file():
+        fail(f"{BRAINFUNK} not found: build first, cmake --build build")
+    data = case.data()
+    command = [str(BRAINFUNK), f"-O{level}", "-e", case.eof]
+    with tempfile.TemporaryDirectory() as directory:
+        report = Path(directory) / "report.json"
+        if not fast:
+            command += ["-m", "analyze", "-a", "stat", "-o", str(report)]
+            if case.limit:
+                command += ["--limit", str(case.limit)]
+        command += ["-f", str(case.program.path)]
+        try:
+            done = subprocess.run(command, input=data, capture_output=True, timeout=TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return {"error": f"no end within {TIMEOUT:g} s"}
+        result = {"input": blake3.blake3(data).hexdigest(), "output": blake3.blake3(done.stdout).hexdigest(),
+                  "output_bytes": len(done.stdout)}
+        if fast:
+            result["exit"] = done.returncode
+            return result
+        if not report.is_file():
+            return {"error": f"exit {done.returncode}: {done.stderr.decode(errors='replace')[-300:]}"}
+        run = json.loads(report.read_text())["run"]
+    result["ending"] = ("trapped" if run["trapped"] else "endless" if run["endless"] else
+                        "halted" if run["halted"] else "limit")
+    if result["ending"] != "limit":
+        result |= {"tape_crc32": run["memory_crc32"], "base_ptr": run["base_ptr"]}
+    if case.expect is not None and level == 0:
+        result["expected_output"] = case.expect.read_bytes() == done.stdout
+    return result
+
+
+def read_lock(path: Path) -> dict:
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def write_lock(path: Path, entries: dict) -> None:
+    path.write_text(json.dumps(dict(sorted(entries.items())), indent=1, sort_keys=True) + "\n")
+
+
+def selected(cases: list[Case], pattern: str | None) -> list[Case]:
+    return [c for c in cases if not pattern or fnmatch.fnmatch(c.program.rel, pattern)]
+
+
+def runnable(cases: list[Case]) -> tuple[list[Case], int]:
+    """The cases whose program is there: generated ones may not have been built."""
+    present = [c for c in cases if c.program.path.is_file()]
+    return present, len(cases) - len(present)
+
+
+@cli.group()
+def inputs() -> None:
+    """Inputs of the programs, what they must give, and how much of the programs they reach."""
+
+
+@inputs.command(name="verify")
+def inputs_verify() -> None:
+    """Check input definitions, and that inputs.lock has a current entry for every case."""
+    cases, errors = load_cases()
+    unbuilt = 0
+    for case in cases:
+        if case.program.generated and not case.program.path.is_file():
+            unbuilt += 1
+            continue
+        lock = read_lock(case.lock)
+        entry = lock.get(case.key)
+        if entry is None:
+            errors.append(f"{case.key}: not in {case.lock.relative_to(REPO)}; run inputs lock")
+        else:
+            try:
+                if entry.get("input") != blake3.blake3(case.data()).hexdigest():
+                    errors.append(f"{case.key}: its input changed; run inputs lock")
+            except click.ClickException as error:
+                errors.append(error.message)
+    keys = {c.key for c in cases}
+    for lock in sorted(PROGRAMS.rglob(LOCK)):
+        for key in read_lock(lock):
+            if key not in keys:
+                errors.append(f"{lock.relative_to(REPO)}: {key} has no case any more")
+    for error in errors:
+        click.echo(error, err=True)
+    if errors:
+        fail(f"{len(errors)} problem(s)")
+    if unbuilt:
+        click.echo(f"note: {unbuilt} case(s) of programs not built were not checked", err=True)
+    click.echo(f"{len(cases) - unbuilt} cases OK", err=True)
+
+
+@inputs.command(name="lock")
+@click.option("--match", "pattern", help="Only programs whose path matches this glob.")
+@click.option("--jobs", default=os.cpu_count(), show_default=True)
+def inputs_lock(pattern: str | None, jobs: int) -> None:
+    """Run cases at -O0 and record what they give in inputs.lock."""
+    cases, errors = load_cases()
+    if errors:
+        fail("\n".join(errors))
+    current = {c.key for c in cases}
+    cases, missing = runnable(selected(cases, pattern))
+    with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
+        results = list(tqdm(pool.map(lambda c: run_case(c, 0), cases), total=len(cases), desc="lock",
+                            disable=not sys.stderr.isatty()))
+    problems = []
+    locks: dict[Path, dict] = {}
+    for case, result in zip(cases, results):
+        if "error" in result:
+            problems.append(f"{case.key}: {result['error']}")
+            continue
+        if result.pop("expected_output", True) is False:
+            problems.append(f"{case.key}: output differs from {case.expect.relative_to(REPO)}")
+        locks.setdefault(case.lock, read_lock(case.lock))[case.key] = result
+    for path, entries in locks.items():
+        # Entries of cases that are gone: an input removed or renamed, or an EOF mode dropped.
+        write_lock(path, {key: value for key, value in entries.items() if key in current})
+        click.echo(f"wrote {path.relative_to(REPO)}", err=True)
+    if missing:
+        click.echo(f"note: {missing} case(s) of programs not built were left as they were", err=True)
+    for problem in problems:
+        click.echo(problem, err=True)
+    if problems:
+        fail(f"{len(problems)} problem(s)")
+
+
+@inputs.command(name="check")
+@click.option("--match", "pattern", help="Only programs whose path matches this glob.")
+@click.option("--levels", default="0,1,2,3", show_default=True, help="Optimization levels, comma separated.")
+@click.option("--jobs", default=os.cpu_count(), show_default=True)
+def inputs_check(pattern: str | None, levels: str, jobs: int) -> None:
+    """Run every case at every level, analyzed and plain, against inputs.lock.
+
+    A run cut at its limit stops at another point at each level, so only -O0's output is held to
+    the lock; the other levels' must agree with it as far as both go."""
+    cases, errors = load_cases()
+    if errors:
+        fail("\n".join(errors))
+    cases, missing = runnable(selected(cases, pattern))
+    wanted = [int(level) for level in levels.split(",")]
+    # The slowest first, so that the longest run does not start last: -O0, and analyzed.
+    jobs_list = sorted(((c, level, fast) for c in cases for level in wanted for fast in (False, True)
+                        if not (fast and c.limit)), key=lambda job: (job[1], job[2]))
+    with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
+        results = list(tqdm(pool.map(lambda job: run_case(*job), jobs_list), total=len(jobs_list), desc="check",
+                            disable=not sys.stderr.isatty()))
+    problems = []
+    for (case, level, fast), result in zip(jobs_list, results):
+        how = f"{case.key} -O{level}{' run' if fast else ''}"
+        expected = read_lock(case.lock).get(case.key)
+        if expected is None:
+            problems.append(f"{how}: not in inputs.lock; run inputs lock")
+        elif "error" in result:
+            problems.append(f"{how}: {result['error']}")
+        elif result["input"] != expected["input"]:
+            problems.append(f"{how}: its input changed; run inputs lock")
+        elif expected["ending"] == "limit":
+            if level == 0 and not fast and result["output"] != expected["output"]:
+                problems.append(f"{how}: output differs")
+        else:
+            for key in ("output", "output_bytes", "ending", "tape_crc32", "base_ptr"):
+                if key in result and key in expected and result[key] != expected[key]:
+                    problems.append(f"{how}: {key} is {result[key]}, not {expected[key]}")
+    for problem in problems:
+        click.echo(problem, err=True)
+    if missing:
+        click.echo(f"note: {missing} case(s) of programs not built were skipped", err=True)
+    if problems:
+        fail(f"{len(problems)} problem(s)")
+    click.echo(f"{len(jobs_list)} runs of {len(cases)} cases agree with inputs.lock", err=True)
+
+
+@inputs.command(name="show")
+@click.argument("program")
+@click.argument("name")
+@click.option("--eof", default=None, help="Which EOF mode's case, if it matters.")
+def inputs_show(program: str, name: str, eof: str | None) -> None:
+    """Write a case's input to standard output."""
+    cases, _ = load_cases()
+    found = [c for c in cases if c.program.rel == program and c.name == name and (eof is None or c.eof == eof)]
+    if not found:
+        fail(f"no input {name} of {program}")
+    sys.stdout.buffer.write(found[0].data())
+
+
+@inputs.command(name="coverage")
+@click.argument("program")
+@click.option("--jobs", default=os.cpu_count(), show_default=True)
+def inputs_coverage(program: str, jobs: int) -> None:
+    """How much of a program each of its inputs reaches at -O0, and what each adds to the others.
+
+    Counts words of the program and branch directions; an input that adds nothing is a candidate
+    to drop, and what none reaches is where the next input should go."""
+    cases, errors = load_cases()
+    if errors:
+        fail("\n".join(errors))
+    cases = [c for c in cases if c.program.rel == program]
+    if not cases:
+        fail(f"no inputs of {program}")
+
+    def counters(case: Case) -> tuple[list[int], list[int]]:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.json"
+            command = [str(BRAINFUNK), "-O0", "-e", case.eof, "-m", "analyze", "-a", "profile",
+                       "--config", str(Path(directory) / "config.json"), "-o", str(report),
+                       "-f", str(case.program.path)]
+            (Path(directory) / "config.json").write_text(json.dumps({"profile": {"counts": True}}))
+            if case.limit:
+                command += ["--limit", str(case.limit)]
+            subprocess.run(command, input=case.data(), capture_output=True, timeout=TIMEOUT)
+            profile = json.loads(report.read_text())["analyses"]["profile"]
+            return profile["counts"], profile["taken_counts"]
+
+    with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
+        results = list(pool.map(counters, cases))
+
+    def reached(counts: list[int], taken: list[int]) -> set:
+        """Each word that ran, and each branch direction taken, as ("word", pc) and ("way", pc, taken)."""
+        out = {("word", pc) for pc, n in enumerate(counts) if n}
+        for pc, n in enumerate(counts):
+            if n and taken[pc]:
+                out.add(("way", pc, True))
+            if n and taken[pc] < n:
+                out.add(("way", pc, False))
+        return out
+
+    sets = [reached(*r) for r in results]
+    words = len(results[0][0])
+    everything = set().union(*sets)
+    click.echo(f"{program}: {len(cases)} cases, {words} words at -O0")
+    click.echo(f"{'case':40} {'words':>8} {'ways':>8} {'only it':>8}")
+    for case, mine in zip(cases, sets):
+        others = set().union(*(s for s in sets if s is not mine))
+        only = len(mine - others)
+        click.echo(f"{case.name + ' eof=' + case.eof:40} {sum(k[0] == 'word' for k in mine):8} "
+                   f"{sum(k[0] == 'way' for k in mine):8} {only:8}")
+    reached_words = sum(k[0] == "word" for k in everything)
+    click.echo(f"{'all':40} {reached_words:8} {sum(k[0] == 'way' for k in everything):8}"
+               f"   {reached_words / words:.1%} of words")
 
 
 if __name__ == "__main__":

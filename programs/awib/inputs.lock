@@ -1,0 +1,146 @@
+{
+ "3rdparty/awib/systest/basicops.b basicops eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "606d7fd1515267df1cfb9275eafc3292232f46b9278004ebf5a130bf83f342cf",
+  "output": "05a8af05f8426abe0c9cee5370f64b750c15145bb7c1b71b251c21a5b3aed551",
+  "output_bytes": 9,
+  "tape_crc32": 610803815
+ },
+ "3rdparty/awib/systest/comments.b comments eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output_bytes": 0,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/awib/systest/empty.b empty eof=0": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output_bytes": 0,
+  "tape_crc32": 3617033963
+ },
+ "3rdparty/awib/systest/endoffile.b endoffile eof=keep": {
+  "base_ptr": 0,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "b3ac706ea9c345c5f077b4f18cf47335b4ce361f09332194364c8fb382b11269",
+  "output_bytes": 2,
+  "tape_crc32": 2871262144
+ },
+ "3rdparty/awib/systest/factor.b factor eof=0": {
+  "base_ptr": 20,
+  "ending": "halted",
+  "input": "a6a5e53f1f011e671db0dcbbabb5e5d682d0ef918a46aeaf02f6ed719f3033e6",
+  "output": "059e16093b8e2f7a84f3ec3e84c4efc28a3c871010e13da44d8ffde174a4ade9",
+  "output_bytes": 18,
+  "tape_crc32": 2392802060
+ },
+ "3rdparty/awib/systest/memoryhog.b memoryhog eof=0": {
+  "base_ptr": 65534,
+  "ending": "halted",
+  "input": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+  "output_bytes": 0,
+  "tape_crc32": 4167840506
+ },
+ "programs/awib/awib.b awib eof=0": {
+  "base_ptr": 35241,
+  "ending": "halted",
+  "input": "849401ba7a2d62b4a6b4a4fa33336b32072dc2e6ba21deb6fabad18b0cbd65d6",
+  "output": "0067ec8faf684d6ec54b3810afc6f777e98643afa1c7bcd00f04f024442788aa",
+  "output_bytes": 106635,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b awib eof=255": {
+  "base_ptr": 35241,
+  "ending": "halted",
+  "input": "849401ba7a2d62b4a6b4a4fa33336b32072dc2e6ba21deb6fabad18b0cbd65d6",
+  "output": "0067ec8faf684d6ec54b3810afc6f777e98643afa1c7bcd00f04f024442788aa",
+  "output_bytes": 106635,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b awib eof=keep": {
+  "base_ptr": 35241,
+  "ending": "halted",
+  "input": "849401ba7a2d62b4a6b4a4fa33336b32072dc2e6ba21deb6fabad18b0cbd65d6",
+  "output": "0067ec8faf684d6ec54b3810afc6f777e98643afa1c7bcd00f04f024442788aa",
+  "output_bytes": 106635,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b basicops eof=0": {
+  "base_ptr": 101,
+  "ending": "halted",
+  "input": "c733e91e6f1aef534cbd2127ada51543eecfd146a65c01b5fcad4a5d79c5d636",
+  "output": "26f58def15fdd343c3fb4a47035859cb0a71f69cee6f91f760808ce1e963b782",
+  "output_bytes": 617,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b basicops eof=255": {
+  "base_ptr": 101,
+  "ending": "halted",
+  "input": "c733e91e6f1aef534cbd2127ada51543eecfd146a65c01b5fcad4a5d79c5d636",
+  "output": "26f58def15fdd343c3fb4a47035859cb0a71f69cee6f91f760808ce1e963b782",
+  "output_bytes": 617,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b basicops eof=keep": {
+  "base_ptr": 101,
+  "ending": "halted",
+  "input": "c733e91e6f1aef534cbd2127ada51543eecfd146a65c01b5fcad4a5d79c5d636",
+  "output": "26f58def15fdd343c3fb4a47035859cb0a71f69cee6f91f760808ce1e963b782",
+  "output_bytes": 617,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b factor eof=0": {
+  "base_ptr": 2167,
+  "ending": "halted",
+  "input": "9451437a1c6080918616d115efdd9376bab569058ec01876c910e06a896f7196",
+  "output": "729707db1f480ec5d078e5c2da3d47b1cd5279de55143f0ac7dc6e35f122aaca",
+  "output_bytes": 6928,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b factor eof=255": {
+  "base_ptr": 2167,
+  "ending": "halted",
+  "input": "9451437a1c6080918616d115efdd9376bab569058ec01876c910e06a896f7196",
+  "output": "729707db1f480ec5d078e5c2da3d47b1cd5279de55143f0ac7dc6e35f122aaca",
+  "output_bytes": 6928,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b factor eof=keep": {
+  "base_ptr": 2167,
+  "ending": "halted",
+  "input": "9451437a1c6080918616d115efdd9376bab569058ec01876c910e06a896f7196",
+  "output": "729707db1f480ec5d078e5c2da3d47b1cd5279de55143f0ac7dc6e35f122aaca",
+  "output_bytes": 6928,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b memoryhog eof=0": {
+  "base_ptr": 2091,
+  "ending": "halted",
+  "input": "74c3d82e87db186fec091a195c8d9a56f0c8e1c964c8f7694c565c582f92a7cc",
+  "output": "4583e68e2dc5bf486c91726f253abee83a7fa3cc5e1b349bdc0a78e51b448228",
+  "output_bytes": 6591,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b memoryhog eof=255": {
+  "base_ptr": 2091,
+  "ending": "halted",
+  "input": "74c3d82e87db186fec091a195c8d9a56f0c8e1c964c8f7694c565c582f92a7cc",
+  "output": "4583e68e2dc5bf486c91726f253abee83a7fa3cc5e1b349bdc0a78e51b448228",
+  "output_bytes": 6591,
+  "tape_crc32": 3617033963
+ },
+ "programs/awib/awib.b memoryhog eof=keep": {
+  "base_ptr": 2091,
+  "ending": "halted",
+  "input": "74c3d82e87db186fec091a195c8d9a56f0c8e1c964c8f7694c565c582f92a7cc",
+  "output": "4583e68e2dc5bf486c91726f253abee83a7fa3cc5e1b349bdc0a78e51b448228",
+  "output_bytes": 6591,
+  "tape_crc32": 3617033963
+ }
+}

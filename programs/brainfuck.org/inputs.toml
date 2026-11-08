@@ -1,0 +1,139 @@
+# Inputs for the programs of this directory, written for this project; see tools/corpus/corpus.py and
+# programs/README.md. Each runs once per EOF mode the program handles, or the entry's own `eof`.
+
+# ---- sorting: bytes in, the same bytes in order out
+
+[[input]]
+program = "bsort.b"
+name = "words"
+text = "the quick brown fox jumps over the lazy dog\n"
+covers = "a short line, with repeats"
+
+[[input]]
+program = "bsort.b"
+name = "empty"
+text = ""
+covers = "nothing to sort"
+
+[[input]]
+program = "isort.b"
+name = "words"
+text = "the quick brown fox jumps over the lazy dog\n"
+covers = "a short line, with repeats"
+
+[[input]]
+program = "isort.b"
+name = "reversed"
+generate = { kind = "repeat", text = "zyxwvutsrqponmlkjihgfedcba", count = 8 }
+covers = "the worst order for insertion"
+
+[[input]]
+program = "qsort.b"
+name = "words"
+text = "the quick brown fox jumps over the lazy dog\n"
+covers = "a short line, with repeats"
+
+[[input]]
+program = "qsort.b"
+name = "random"
+generate = { kind = "random", bytes = 300, seed = 1, alphabet = "abcdefghijklmnopqrstuvwxyz" }
+covers = "a longer run, in no order"
+
+# ---- text filters
+
+[[input]]
+program = "rot13.b"
+name = "mixed"
+text = "Hello, World! Why did the chicken cross the road? 123 ~{}\n"
+covers = "upper and lower case, and what rot13 leaves alone"
+
+[[input]]
+program = "rot13.b"
+name = "every-byte"
+generate = { kind = "concat", parts = [{ hex = "0102030405060708090a0b0c0d0e0f" }, { text = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~" }, { hex = "7f80c1fe" }] }
+covers = "every class of byte, the edges of the alphabets among them; not 0, which ends input with EOF as 0"
+
+[[input]]
+program = "wc.b"
+name = "paragraph"
+text = "one two  three\n\tfour\nfive six seven eight\n\n  nine\n"
+covers = "words split by spaces, tabs and blank lines"
+
+[[input]]
+program = "wc.b"
+name = "no-newline"
+text = "last line without an end"
+covers = "input that ends inside a word"
+
+[[input]]
+program = "wc.b"
+name = "long-lines"
+generate = { kind = "repeat", text = "word ", count = 2000 }
+covers = "counts past three digits"
+
+[[input]]
+program = "dvorak.b"
+name = "pangram"
+text = "The quick brown fox jumps over the lazy dog.\n"
+covers = "every letter"
+
+# ---- numbers
+
+[[input]]
+program = "collatz.b"
+name = "27"
+text = "27\n"
+covers = "a long trajectory"
+
+[[input]]
+program = "collatz.b"
+name = "several"
+text = "1\n2\n97\n871\n"
+covers = "several numbers, the trivial one among them"
+
+[[input]]
+program = "numwarp.b"
+name = "digits"
+text = "-3.14159 (2)/7\n"
+covers = "digits, sign, point, slash and brackets"
+
+[[input]]
+program = "xmastree.b"
+name = "5"
+text = "5\n"
+covers = "a small tree"
+
+[[input]]
+program = "head.b"
+name = "twelve-lines"
+generate = { kind = "repeat", text = "a line of text\n", count = 12 }
+covers = "more than the ten lines it prints"
+
+[[input]]
+program = "chessboard.b"
+name = "opening"
+text = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1\n"
+covers = "a FEN position after one move"
+
+# ---- interpreters
+
+[[input]]
+program = "dbfi.b"
+name = "hello"
+text = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.!"
+covers = "a program with no input of its own"
+
+[[input]]
+program = "dbfi.b"
+name = "echo"
+text = ",[.,]!dbfi echoes this"
+covers = "a program that reads what follows the !"
+
+# ---- programs without end, cut off
+
+[[input]]
+program = "e.b"
+name = "digits"
+text = ""
+limit = 2000000
+covers = "the first digits of e"
