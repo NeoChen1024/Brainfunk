@@ -220,12 +220,16 @@ The SDRAM needs about 100 ms after power-up. A 300 us wait lost data in the firs
 ## Verification
 
 The hardware tests are in `tests/hw`, in pytest, and need `pytest`, `pytest-xdist` and `filelock`; formal
-needs SymbiYosys and Bitwuzla.
+needs SymbiYosys and Bitwuzla. ctest runs them, as tests labelled `hw`, `formal`, `mutation` and `board`;
+the last two only when configured with `BRAINFUNK_TEST_MUTATION` or `BRAINFUNK_TEST_BOARD`. pytest on its
+own builds what it needs first.
 Each range of random seeds and each program is a test of its own, so a failure can be rerun by name.
 Everything runs at nice 19.
 
 ```shell
-make hw-test                          # pytest -n auto: cosimulation, loader and UART testbenches, formal, 4 minutes
+ctest --preset hw                     # cosimulation, loader and UART testbenches, formal, 2.5 minutes
+cmake -B build -DBRAINFUNK_TEST_MUTATION=ON -DBRAINFUNK_TEST_BOARD=ON   # register those too
+pytest -n auto tests/hw               # the same through pytest alone
 pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
 pytest -n auto --mutation             # broken designs must be caught, 4 minutes
 pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial
@@ -287,22 +291,22 @@ The board has an Anlogic EG4S20NG88. `rtl/board/yadan_pll.sv` makes 168 MHz from
 
 ```shell
 export TD_HOME=/path/to/TD
-make yadan                               # build/yadan/yadan.bit and reports
-make yadan-load                          # JTAG to SRAM; the configuration flash is not touched
+cmake --build build --target yadan       # build/yadan/yadan.bit and reports
+cmake --build build --target yadan-load  # JTAG to SRAM; the configuration flash is not touched
 
-./bfload -f program.b                    # compile, into Code RAM, and run it
-./bfload -m flash -f program.b           # into the user flash, and boot from it
-./bfload -t -f program.b                 # either, then stay as a terminal for the program
-./bfload program.bfi                     # an image instead, in any form brainfunk -b reads
-./bfload -m id                           # the user flash's JEDEC ID
-./brainfunk -O2 -m packed -f program.b -o program.bfi   # what bfload sends
+build/bin/bfload -f program.b            # compile, into Code RAM, and run it
+build/bin/bfload -m flash -f program.b   # into the user flash, and boot from it
+build/bin/bfload -t -f program.b         # either, then stay as a terminal for the program
+build/bin/bfload program.bfi             # an image instead, in any form brainfunk -b reads
+build/bin/bfload -m id                   # the user flash's JEDEC ID
+build/bin/brainfunk -O2 -m packed -f program.b -o program.bfi   # what bfload sends
 ```
 
 `bfload` finds the board's serial port as the only one under `/dev/serial/by-id` from USB vendor
 `1a86`, the board's CH340; `-p` or `BOARD_PORT` picks one instead. The tests and
 `tools/sdram_sweep.py` find it the same way.
 
-`make yadan-load` needs access to the USB cable, `336c:1002`, which a udev rule can give:
+The yadan-load target needs access to the USB cable, `336c:1002`, which a udev rule can give:
 
 ```text
 SUBSYSTEM=="usb", ATTR{idVendor}=="336c", ATTR{idProduct}=="1002", MODE="0660", GROUP="uucp", TAG+="uaccess"
@@ -347,7 +351,7 @@ for each byte at 2 Mbaud. It takes bincode images as well as packed ones, and re
 version of the header; doc/bincode.txt has what it checks. With the window of 8192 words of block RAM it had before, `LostKng.b` packed
 to 82 KB; now it packs to 71 KB, and 8 of the 12 large block RAMs in use came free.
 
-A `make yadan` build reports timing violations on the SDRAM's own pads, from constraints Tang
+A yadan build reports timing violations on the SDRAM's own pads, from constraints Tang
 Dynasty adds there; the data path they describe is covered by the measured capture phase above.
 Everything else has to meet timing, which `timing.rpt` shows under `pll/pll.clkc[0]`.
 

@@ -1,0 +1,85 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Release, in build/",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "sanitize",
+            "displayName": "Debug with ASan and UBSan, in build-sanitize/",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-sanitize",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BRAINFUNK_SANITIZE": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "default", "configurePreset": "default" },
+        { "name": "sanitize", "configurePreset": "sanitize" }
+    ],
+    "testPresets": [
+        {
+            "name": "default",
+            "displayName": "Everything that needs no board",
+            "configurePreset": "default",
+            "output": { "outputOnFailure": true },
+            "execution": { "jobs": 0 }
+        },
+        {
+            "name": "sw",
+            "displayName": "The software: unit and end-to-end tests",
+            "inherits": "default",
+            "filter": { "include": { "label": "^(unit|sw)$" } }
+        },
+        {
+            "name": "hw",
+            "displayName": "The hardware: cosimulation, testbenches and formal",
+            "inherits": "default",
+            "filter": { "include": { "label": "^(hw|formal)$" } }
+        },
+        {
+            "name": "sanitize",
+            "displayName": "The software, sanitized",
+            "configurePreset": "sanitize",
+            "output": { "outputOnFailure": true },
+            "execution": { "jobs": 0 },
+            "filter": { "include": { "label": "^(unit|sw)$" } }
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "default",
+            "steps": [
+                { "type": "configure", "name": "default" },
+                { "type": "build", "name": "default" },
+                { "type": "test", "name": "default" }
+            ]
+        },
+        {
+            "name": "sw",
+            "steps": [
+                { "type": "configure", "name": "default" },
+                { "type": "build", "name": "default" },
+                { "type": "test", "name": "sw" }
+            ]
+        },
+        {
+            "name": "sanitize",
+            "steps": [
+                { "type": "configure", "name": "sanitize" },
+                { "type": "build", "name": "sanitize" },
+                { "type": "test", "name": "sanitize" }
+            ]
+        }
+    ]
+}

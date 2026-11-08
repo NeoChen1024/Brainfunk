@@ -1,5 +1,8 @@
 """Shared set-up for the hardware tests: tools, images, and what is enabled.
 
+ctest runs these, with labels hw, formal, mutation and board; see tests/CMakeLists.txt. Run alone,
+pytest builds what it needs first, in build/ or BRAINFUNK_BUILD:
+
     pytest -n auto                 what needs neither the board nor much time
     pytest -n auto --full          also long.b and mandel.b, about 40 minutes
     pytest -n auto --mutation      broken designs must be caught, a few minutes
@@ -19,8 +22,12 @@ from filelock import FileLock
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = Path(os.environ.get("BF_CORPUS", ROOT / "test"))
-RESULTS = ROOT / "build" / "hw-test" / "results"
-COSIM = ROOT / "build" / "cosim" / "cosim"
+BUILD = Path(os.environ.get("BRAINFUNK_BUILD", ROOT / "build"))
+BIN = BUILD / "bin"
+BRAINFUNK = BIN / "brainfunk"
+BFLOAD = BIN / "bfload"
+COSIM = BIN / "cosim"
+RESULTS = BUILD / "hw-test" / "results"
 
 
 def pytest_addoption(parser):
@@ -62,26 +69,31 @@ def run(*command, cwd=ROOT, check=True, **kwargs):
 
 @pytest.fixture(scope="session")
 def tools(tmp_path_factory, worker_id):
-    """The programs and the cosimulator, built once however many workers there are."""
+    """The programs and the cosimulator, built once however many workers there are. Under ctest
+    they are built already, and several pytest runs at once must not build in one tree."""
+    if os.environ.get("BRAINFUNK_CTEST"):
+        missing = [path for path in (BRAINFUNK, BFLOAD, COSIM) if not path.exists()]
+        if missing:
+            pytest.fail(f"not built: {', '.join(map(str, missing))}")
+        return
     shared = tmp_path_factory.getbasetemp()
     if worker_id != "master":
         shared = shared.parent
     with FileLock(shared / "build.lock"):
         stamp = shared / "built"
         if not stamp.exists():
-            run("make", "-s", "brainfunk", "bfload")
-            run("sh", "tb/build.sh")
+            run("cmake", "--build", BUILD, "--target", "brainfunk", "bfload", "cosim")
             stamp.touch()
 
 
 def assemble(source, level, out):
     """A hexadecimal program image from a Brainfuck file."""
-    run(ROOT / "brainfunk", f"-O{level}", "-m", "hex", "-f", source, "-o", out)
+    run(BRAINFUNK, f"-O{level}", "-m", "hex", "-f", source, "-o", out)
     return out
 
 
 def assemble_text(code, level, out):
-    run(ROOT / "brainfunk", f"-O{level}", "-m", "hex", "-s", code, "-o", out)
+    run(BRAINFUNK, f"-O{level}", "-m", "hex", "-s", code, "-o", out)
     return out
 
 

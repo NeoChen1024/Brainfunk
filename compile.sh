@@ -2,6 +2,7 @@
 set -e
 CC="${CC:-cc}"
 CFLAGS="${CFLAGS:--O3 -pipe}"
+BRAINFUNK="${BRAINFUNK:-$(dirname "$0")/build/bin/brainfunk}"
 SRC="$1"
 OUT="$2"
 
@@ -16,4 +17,4 @@ if [ $# -lt 2 ]; then
 fi
 
 msg_echo "$SRC"
-./brainfunk -m bfc -f "$SRC" -o - | "$CC" -x c $CFLAGS - -o "$OUT"
+"$BRAINFUNK" -m bfc -f "$SRC" -o - | "$CC" -x c $CFLAGS - -o "$OUT"

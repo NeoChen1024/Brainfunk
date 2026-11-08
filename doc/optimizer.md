@@ -42,8 +42,8 @@ real motion only, such as a loop's stride or the unknown distance covered by `F`
 ### Flushing
 
 An offset that would not fit its field forces `M pending` first, which resets `pending` to
-zero. No program in the test corpus reaches these limits, so `tests/run-tests.sh` covers each
-one with a synthetic program.
+zero. No program in the test corpus reaches these limits, so `tests/sw/test_codegen.py` covers
+each one with a synthetic program.
 
 ## Level 2: block-local folding
 

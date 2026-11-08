@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
-# Synthesizes, places and routes for the YADAN Board with Tang Dynasty.
+# Synthesizes, places and routes for the YADAN Board with Tang Dynasty. The yadan target runs it.
 #
-#   TD_HOME=/path/to/TD sh synth/build-yadan.sh
+#   TD_HOME=/path/to/TD [YADAN_WORK=dir] sh synth/build-yadan.sh
 #
-# Reports and yadan.bit end up in build/yadan.
+# Reports and yadan.bit end up in YADAN_WORK, build/yadan by default.
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 renice -n 19 -p $$ >/dev/null 2>&1 || true
 : "${TD_HOME:?set TD_HOME to the Tang Dynasty install directory}"
-work="$root/build/yadan"
+work="${YADAN_WORK:-$root/build/yadan}"
 rm -rf "$work"
 mkdir -p "$work"
 

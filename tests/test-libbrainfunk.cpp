@@ -1,6 +1,8 @@
 #include "libbrainfunk.hpp"
 #include "program_generator.hpp"
 
+#include <catch2/catch_test_macros.hpp>
+
 #include <algorithm>
 #include <array>
 #include <initializer_list>
@@ -13,14 +15,14 @@
 
 namespace {
 
-int failures = 0;
+/* A check with what it is for, which Catch2 prints with the values on failure. */
+#define EXPECT(condition, message) \
+    do {                             \
+        INFO(message);               \
+        CHECK(condition);            \
+    } while (0)
 
-void check(bool condition, std::string_view message) {
-    if (!condition) {
-        std::cerr << "FAIL: " << message << '\n';
-        ++failures;
-    }
-}
+bool contains(const std::string& text, std::string_view part) { return text.find(part) != std::string::npos; }
 
 std::string run(std::string_view code, std::string_view input = {},
                 std::size_t memory_size = MEMSIZE) {
@@ -92,24 +94,24 @@ ExecutionStats count(std::string_view code, int level, std::size_t memory_size,
 
 } // namespace
 
-int main() {
-    check(run("++++++++[>++++++++<-]>+.+.+.") == "ABC",
+TEST_CASE("programs run and translate", "[translate]") {
+    EXPECT(run("++++++++[>++++++++<-]>+.+.+.") == "ABC",
           "optimized execution produces expected output");
-    check(run("<+.", {}, 16) == std::string(1, '\x01'),
+    EXPECT((run("<+.", {}, 16) == std::string(1, '\x01')),
           "data pointer wraps backwards");
-    check(run(",.") == std::string(1, '\0'),
+    EXPECT(run(",.") == std::string(1, '\0'),
           "EOF input stores zero");
 
-    check(dump("[-]").find("S\t0") != std::string::npos,
+    EXPECT(dump("[-]").find("S\t0") != std::string::npos,
           "odd decrement loop becomes set-zero");
-    check(dump("[>]").find("F\t0, 1") != std::string::npos,
+    EXPECT(dump("[>]").find("F\t0, 1") != std::string::npos,
           "scan loop becomes find-zero");
-    check(dump("[->++<]").find("MUL\t1, 0, 2") != std::string::npos,
+    EXPECT(dump("[->++<]").find("MUL\t1, 0, 2") != std::string::npos,
           "multiply-offset loop is optimized");
 
-    check(dump("[->+<+>-<]").find("MUL") == std::string::npos,
+    EXPECT(dump("[->+<+>-<]").find("MUL") == std::string::npos,
           "loop that writes its own induction cell is not a multiply");
-    check(run("++++[->++<->+++<]>.") == std::string(1, '\x0a'),
+    EXPECT(run("++++[->++<->+++<]>.") == std::string(1, '\x0a'),
           "loop that writes its own induction cell keeps its iteration count");
     {
         std::string far_loop = "[-";
@@ -117,85 +119,73 @@ int main() {
         far_loop += '+';
         far_loop.append(3000, '<');
         far_loop += ']';
-        check(dump(far_loop).find("MUL") == std::string::npos,
+        EXPECT(dump(far_loop).find("MUL") == std::string::npos,
               "multiply offset beyond 12 bits stays an ordinary loop");
     }
 
     const auto llvm_ir = dump(",.[>]", Format::LLVM_IR);
-    check(llvm_ir.find("define i32 @brainfunk_program") != std::string::npos,
+    EXPECT(llvm_ir.find("define i32 @brainfunk_program") != std::string::npos,
           "LLVM mode emits the portable runtime entry point");
-    check(llvm_ir.find("\ntarget triple =") == std::string::npos &&
-              llvm_ir.find("\ntarget datalayout =") == std::string::npos,
+    EXPECT((llvm_ir.find("\ntarget triple =") == std::string::npos &&
+              llvm_ir.find("\ntarget datalayout =") == std::string::npos),
           "portable LLVM IR omits target metadata");
-    check(llvm_ir.find("call i32 %read_byte") != std::string::npos &&
-              llvm_ir.find("call void %write_byte") != std::string::npos,
+    EXPECT((llvm_ir.find("call i32 %read_byte") != std::string::npos &&
+              llvm_ir.find("call void %write_byte") != std::string::npos),
           "LLVM IR uses runtime I/O callbacks");
 
-    {
-        bool rejected_size = false;
-        try {
-            Brainfunk brainfunk(10);
-        } catch (const BrainfunkException&) {
-            rejected_size = true;
-        }
-        check(rejected_size, "memory size that is not a power of two is rejected");
-    }
+    INFO("memory size that is not a power of two is rejected");
+    CHECK_THROWS_AS(Brainfunk(10), BrainfunkException);
+    INFO("unmatched bracket is rejected");
+    CHECK_THROWS_AS(Brainfunk().translate("[+"), BrainfunkException);
+}
 
-    bool rejected = false;
-    try {
-        Brainfunk brainfunk;
-        brainfunk.translate("[+");
-    } catch (const BrainfunkException&) {
-        rejected = true;
-    }
-    check(rejected, "unmatched bracket is rejected");
-
-    /* ---- statistics ---- */
+TEST_CASE("execution statistics", "[stats]") {
     {
         const auto stats = count("++[->+<]>.", OPT_NONE, MEMSIZE, {});
         const auto dynamic = [&](Opcode opcode) {
             return stats.dynamic_count[static_cast<std::size_t>(opcode)];
         };
-        check(dynamic(Opcode::A) == 1, "stats count A");
-        check(dynamic(Opcode::MUL) == 1, "stats count MUL");
-        check(dynamic(Opcode::IO) == 1, "stats count IO");
-        check(stats.dynamic_total() == stats.static_total(), "straight-line code runs once");
+        EXPECT(dynamic(Opcode::A) == 1, "stats count A");
+        EXPECT(dynamic(Opcode::MUL) == 1, "stats count MUL");
+        EXPECT(dynamic(Opcode::IO) == 1, "stats count IO");
+        EXPECT(stats.dynamic_total() == stats.static_total(), "straight-line code runs once");
         /* A: 1R1W, MUL: 2R1W, S: 1W, IO out: 1R */
-        check(stats.memory_reads == 4, "stats count memory reads");
-        check(stats.memory_writes == 3, "stats count memory writes");
+        EXPECT(stats.memory_reads == 4, "stats count memory reads");
+        EXPECT(stats.memory_writes == 3, "stats count memory writes");
 
         const auto scan = count("+>+>+<<[>]", OPT_NONE, MEMSIZE, {});
-        check(scan.scan_iterations == 3, "stats count scan iterations");
+        EXPECT(scan.scan_iterations == 3, "stats count scan iterations");
     }
+}
 
-    /* ---- lazy move ---- */
-    check(dump("+.", Format::BIT, OPT_LAZY_MOVE).find("\tM\t") == std::string::npos,
+TEST_CASE("lazy move", "[optimizer]") {
+    EXPECT(dump("+.", Format::BIT, OPT_LAZY_MOVE).find("\tM\t") == std::string::npos,
           "a program without pointer motion emits no M");
     {
         const auto listing = dump(">>+<<.", Format::BIT, OPT_LAZY_MOVE);
-        check(listing.find("A\t2, 1") != std::string::npos,
+        EXPECT(listing.find("A\t2, 1") != std::string::npos,
               "pending motion becomes addr_offset");
-        check(listing.find("\tM\t") == std::string::npos, "balanced motion emits no M");
+        EXPECT(listing.find("\tM\t") == std::string::npos, "balanced motion emits no M");
     }
-    check(dump(">>[->+<]", Format::BIT, OPT_LAZY_MOVE).find("MUL\t3, 2, 1") != std::string::npos,
+    EXPECT(dump(">>[->+<]", Format::BIT, OPT_LAZY_MOVE).find("MUL\t3, 2, 1") != std::string::npos,
           "pending motion reaches both MUL operands");
     {
         const auto listing = dump(">>[>+<-]<<", Format::BIT, OPT_LAZY_MOVE);
-        check(listing.find("\tM\t") == std::string::npos, "multiply loop needs no flush");
+        EXPECT(listing.find("\tM\t") == std::string::npos, "multiply loop needs no flush");
     }
     {
         const auto listing = dump(">>[.>+<-.]<<", Format::BIT, OPT_LAZY_MOVE);
-        check(listing.find("JE\t2,") != std::string::npos &&
-                  listing.find("JN\t2,") != std::string::npos,
+        EXPECT((listing.find("JE\t2,") != std::string::npos &&
+                  listing.find("JN\t2,") != std::string::npos),
               "branches test through test_offset");
-        check(listing.find("\tM\t") == std::string::npos, "balanced loop needs no M");
+        EXPECT(listing.find("\tM\t") == std::string::npos, "balanced loop needs no M");
     }
     {
         const auto listing = dump(">>[.>]", Format::BIT, OPT_LAZY_MOVE);
-        check(listing.find("M\t1") != std::string::npos,
+        EXPECT(listing.find("M\t1") != std::string::npos,
               "loop with net motion keeps M on its back edge");
     }
-    check(dump(">>[>]", Format::BIT, OPT_LAZY_MOVE).find("F\t2, 1") != std::string::npos,
+    EXPECT(dump(">>[>]", Format::BIT, OPT_LAZY_MOVE).find("F\t2, 1") != std::string::npos,
           "scan tests through test_offset");
 
     for (const auto* code : {"+[>+]", ">>[.>]<<.", "+>+[[-]>]", ">,[>,]<[.<]"}) {
@@ -207,36 +197,34 @@ int main() {
         once.optimize(OPT_LAZY_MOVE);
         std::ostringstream second;
         once.dump(second);
-        check(first.str() == second.str(), "lazy move is idempotent");
+        EXPECT(first.str() == second.str(), "lazy move is idempotent");
     }
+}
 
-    /* ---- fold ---- */
+TEST_CASE("fold", "[optimizer]") {
     const auto folded = [](std::string_view code) { return dump(code, Format::BIT, OPT_FOLD); };
-    const auto contains = [](const std::string& text, std::string_view part) {
-        return text.find(part) != std::string::npos;
-    };
     {
         const auto listing = folded(",+>+<+.");
-        check(contains(listing, "A\t0, 2") && contains(listing, "A\t1, 1"),
+        EXPECT((contains(listing, "A\t0, 2") && contains(listing, "A\t1, 1")),
               "adds to one cell merge across other cells");
     }
-    check(contains(folded(",[-]+++."), "S\t0, 3"), "set then add becomes one set");
-    check(!contains(folded(",[-]++[-]."), "S\t0, 2"), "overwritten set is dropped");
-    check(!contains(folded(",[-]+,."), "S\t0, 1"), "write overwritten by input is dropped");
+    EXPECT(contains(folded(",[-]+++."), "S\t0, 3"), "set then add becomes one set");
+    EXPECT(!contains(folded(",[-]++[-]."), "S\t0, 2"), "overwritten set is dropped");
+    EXPECT(!contains(folded(",[-]+,."), "S\t0, 1"), "write overwritten by input is dropped");
     {
         const auto listing = folded(",>[-]++[->+++<]");
-        check(!contains(listing, "MUL"), "multiply from a known cell folds away");
-        check(contains(listing, "A\t2, 6"), "folded multiply adds the product");
+        EXPECT(!contains(listing, "MUL"), "multiply from a known cell folds away");
+        EXPECT(contains(listing, "A\t2, 6"), "folded multiply adds the product");
     }
-    check(!contains(folded(",[.][.]").substr(folded(",[.][.]").find("JN")), "JE"),
+    EXPECT(!contains(folded(",[.][.]").substr(folded(",[.][.]").find("JN")), "JE"),
           "loop right after an identical test never runs");
-    check(!contains(folded(",[>][-]"), "S\t"), "cell is known zero after a scan");
-    check(!contains(folded(",[>][>]").substr(folded(",[>][>]").find("F\t")+1), "F\t"),
+    EXPECT(!contains(folded(",[>][-]"), "S\t"), "cell is known zero after a scan");
+    EXPECT(!contains(folded(",[>][>]").substr(folded(",[>][>]").find("F\t")+1), "F\t"),
           "scan from a known-zero cell is dropped");
     {
         const auto listing = folded(",[.][-]+.");
-        check(contains(listing, "S\t0, 1"), "cell is known zero after a loop");
-        check(!contains(listing, "S\t0, 0"), "known-zero cell needs no clear");
+        EXPECT(contains(listing, "S\t0, 1"), "cell is known zero after a loop");
+        EXPECT(!contains(listing, "S\t0, 0"), "known-zero cell needs no clear");
     }
     {
         /* Offsets 0 and 16 name one cell on a 16-cell tape. */
@@ -246,7 +234,7 @@ int main() {
         aliased.append(16, '<');
         aliased += '.';
         for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
-            check(execute(aliased, level, 16, {}, 100).output == std::string(2, '\x02'),
+            EXPECT((execute(aliased, level, 16, {}, 100).output == std::string(2, '\x02')),
                   "offsets that alias on a small tape are one cell");
         }
         std::string aliased_set = "+";
@@ -255,7 +243,7 @@ int main() {
         aliased_set.append(16, '<');
         aliased_set += "++.";
         for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
-            check(execute(aliased_set, level, 16, {}, 100).output == std::string(1, '\x02'),
+            EXPECT((execute(aliased_set, level, 16, {}, 100).output == std::string(1, '\x02')),
                   "set through an alias overrides the other offset");
         }
         std::string aliased_mul = ",[-]+";
@@ -264,7 +252,7 @@ int main() {
         aliased_mul.append(16, '<');
         aliased_mul += "[->+<]>.";
         for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
-            check(execute(aliased_mul, level, 16, "x", 100).output == std::string(1, '\x03'),
+            EXPECT(execute(aliased_mul, level, 16, "x", 100).output == std::string(1, '\x03'),
                   "known value is tracked through an alias");
         }
     }
@@ -277,65 +265,66 @@ int main() {
             }
             return true;
         };
-        check(agrees(",>[-]+++<[->++<]>.", "\x05", "\x0d"),
+        EXPECT(agrees(",>[-]+++<[->++<]>.", "\x05", "\x0d"),
               "multiply adds to a pending set of its destination");
-        check(agrees(",>[-]<[->+<]>[-].", "\x05", std::string_view("\0", 1)),
+        EXPECT(agrees(",>[-]<[->+<]>[-].", "\x05", std::string_view("\0", 1)),
               "multiply invalidates what is known about its destination");
 
         /* Offset overflow is the only way a known value survives an M. */
         std::string far = std::string(3000, '>') + "+" + std::string(3000, '<') + "[-]" +
                           std::string(3000, '>') + "[.-]";
-        check(agrees(far, {}, "\x01"), "known values follow base_ptr across M");
+        EXPECT((agrees(far, {}, "\x01")), "known values follow base_ptr across M");
     }
+}
 
-    /* ---- fuse ---- */
+TEST_CASE("fuse", "[optimizer]") {
     const auto fused = [](std::string_view code) { return dump(code, Format::BIT, OPT_FUSE); };
     {
         const auto listing = fused(",[->+<].");
-        check(contains(listing, "MULC\t1, 0, 1"), "multiply loop clears through MULC");
-        check(!contains(listing, "S\t"), "MULC replaces the clear");
+        EXPECT(contains(listing, "MULC\t1, 0, 1"), "multiply loop clears through MULC");
+        EXPECT(!contains(listing, "S\t"), "MULC replaces the clear");
     }
     {
         const auto listing = fused(",[->+>++<<]");
-        check(contains(listing, "MUL\t1, 0, 1") && contains(listing, "MULC\t2, 0, 2"),
+        EXPECT((contains(listing, "MUL\t1, 0, 1") && contains(listing, "MULC\t2, 0, 2")),
               "only the last multiply of a chain clears");
     }
-    check(contains(fused(",[-]"), "S\t0, 0"), "a clear with no multiply stays S");
+    EXPECT(contains(fused(",[-]"), "S\t0, 0"), "a clear with no multiply stays S");
     {
         const auto listing = fused(",[.>+<-]");
-        check(contains(listing, "DJN\t0,"), "decrement fuses into the loop branch");
-        check(!contains(listing, "A\t0, 255"), "DJN replaces the decrement");
-        check(contains(listing, "A\t1, 1"), "DJN leaves other cells alone");
+        EXPECT(contains(listing, "DJN\t0,"), "decrement fuses into the loop branch");
+        EXPECT(!contains(listing, "A\t0, 255"), "DJN replaces the decrement");
+        EXPECT(contains(listing, "A\t1, 1"), "DJN leaves other cells alone");
     }
     {
         const auto listing = fused(",[-.]");
-        check(!contains(listing, "DJN"), "decrement read before the branch stays");
-        check(contains(fused(",[--.,]"), "IO\t0, 0"), "input stays in a loop");
+        EXPECT(!contains(listing, "DJN"), "decrement read before the branch stays");
+        EXPECT(contains(fused(",[--.,]"), "IO\t0, 0"), "input stays in a loop");
     }
-    check(!contains(fused(",[.+]"), "DJN"), "increment does not fuse");
+    EXPECT(!contains(fused(",[.+]"), "DJN"), "increment does not fuse");
     {
         const auto listing = fused(",[.>]");
-        check(contains(listing, "MJN\t0, 1, "), "back-edge move fuses into the branch");
-        check(!contains(listing, "\tM\t"), "MJN replaces M");
+        EXPECT(contains(listing, "MJN\t0, 1, "), "back-edge move fuses into the branch");
+        EXPECT(!contains(listing, "\tM\t"), "MJN replaces M");
     }
     {
         const std::string far_move = ",[." + std::string(128, '>') + "]";
-        check(!contains(fused(far_move), "MJN"), "move beyond 8 bits stays M");
+        EXPECT(!contains(fused(far_move), "MJN"), "move beyond 8 bits stays M");
         const std::string near_move = ",[." + std::string(127, '>') + "]";
-        check(contains(fused(near_move), "MJN"), "move of exactly 8 bits fuses");
+        EXPECT(contains(fused(near_move), "MJN"), "move of exactly 8 bits fuses");
     }
     {
         std::string long_loop = ",[";
         for (int i = 0; i < 2048; ++i) long_loop += ".,";
         const auto long_listing = fused(long_loop + ">]");
-        check(!contains(long_listing, "MJN"), "jump beyond 12 bits stays JN");
+        EXPECT(!contains(long_listing, "MJN"), "jump beyond 12 bits stays JN");
     }
     {
         const auto listing = fused(",>,>,<<[-]>[-]>[-]<<");
-        check(contains(listing, "SRUN\t0, 0, 3"), "adjacent clears become SRUN");
-        check(!contains(listing, "S\t"), "SRUN replaces the sets");
+        EXPECT(contains(listing, "SRUN\t0, 0, 3"), "adjacent clears become SRUN");
+        EXPECT(!contains(listing, "S\t"), "SRUN replaces the sets");
     }
-    check(!contains(fused(",>,<[-]>>[-]<<."), "SRUN"), "a gap breaks a run");
+    EXPECT(!contains(fused(",>,<[-]>>[-]<<."), "SRUN"), "a gap breaks a run");
     {
         std::string long_run = ",";
         for (int i = 0; i < 300; ++i) long_run += ">,";
@@ -343,15 +332,16 @@ int main() {
         for (int i = 0; i < 300; ++i) long_run += "[-]>";
         long_run += "<.";
         const auto listing = fused(long_run);
-        check(contains(listing, "SRUN\t0, 0, 255"), "a run stops at the count limit");
+        EXPECT(contains(listing, "SRUN\t0, 0, 255"), "a run stops at the count limit");
         const auto input = std::string(301, 'x');
         for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
-            check(execute(long_run, level, MEMSIZE, input, 100000).output == std::string(1, '\0'),
+            EXPECT(execute(long_run, level, MEMSIZE, input, 100000).output == std::string(1, '\0'),
                   "long run executes correctly");
         }
     }
+}
 
-    /* ---- program images ---- */
+TEST_CASE("words decode and images load", "[image]") {
     {
         const auto image = [](std::initializer_list<std::uint32_t> words) {
             Brainfunk brainfunk;
@@ -369,19 +359,19 @@ int main() {
         };
         const auto decoded = [](std::uint32_t word) { return Bitcode::decode(word).to_string(); };
 
-        check(decoded(0x100FFF05) == "A\t-1, 5", "decode A");
-        check(decoded(0x2007FFFF) == "S\t2047, 255", "decode S");
-        check(decoded(0x380800FF) == "MUL\t-2048, -128, 255", "decode MUL");
-        check(decoded(0x4FF00001) == "F\t-1, 1", "decode F");
-        check(decoded(0x500FFFFF) == "M\t-1", "decode M");
-        check(decoded(0x601FFFFE) == "JE\t1, -2", "decode JE");
-        check(decoded(0x77F7FFFF) == "JN\t127, 524287", "decode JN");
-        check(decoded(0x80000001) == "IO\t0, 1", "decode IO");
-        check(decoded(0x90000000) == "H", "decode H");
-        check(decoded(0xA0200303) == "MULC\t3, 2, 3", "decode MULC");
-        check(decoded(0xB01FFFFE) == "DJN\t1, -2", "decode DJN");
-        check(decoded(0xC01FEFFD) == "MJN\t1, -2, -3", "decode MJN");
-        check(decoded(0xD0300507) == "SRUN\t5, 7, 3", "decode SRUN");
+        EXPECT(decoded(0x100FFF05) == "A\t-1, 5", "decode A");
+        EXPECT(decoded(0x2007FFFF) == "S\t2047, 255", "decode S");
+        EXPECT(decoded(0x380800FF) == "MUL\t-2048, -128, 255", "decode MUL");
+        EXPECT(decoded(0x4FF00001) == "F\t-1, 1", "decode F");
+        EXPECT(decoded(0x500FFFFF) == "M\t-1", "decode M");
+        EXPECT(decoded(0x601FFFFE) == "JE\t1, -2", "decode JE");
+        EXPECT(decoded(0x77F7FFFF) == "JN\t127, 524287", "decode JN");
+        EXPECT(decoded(0x80000001) == "IO\t0, 1", "decode IO");
+        EXPECT(decoded(0x90000000) == "H", "decode H");
+        EXPECT(decoded(0xA0200303) == "MULC\t3, 2, 3", "decode MULC");
+        EXPECT(decoded(0xB01FFFFE) == "DJN\t1, -2", "decode DJN");
+        EXPECT(decoded(0xC01FEFFD) == "MJN\t1, -2, -3", "decode MJN");
+        EXPECT(decoded(0xD0300507) == "SRUN\t5, 7, 3", "decode SRUN");
 
         for (const std::uint32_t word : {
                  0x00000001u,   // X with a non-zero field
@@ -393,35 +383,31 @@ int main() {
                  0xE0000000u,   // reserved opcode
                  0xF0000000u,   // reserved opcode
              }) {
-            check(Bitcode::decode(word).opcode() == Opcode::X, "illegal word decodes to X");
-            check(Bitcode::decode(word).encode() == word, "illegal word encodes back to itself");
+            EXPECT(Bitcode::decode(word).opcode() == Opcode::X, "illegal word decodes to X");
+            EXPECT(Bitcode::decode(word).encode() == word, "illegal word encodes back to itself");
         }
 
-        check(rejected({}), "empty image is rejected");
-        check(rejected({0x10000001}), "image that falls off its end is rejected");
-        check(rejected({0x60000001, 0x90000000}), "forward jump out of the image is rejected");
-        check(rejected({0x700FFFFE, 0x90000000}), "backward jump out of the image is rejected");
+        EXPECT((rejected({})), "empty image is rejected");
+        EXPECT((rejected({0x10000001})), "image that falls off its end is rejected");
+        EXPECT((rejected({0x60000001, 0x90000000})), "forward jump out of the image is rejected");
+        EXPECT((rejected({0x700FFFFE, 0x90000000})), "backward jump out of the image is rejected");
 
         auto trap_image = image({0x10000005, 0xE0000000, 0x90000000});
         std::istringstream in;
         std::ostringstream out;
-        check(trap_image.step(in, out), "instruction before the trap runs");
-        bool trapped = false;
-        try {
-            (void)trap_image.step(in, out);
-        } catch (const BrainfunkException&) {
-            trapped = true;
-        }
-        check(trapped, "illegal word traps when executed");
-        check(trap_image.pc() == 1, "pc stays on the illegal word");
-        check(trap_image.memory()[0] == 5, "a trap leaves memory alone");
+        EXPECT(trap_image.step(in, out), "instruction before the trap runs");
+        INFO("illegal word traps when executed");
+        CHECK_THROWS_AS((void)trap_image.step(in, out), BrainfunkException);
+        EXPECT(trap_image.pc() == 1, "pc stays on the illegal word");
+        EXPECT(trap_image.memory()[0] == 5, "a trap leaves memory alone");
 
         auto halt_image = image({0x90000000});
-        check(!halt_image.step(in, out) && !halt_image.step(in, out), "halt is sticky");
-        check(halt_image.pc() == 0, "pc stays on H");
+        EXPECT((!halt_image.step(in, out) && !halt_image.step(in, out)), "halt is sticky");
+        EXPECT(halt_image.pc() == 0, "pc stays on H");
     }
+}
 
-    /* ---- differential: every level against the unoptimized program ---- */
+TEST_CASE("every level agrees with the unoptimized program", "[differential]") {
     constexpr addr_t step_limit = 20000;
     constexpr std::string_view input = "Az\xff\x01?";
     int halted_programs = 0;
@@ -438,31 +424,28 @@ int main() {
         const auto after = count(code, OPT_LAZY_MOVE, memory_size, input);
         for (std::size_t i = 0; i < before.dynamic_count.size(); ++i) {
             if (static_cast<Opcode>(i) == Opcode::M) {
-                check(after.dynamic_count[i] <= before.dynamic_count[i], "lazy move adds no M");
+                EXPECT(after.dynamic_count[i] <= before.dynamic_count[i], "lazy move adds no M");
             } else {
-                check(after.dynamic_count[i] == before.dynamic_count[i],
+                EXPECT(after.dynamic_count[i] == before.dynamic_count[i],
                       "lazy move only changes how often M runs");
             }
         }
-        check(after.memory_reads == before.memory_reads &&
+        EXPECT((after.memory_reads == before.memory_reads &&
                   after.memory_writes == before.memory_writes &&
-                  after.scan_iterations == before.scan_iterations,
+                  after.scan_iterations == before.scan_iterations),
               "lazy move leaves memory traffic unchanged");
 
         for (int level = OPT_NONE + 1; level <= OPT_MAX; ++level) {
             /* Optimized code never takes more steps than the original. */
             const auto optimized = execute(code, level, memory_size, input, step_limit);
-            if (!(optimized == reference)) {
-                std::cerr << "FAIL: level " << level << " differs on seed " << seed << ": " << code
-                          << '\n';
-                ++failures;
-            }
-            check(optimized.steps <= reference.steps, "optimized code takes no extra steps");
+            if (!(optimized == reference)) FAIL_CHECK("level " << level << " differs on seed " << seed << ": " << code);
+            EXPECT(optimized.steps <= reference.steps, "optimized code takes no extra steps");
         }
     }
-    check(halted_programs > 1000, "differential test exercised enough programs");
+    EXPECT(halted_programs > 1000, "differential test exercised enough programs");
+}
 
-    /* ---- program images ---- */
+TEST_CASE("image files", "[image]") {
     {
         /* Runs that copy from 1 word back to the farthest a copy can reach, overlapping themselves. */
         std::uint32_t state = 1;
@@ -476,35 +459,30 @@ int main() {
         for (int k = 0; k < 50; ++k) words.push_back(words[words.size() - LZ_MAX_DISTANCE]);
 
         const auto payload = lz_compress(words);
-        check(lz_decompress(payload) == words, "LZ round trip");
-        check(payload.size() < words.size() * 4, "LZ makes the image smaller");
-        check(lz_decompress(lz_compress(words, 8)) == words, "LZ round trip with a short window");
-        check(lz_compress(words, 8).size() > payload.size(), "a shorter window packs worse");
+        EXPECT(lz_decompress(payload) == words, "LZ round trip");
+        EXPECT(payload.size() < words.size() * 4, "LZ makes the image smaller");
+        EXPECT(lz_decompress(lz_compress(words, 8)) == words, "LZ round trip with a short window");
+        EXPECT(lz_compress(words, 8).size() > payload.size(), "a shorter window packs worse");
 
         const auto packed = pack_image(words);
-        check(std::equal(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end(), packed.begin()), "packed image starts with the magic");
-        check(unpack_image(packed) == words, "packed image round trip");
+        EXPECT(std::equal(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end(), packed.begin()), "packed image starts with the magic");
+        EXPECT(unpack_image(packed) == words, "packed image round trip");
         const auto plain = pack_image(words, Compression::None);
-        check(plain.size() == IMAGE_HEADER_BYTES + 4 * words.size(), "bincode image holds the words as they are");
-        check(unpack_image(plain) == words, "bincode image round trip");
+        EXPECT(plain.size() == IMAGE_HEADER_BYTES + 4 * words.size(), "bincode image holds the words as they are");
+        EXPECT(unpack_image(plain) == words, "bincode image round trip");
         for (const std::size_t at : {std::size_t{4}, std::size_t{5}, std::size_t{6}, std::size_t{7}, std::size_t{12}}) {
             auto changed = plain;
             changed[at] ^= 0x80;
-            bool rejected_header = false;
-            try {
-                (void)unpack_image(changed);
-            } catch (const BrainfunkException&) {
-                rejected_header = true;
-            }
-            check(rejected_header, "image header with a wrong version, flag, reserved bit or count is rejected");
+            INFO("image header with a wrong version, flag, reserved bit or count is rejected, byte " << at);
+            CHECK_THROWS_AS((void)unpack_image(changed), BrainfunkException);
         }
         {
             std::istringstream in(std::string(packed.begin(), packed.end()));
-            check(read_image(in) == words, "read_image takes a packed image");
+            EXPECT(read_image(in) == words, "read_image takes a packed image");
         }
         {
             std::istringstream in("80000000\n 0000002a \n9FFFFFFF\n");
-            check(read_image(in) == std::vector<std::uint32_t>{0x80000000u, 0x2au, 0x9fffffffu}, "read_image takes hex words");
+            EXPECT((read_image(in) == std::vector<std::uint32_t>{0x80000000u, 0x2au, 0x9fffffffu}), "read_image takes hex words");
         }
 
         const auto rejects = [](auto&& action) {
@@ -517,20 +495,21 @@ int main() {
         };
         auto corrupt = packed;
         corrupt[corrupt.size() - 2] ^= 0xFF;
-        check(rejects([&] { (void)unpack_image(corrupt); }), "packed image with a wrong CRC is rejected");
+        EXPECT((rejects([&] { (void)unpack_image(corrupt); })), "packed image with a wrong CRC is rejected");
         auto truncated = packed;
         truncated.pop_back();
-        check(rejects([&] { (void)unpack_image(truncated); }), "packed image cut short is rejected");
+        EXPECT((rejects([&] { (void)unpack_image(truncated); })), "packed image cut short is rejected");
         const std::vector<std::uint8_t> too_far = {0x00, 1, 2, 3, 4, 0x80, 0x02, 0x00};
-        check(rejects([&] { (void)lz_decompress(too_far); }), "copy from before the start is rejected");
-        check(rejects([] {
+        EXPECT((rejects([&] { (void)lz_decompress(too_far); })), "copy from before the start is rejected");
+        EXPECT((rejects([] {
                   std::istringstream in("1234567\n");
                   (void)read_image(in);
-              }),
+              })),
               "malformed hex image is rejected");
     }
+}
 
-    /* ---- every word and listing line converts back to itself ---- */
+TEST_CASE("words and listing lines convert back to themselves", "[bijection]") {
     {
         std::uint32_t state = 7;
         const auto next = [&state] {
@@ -554,27 +533,20 @@ int main() {
             }
             if (!same && mismatches++ < 5) std::cerr << "FAIL: word " << std::hex << word << std::dec << " does not convert back\n";
         }
-        check(mismatches == 0, "words convert to instructions and listing lines and back");
-        check(legal > 400000, "the bijection test saw enough legal words");
+        EXPECT(mismatches == 0, "words convert to instructions and listing lines and back");
+        EXPECT(legal > 400000, "the bijection test saw enough legal words");
 
         std::vector<Bitcode> code;
         for (int i = 0; i < 1000; ++i) code.push_back(Bitcode::decode(next() & 0xF00FFFFFu));
         std::ostringstream listing;
         write_listing(listing, code);
-        check(parse_listing(listing.str()) == code, "listing round trip");
+        EXPECT(parse_listing(listing.str()) == code, "listing round trip");
         std::ostringstream hex;
         write_hex(hex, encode_bincode(code));
         std::istringstream hex_in(hex.str()), listing_in(listing.str());
-        check(read_image(hex_in) == read_image(listing_in), "hex and listing read as the same words");
+        EXPECT(read_image(hex_in) == read_image(listing_in), "hex and listing read as the same words");
 
-        bool rejected_far = false;
-        try {
-            (void)Bitcode::move(1 << 20).encode();
-        } catch (const BrainfunkException&) {
-            rejected_far = true;
-        }
-        check(rejected_far, "a move beyond 20 bits does not encode");
+        INFO("a move beyond 20 bits does not encode");
+        CHECK_THROWS_AS((void)Bitcode::move(1 << 20).encode(), BrainfunkException);
     }
-
-    return failures == 0 ? 0 : 1;
 }

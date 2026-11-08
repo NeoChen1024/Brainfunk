@@ -4,10 +4,18 @@
 
 # Build
 
+CMake 3.25 or later, Ninja, and a C++20 compiler. The tests need Catch2 3, pytest and
+pytest-xdist; the hardware ones also Verilator, and formal SymbiYosys and Bitwuzla.
+
 ```shell
-make
-make test
+cmake --workflow --preset default    # configure, build into build/, run every test that needs no board
+cmake --workflow --preset sw         # the software only: unit and end-to-end tests, under a minute
+ctest --preset hw                    # the hardware: cosimulation, testbenches and formal
+cmake --workflow --preset sanitize   # the software under ASan and UBSan, in build-sanitize/
 ```
+
+Programs end up in `build/bin`. Tests are labelled `unit`, `sw`, `hw`, `formal`, and, when enabled
+at configure time, `mutation` and `board`; see [tests/CMakeLists.txt](tests/CMakeLists.txt).
 
 # Features
 
@@ -29,10 +37,10 @@ convert into each other without loss, and `brainfunk -b` runs any of them; see
 [doc/rtl.md](doc/rtl.md).
 
 ```shell
-./brainfunk -O2 -m packed -f program.b -o program.bfi
-./brainfunk -m bit -b program.bfi
-./brainfunk -b program.bfi
-./bfload -t -f program.b
+build/bin/brainfunk -O2 -m packed -f program.b -o program.bfi
+build/bin/brainfunk -m bit -b program.bfi
+build/bin/brainfunk -b program.bfi
+build/bin/bfload -t -f program.b
 ```
 
 # Optimization levels
@@ -67,22 +75,22 @@ sh tests/stat-compare.sh 3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
 
 ```
 # Run a Brainfuck program:
-./brainfunk -f <source-file>
+build/bin/brainfunk -f <source-file>
 
 # Translate it to C:
-./brainfunk -m bfc -f <source-file> -o program.c
+build/bin/brainfunk -m bfc -f <source-file> -o program.c
 
 # Print optimized bitcode:
-./brainfunk -m bit -f <source-file>
+build/bin/brainfunk -m bit -f <source-file>
 
 # Emit portable LLVM IR:
-./brainfunk -m llvm -f <source-file> -o program.ll
+build/bin/brainfunk -m llvm -f <source-file> -o program.ll
 
 # Emit LLVM IR and compile it with the C runtime wrapper:
 ./compile-llvm-ir.sh <source-file> <executable>
 
 # Open the visualizer (100 ms per optimized instruction):
-./visualbrainfunk -f <source-file> -t 100
+build/bin/visualbrainfunk -f <source-file> -t 100
 ```
 
 TUI controls:

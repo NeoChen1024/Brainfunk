@@ -1,4 +1,4 @@
-"""The real board, on its USB serial port and JTAG cable. Needs a built build/yadan/yadan.bit and TD_HOME.
+"""The real board, on its USB serial port and JTAG cable. Needs the yadan target built and TD_HOME.
 
 Nothing here touches the user flash except the tests marked flash, because it wears out. The board is
 one resource, so these all run on one worker in the order written.
@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from conftest import ROOT, assemble, assemble_text, corpus_program, run
+from conftest import BFLOAD, BRAINFUNK, BUILD, ROOT, assemble, assemble_text, corpus_program, run
 
 serial = pytest.importorskip("serial")
 
@@ -35,11 +35,11 @@ LOAD_BAUD = 2000000
 def board(tools):
     if not os.environ.get("TD_HOME"):
         pytest.skip("TD_HOME is not set")
-    if not (ROOT / "build" / "yadan" / "yadan.bit").exists():
-        pytest.skip("no build/yadan/yadan.bit: run make yadan")
+    if not (BUILD / "yadan" / "yadan.bit").exists():
+        pytest.skip(f"no {BUILD}/yadan/yadan.bit: build the yadan target")
     if PORT is None or not os.path.exists(PORT):
         pytest.skip("no board serial port: set BOARD_PORT")
-    run("sh", "synth/load-yadan.sh")
+    run("sh", "synth/load-yadan.sh", env={**os.environ, "YADAN_WORK": str(BUILD / "yadan")})
     # minicom leaves this off, and without it closing the port does not drop RTS, so nothing restarts.
     run("stty", "-F", PORT, "hupcl")
     time.sleep(1)
@@ -63,16 +63,16 @@ def read_output(count, limit, send=b"", pace=None):
 
 
 def expected_output(name, stdin=None, limit=None):
-    command = [ROOT / "brainfunk", "-O2", "-f", corpus_program(name)]
+    command = [BRAINFUNK, "-O2", "-f", corpus_program(name)]
     return run(*command, input=stdin or "", check=False, timeout=limit, errors="surrogateescape").stdout.encode(errors="surrogateescape")
 
 
 def load_ram(image):
-    run(ROOT / "bfload", "-p", PORT, image, timeout=120)
+    run(BFLOAD, "-p", PORT, image, timeout=120)
 
 
 def test_flash_identifies_itself(board):
-    assert run(ROOT / "bfload", "-m", "id", "-p", PORT, timeout=20).stdout.strip() == "c84015"
+    assert run(BFLOAD, "-m", "id", "-p", PORT, timeout=20).stdout.strip() == "c84015"
 
 
 def test_program_in_code_ram(board, tmp_path):
@@ -101,7 +101,7 @@ def test_lost_kingdom_plays(board, tmp_path):
     commands = "N\nlook\nget matches\ninventory\n" + "n\ne\ns\nw\nu\nd\nlook\nscore\nhelp\n?\n" * 10
     # There is no flow control, so input must not outrun the FIFO. The interpreter's run never
     # ends at the end of input, so compare what the board printed with the start of it.
-    process = run("sh", "-c", f"timeout 10 {ROOT}/brainfunk -O2 -f {corpus_program('LostKng.b')} | head -c 200000",
+    process = run("sh", "-c", f"timeout 10 {BRAINFUNK} -O2 -f {corpus_program('LostKng.b')} | head -c 200000",
                   input=commands, check=False, errors="surrogateescape")
     reference = process.stdout.encode(errors="surrogateescape")
     got = read_output(len(reference), 30, send=commands.encode(), pace=8)
@@ -111,7 +111,7 @@ def test_lost_kingdom_plays(board, tmp_path):
 
 def test_corrupted_image_is_refused(board, tmp_path):
     packed = tmp_path / "program.bfi"
-    run(ROOT / "bfload", "-m", "pack", "-o", packed, assemble_text("+.", 0, tmp_path / "program.hex"))
+    run(BFLOAD, "-m", "pack", "-o", packed, assemble_text("+.", 0, tmp_path / "program.hex"))
     data = bytearray(packed.read_bytes())
     data[-2] ^= 0xFF
     with serial.Serial(PORT, PROGRAM_BAUD, timeout=3, exclusive=True) as port:
@@ -129,7 +129,7 @@ def test_corrupted_image_is_refused(board, tmp_path):
 
 @pytest.mark.flash
 def test_flash_programs_and_boots(board, tmp_path):
-    run(ROOT / "bfload", "-m", "flash", "-p", PORT, assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
+    run(BFLOAD, "-m", "flash", "-p", PORT, assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
     expected = expected_output("hanoi.b")
     assert read_output(len(expected), 30) == expected
 
@@ -137,7 +137,7 @@ def test_flash_programs_and_boots(board, tmp_path):
 @pytest.mark.flash
 def test_power_up_boots_from_flash(board):
     # Reloading the bitstream starts from power-up as far as the design can tell.
-    run("sh", "synth/load-yadan.sh")
+    run("sh", "synth/load-yadan.sh", env={**os.environ, "YADAN_WORK": str(BUILD / "yadan")})
     expected = expected_output("hanoi.b")
     assert read_output(len(expected), 30) == expected
 

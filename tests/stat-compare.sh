@@ -11,7 +11,7 @@
 #       --halts always --cell-bits 8 --unique)
 set -eu
 
-BRAINFUNK="${BRAINFUNK:-./brainfunk}"
+BRAINFUNK="${BRAINFUNK:-$(dirname "$0")/../build/bin/brainfunk}"
 
 if [ "$#" -eq 0 ]; then
     for program in \

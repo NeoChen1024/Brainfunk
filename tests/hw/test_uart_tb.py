@@ -1,5 +1,5 @@
 """The board top over its pins, with SDRAM and flash models: load, refuse, restart, program, boot."""
-from conftest import ROOT, assemble_text, run
+from conftest import BFLOAD, ROOT, assemble_text, run
 
 SOURCES = ["tb/uart_tb.sv", "tb/spi_flash_model.sv", "rtl/board/yadan_top.sv", "rtl/board/yadan_pll.sv", "rtl/board/uart.sv",
            "rtl/board/loader.sv", "rtl/board/flash.sv", "rtl/brainfunk_soc.sv", "rtl/brainfunk_cache.sv", "rtl/sdram_ctrl.sv",
@@ -12,7 +12,7 @@ PROGRAM = "[" + "+>-<" * 10 + "]+.,+.,+."
 def uart_testbench(tmp_path, sources=SOURCES):
     image = assemble_text(PROGRAM, 0, tmp_path / "program.hex")
     packed = tmp_path / "program.bfi"
-    run(ROOT / "bfload", "-m", "pack", "-o", packed, image)
+    run(BFLOAD, "-m", "pack", "-o", packed, image)
     data = packed.read_bytes()
     (tmp_path / "program.bytes").write_text("".join(f"{byte:02x}\n" for byte in data))
     run("verilator", "--binary", "--timing", "-j", "2", "--top-module", "uart_tb", "--Mdir", tmp_path / "obj",

@@ -35,7 +35,7 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[2]
 PROGRAMS = REPO / "programs"
 INDEX = PROGRAMS / "index.tsv"
-BRAINFUNK = REPO / "brainfunk"
+BRAINFUNK = Path(os.environ.get("BRAINFUNK", REPO / "build" / "bin" / "brainfunk"))
 
 COMMANDS = frozenset(b"+-<>[],.")
 SHINGLE = 8           # tokens per shingle for near-duplicate detection
@@ -481,7 +481,7 @@ def draft(directory: Path, out: Path, timeout: float, jobs: int, force: bool) ->
     if out.exists() and not force:
         fail(f"{out} exists; pass --force to overwrite it")
     if not BRAINFUNK.is_file():
-        fail("build ./brainfunk first")
+        fail(f"{BRAINFUNK} not found: build first, cmake --build build")
     directory = directory.resolve()
     submodule = next((p for p in [directory, *directory.parents]
                       if (p / ".git").is_file() and p.is_relative_to(REPO) and p != REPO),

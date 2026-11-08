@@ -5,7 +5,7 @@ import zlib
 
 import pytest
 
-from conftest import CORPUS, ROOT, assemble, run
+from conftest import BRAINFUNK, CORPUS, ROOT, assemble, run
 
 SOURCES = ["tb/loader_tb.sv", "rtl/board/loader.sv", "rtl/brainfunk_mem.sv", "rtl/sdram_ctrl.sv", "tb/sdram_model.sv"]
 
@@ -52,7 +52,7 @@ def pack(tmp_path, name, words, mode="packed", change=None):
     hexfile = tmp_path / f"{name}.hex"
     hexfile.write_text("".join(f"{word:08x}\n" for word in words))
     packed = tmp_path / f"{name}.{mode}"
-    run(ROOT / "brainfunk", "-m", mode, "-b", hexfile, "-o", packed)
+    run(BRAINFUNK, "-m", mode, "-b", hexfile, "-o", packed)
     data = packed.read_bytes()
     if change is not None:
         data = with_header(data, *change)

@@ -83,7 +83,7 @@ Native execution is compared with the interpreter where the host can run the res
 Emit IR only:
 
 ```sh
-./brainfunk -m llvm -f program.bf -o program.ll
+build/bin/brainfunk -m llvm -f program.bf -o program.ll
 llvm-as program.ll -o program.bc
 opt -passes=verify program.ll -disable-output
 ```
