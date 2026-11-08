@@ -72,3 +72,14 @@ private:
     }
     return true;
 }
+
+/* The next instruction is a JE or JN to itself that is taken: it runs for ever. */
+[[nodiscard]] inline bool branches_to_itself(const Brainfunk& brainfunk) {
+    const auto& instruction = brainfunk.bitcode()[brainfunk.pc()];
+    if ((instruction.opcode() != Opcode::JE && instruction.opcode() != Opcode::JN) || instruction.jump_offset() != -1) {
+        return false;
+    }
+    const auto memory = brainfunk.memory();
+    const bool zero = memory[effective_address(brainfunk.base_ptr(), instruction.test_offset(), memory.size())] == 0;
+    return zero == (instruction.opcode() == Opcode::JE);
+}

@@ -601,8 +601,8 @@ TEST_CASE("traced runs agree with the interpreter, and their events follow each 
                 (void)plain.step(plain_in, plain_out);
             }
             if (summary.endless) {
-                INFO("seed " << seed << " level " << level << ": an endless F, which the step loop must agree on");
-                CHECK(scan_never_ends(plain));
+                INFO("seed " << seed << " level " << level << ": an endless F or branch, which the step loop must agree on");
+                CHECK((scan_never_ends(plain) || branches_to_itself(plain)));
             }
             if (!summary.halted) continue;
             ++compared;
@@ -614,6 +614,34 @@ TEST_CASE("traced runs agree with the interpreter, and their events follow each 
         }
     }
     CHECK(compared > 4000);
+}
+
+TEST_CASE("a branch to itself that is taken ends the run as endless", "[trace]") {
+    for (const char* code : {"+.[]", "+.[[]-]"}) {
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            Brainfunk bf;
+            bf.translate(code);
+            bf.optimize(level);
+            INFO(code << " at level " << level);
+            NullSink sink;
+            std::istringstream in;
+            std::ostringstream out;
+            const auto summary = run_traced(bf, sink, in, out, {});
+            CHECK(summary.endless);
+            CHECK_FALSE(summary.halted);
+            CHECK(out.str() == "\x01");
+            CHECK(branches_to_itself(bf));
+        }
+    }
+    /* Not taken, it is an ordinary branch. */
+    Brainfunk bf;
+    bf.translate("[]+");
+    NullSink sink;
+    std::istringstream in;
+    std::ostringstream out;
+    const auto summary = run_traced(bf, sink, in, out, {});
+    CHECK(summary.halted);
+    CHECK_FALSE(summary.endless);
 }
 
 TEST_CASE("a trace range skips and stops", "[trace]") {
@@ -747,6 +775,45 @@ TEST_CASE("the issue model counts cycles as the cores would take them", "[analys
 
     CHECK_THROWS_AS(analyze({HALT}, "issue", {{"issue", {{"machines", {{{"mul", "fast"}}}}}}}), BrainfunkException);
     CHECK_THROWS_AS(analyze({HALT}, "nonsense"), BrainfunkException);
+}
+
+TEST_CASE("predictors guess branches as their kinds do", "[analysis]") {
+    /* Forty times round a loop whose inner loop goes round five times; the . keeps it a loop. */
+    Brainfunk bf;
+    bf.translate(std::string(40, '+') + "[>+++++[-.]<-]");
+    const auto machine = [](const char* name, nlohmann::json predictor) {
+        return nlohmann::json{{"name", name}, {"predictor", std::move(predictor)}};
+    };
+    const nlohmann::json config = {{"issue", {{"machines", {
+        machine("rtl", nlohmann::json::object()),
+        machine("bimodal", {{"kind", "bimodal"}}),
+        machine("loop", {{"kind", "loop"}}),
+        machine("tournament", {{"kind", "tournament"}, {"components", {{{"kind", "loop"}}, {{"kind", "gshare"}}}}}),
+        machine("perfect", {{"kind", "perfect"}}),
+    }}}}};
+    AnalysisSet set("issue", config);
+    std::istringstream in;
+    std::ostringstream out;
+    (void)run_traced(bf, set, in, out);
+    const auto machines = set.report().at("analyses").at("issue").at("machines");
+    const auto exits = [&](std::size_t m) {
+        return machines.at(m).at("branches").at("backward_not_taken").at("mispredicts").get<std::uint64_t>();
+    };
+    CHECK(machines.at(0).at("branches").at("backward_not_taken").at("count") == 41);   // forty inner exits, one outer
+    CHECK(exits(1) == 41);                // counters always guess the loop goes on
+    CHECK(exits(2) <= 4);                 // the loop predictor learns that the inner one goes round five times
+    CHECK(exits(3) < exits(1));
+    CHECK(machines.at(4).at("mispredicts") == 0);
+    CHECK(machines.at(4).at("cycles") < machines.at(0).at("cycles"));
+    CHECK(machines.at(0).at("config").at("predictor").at("kind") == "rtl");    // defaults filled in
+
+    const auto refused = [](nlohmann::json predictor) {
+        return nlohmann::json{{"issue", {{"machines", {{{"predictor", std::move(predictor)}}}}}}};
+    };
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "oracle"}})), BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "tournament"}, {"components", {{{"kind", "rtl"}}, {{"kind", "bimodal"}}}}})),
+                    BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "gshare"}, {"direction", 1000}})), BrainfunkException);
 }
 
 TEST_CASE("analyses report what the run did", "[analysis]") {

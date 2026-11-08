@@ -36,7 +36,9 @@ of random programs at every level. Each instruction becomes one `TraceEvent`:
 as the core retires it once.
 
 An `F` that never finds a zero would run for ever in `run()`. `F` writes nothing, so the cells it tests
-repeat within a tape's length of strides; the traced loop stops there and reports the run `endless`.
+repeat within a tape's length of strides; the traced loop stops there and reports the run `endless`. So
+it does at a `JE` or `JN` to itself that is taken, the `[]` some programs end on to wait for ever: it
+changes nothing, so it is taken for ever. Neither counts as run.
 
 A sink is anything with `begin`, `event` and `end`; `Sinks<A, B>` hands each event to several, and
 `StatSink` is the counts that `stat` reports.
@@ -119,17 +121,49 @@ machine's fields, all optional:
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
 | `io` | 7 | cycles an `IO` takes |
-| `predictor` | | `next`: next-fetch entries, 16; `tag_bits`: 8; `direction`: counters, 4096; `history`: global history bits mixed into the counter index, 0 |
+| `predictor` | `rtl` | how branches are guessed, below |
 
 A group closes at a taken branch, a misprediction, and a redirect. The report gives, for each machine,
 `cycles`, `cpi`, `speedup` against the first, `joined` (the share of instructions issued alongside an
-older one in the same cycle), and `not_joined_because`, the share that could not, by reason.
+older one in the same cycle), `not_joined_because`, the share that could not, by reason, and
+`branches`: how many were backward or forward, taken or not, and how many of each were mispredicted.
+
+#### Predictors
+
+Branches are guessed in two parts. Fetch has a next-fetch table keyed by the word fetched before: a hit
+sends fetch to the target with no gap. Decode has a direction predictor; a taken guess that fetch did
+not make costs `steer` cycles, and a wrong direction `penalty`. Every predictor takes `next`, the
+next-fetch entries (16), `tag_bits` (8), and `forget` (whether a hit on a branch that is not taken drops
+the entry); `kind` picks the rest:
+
+| `kind` | Fields, with defaults | Guess |
+|---|---|---|
+| `rtl` | `direction` 4096, `history` 0 | the core as it is: a next-fetch hit is a taken guess decode does not question; the 2-bit counters, of how far a branch disagrees with backward taken, are read only on a miss. `forget` is true |
+| `static` | | backward taken, forward not |
+| `bimodal` | `direction` 4096 | 2-bit counters by pc |
+| `gshare` | `direction` 4096, `history` 12 | counters by pc exclusive-or the last `history` outcomes |
+| `local` | `histories` 256, `history` 6, `direction` 16384 | each branch's own last `history` outcomes, next to its pc bits, index the counters |
+| `loop` | `entries` 64, `confidence` 2, `base` (bimodal) | once a loop has gone round the same number of times `confidence` times running, its exit; otherwise `base` |
+| `tournament` | `components` (`local`, `gshare`), `chooser` 4096, `chooser_history` 0 | 2-bit counters by pc choose between two components |
+| `perfect` | | always right; what is left is the steers |
+
+Every kind but `rtl` overrides fetch: decode's guess stands, and taking back a next-fetch hit that it
+does not agree with is a steer. `forget` is false for them unless given. Components (`base`,
+`components`) are predictors without `next`, `tag_bits` or `forget`, and not `rtl` or `perfect`.
+
+To compare machines over the corpus rather than one program, `tools/issue_sweep.py run --config
+machines.json -o sweep.json` runs every unique 8-bit workload program on each of its inputs, and
+`tools/issue_sweep.py report sweep.json` gives each machine's speedup as the geometric mean of the
+families' geometric means, with the families split into held-out folds.
 
 ```json
 {"issue": {"machines": [
     {"name": "scalar"},
     {"name": "dual", "width": 2, "penalty": 10},
     {"name": "dual, aligned fetch", "width": 2, "penalty": 10, "fetch_line": 8},
-    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single"}
+    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single"},
+    {"name": "dual, tournament", "width": 2, "penalty": 10,
+     "predictor": {"kind": "tournament", "forget": true, "next": 64,
+                   "components": [{"kind": "loop", "base": {"kind": "local"}}, {"kind": "gshare", "history": 8}]}}
 ]}}
 ```

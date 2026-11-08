@@ -61,8 +61,9 @@ struct TraceSummary {
     std::uint64_t reported = 0;  // events
     bool          halted   = false;
     bool          trapped  = false;  // an illegal word, which did not run
-    bool          endless  = false;  // an F that never finds a zero, which did not finish; run() would
-                                     // spin in it for ever
+    bool          endless  = false;  // an instruction that would run for ever, and is not counted as
+                                     // run: an F that never finds a zero, or a branch to itself that is
+                                     // taken; run() would spin in it
 };
 
 /* Several sinks as one, each event to each in order. */
@@ -193,6 +194,10 @@ struct TraceRunner {
                 e.branch = true;
                 e.taken = in.opcode() == Opcode::JE ? zero : !zero;
                 if (e.taken) next = pc + 1 + static_cast<addr_t>(in.jump_offset());
+                /* A JE or JN that jumps to itself changes nothing, so once taken it is taken for ever. */
+                if (e.taken && next == pc && (in.opcode() == Opcode::JE || in.opcode() == Opcode::JN)) {
+                    summary.endless = true;
+                }
                 break;
             }
             case Opcode::SRUN: {
