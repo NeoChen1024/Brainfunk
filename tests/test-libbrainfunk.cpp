@@ -3,6 +3,7 @@
 #include "trace.hpp"
 #include "trace_file.hpp"
 #include "analysis.hpp"
+#include "coverage.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -766,8 +767,13 @@ TEST_CASE("analyses report what the run did", "[analysis]") {
     const auto counted = analyze({0x20000003u, 0x100000FFu, 0x700FFFFEu, HALT}, "profile",
                                  {{"profile", {{"counts", true}}}});
     const auto& profile = counted.at("analyses").at("profile");
-    CHECK(profile.at("counts") == nlohmann::json({1, 3, 3, 1}));
-    CHECK(profile.at("taken_counts").at(2) == 2);
+    const auto counters = Coverage::from_json(profile.at("counters"));
+    CHECK(counters.branch_pc == std::vector<addr_t>{2});
+    CHECK(counters.count == std::vector<std::uint64_t>{3});
+    CHECK(counters.taken == std::vector<std::uint64_t>{2});
+    Brainfunk loaded;
+    loaded.load_bincode(std::vector<std::uint32_t>{0x20000003u, 0x100000FFu, 0x700FFFFEu, HALT});
+    CHECK(counters.expand(loaded.bitcode()) == std::vector<std::uint64_t>{1, 3, 3, 1});
 
     /* A forward branch that always falls through went one way only. */
     const auto skipped = analyze({0x20000001u, 0x60000001u, 0x20000002u, HALT}, "profile");
@@ -775,4 +781,70 @@ TEST_CASE("analyses report what the run did", "[analysis]") {
     CHECK(a.at("ngram").at("2").at("top").at(0).at("pattern") == "A raw JN");
     CHECK(a.at("deps").at("loop_trips").at("total") == 1);
     CHECK(a.at("values").at("branch_tests") == 3);
+}
+
+TEST_CASE("every word's count follows from the branches', and runs add up", "[coverage]") {
+    /* Counts each word as it runs, for comparing with what the branches give. */
+    struct Count {
+        std::vector<std::uint64_t> counts;
+        void begin(const Brainfunk& bf) { counts.assign(bf.bitcode().size(), 0); }
+        void event(const TraceEvent& e) { ++counts[e.pc]; }
+        void end(const Brainfunk&, const TraceSummary&) {}
+    };
+    const auto run = [](Brainfunk& bf, std::string_view input, TraceRange range, CoverageSink& flow, Count& count) {
+        Sinks sinks(flow, count);
+        std::istringstream in{std::string(input)};
+        std::ostringstream out;
+        return run_traced(bf, sinks, in, out, range);
+    };
+
+    int cut = 0, halted = 0, endless = 0;
+    for (std::uint32_t seed = 1; seed <= 1500; ++seed) {
+        ProgramGenerator generator(seed);
+        const auto code = generator.program();
+        for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+            Brainfunk bf(seed % 2 == 0 ? std::size_t{16} : MEMSIZE);
+            bf.translate(code);
+            bf.optimize(level);
+            INFO("seed " << seed << " level " << level << ": " << code);
+
+            /* Whole, cut short, and a stretch from the middle. */
+            for (const TraceRange range : {TraceRange{0, 20000}, TraceRange{0, 1 + seed % 37}, TraceRange{seed % 11, 1 + seed % 23}}) {
+                CoverageSink flow;
+                Count count;
+                const auto summary = run(bf, "Az\xff", range, flow, count);
+                halted += summary.halted;
+                endless += summary.endless;
+                cut += !summary.halted;
+                CHECK(flow.coverage().expand(bf.bitcode()) == count.counts);
+            }
+
+            /* Two runs on different input, added up. */
+            CoverageSink a, b;
+            Count ca, cb;
+            (void)run(bf, "Az", {0, 20000}, a, ca);
+            (void)run(bf, "\x01\x02\x03", {0, 20000}, b, cb);
+            auto both = a.coverage();
+            both.add(Coverage::from_json(nlohmann::json::parse(b.coverage().to_json().dump())));
+            std::vector<std::uint64_t> sum(ca.counts.size());
+            for (std::size_t i = 0; i < sum.size(); ++i) sum[i] = ca.counts[i] + cb.counts[i];
+            CHECK(both.expand(bf.bitcode()) == sum);
+        }
+    }
+    CHECK(halted > 1000);
+    CHECK(cut > 1000);
+    CHECK(endless > 0);
+
+    /* Counters of another program, or that do not add up, are refused. */
+    Brainfunk one, other;
+    one.translate("+++[.-]");    // a loop that stays one, with its branches
+    other.translate("+++[.-]>");
+    CoverageSink flow;
+    Count count;
+    (void)run(one, "", {}, flow, count);
+    CHECK_THROWS_AS(flow.coverage().expand(other.bitcode()), BrainfunkException);
+    auto broken = flow.coverage();
+    REQUIRE(broken.count.size() == 2);
+    ++broken.count.back();
+    CHECK_THROWS_AS(broken.expand(one.bitcode()), BrainfunkException);
 }

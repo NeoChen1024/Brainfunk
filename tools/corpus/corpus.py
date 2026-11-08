@@ -889,45 +889,39 @@ def inputs_coverage(program: str, jobs: int) -> None:
     if not cases:
         fail(f"no inputs of {program}")
 
-    def counters(case: Case) -> tuple[list[int], list[int]]:
-        with tempfile.TemporaryDirectory() as directory:
-            report = Path(directory) / "report.json"
-            command = [str(BRAINFUNK), "-O0", "-e", case.eof, "-m", "analyze", "-a", "profile",
-                       "--config", str(Path(directory) / "config.json"), "-o", str(report),
-                       "-f", str(case.program.path)]
-            (Path(directory) / "config.json").write_text(json.dumps({"profile": {"counts": True}}))
+    with tempfile.TemporaryDirectory() as directory:
+        config = Path(directory) / "config.json"
+        config.write_text(json.dumps({"profile": {"counts": True}}))
+
+        def report(index_case: tuple[int, Case]) -> Path:
+            index, case = index_case
+            out = Path(directory) / f"{index}.json"
+            command = [str(BRAINFUNK), "-O0", "-e", case.eof, "-m", "analyze", "-a", "profile", "--config",
+                       str(config), "-o", str(out), "-f", str(case.program.path)]
             if case.limit:
                 command += ["--limit", str(case.limit)]
             subprocess.run(command, input=case.data(), capture_output=True, timeout=TIMEOUT)
-            profile = json.loads(report.read_text())["analyses"]["profile"]
-            return profile["counts"], profile["taken_counts"]
+            if not out.is_file():
+                fail(f"{case.key}: no report")
+            return out
 
-    with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
-        results = list(pool.map(counters, cases))
+        with concurrent.futures.ThreadPoolExecutor(jobs) as pool:
+            reports = list(pool.map(report, enumerate(cases)))
+        # brainfunk adds the counters up, and works out each word's count from them.
+        done = subprocess.run([str(BRAINFUNK), "-O0", "-m", "coverage", "-f", str(cases[0].program.path),
+                               *map(str, reports)], capture_output=True, text=True)
+        if done.returncode != 0:
+            fail(done.stderr.strip())
+        result = json.loads(done.stdout)
 
-    def reached(counts: list[int], taken: list[int]) -> set:
-        """Each word that ran, and each branch direction taken, as ("word", pc) and ("way", pc, taken)."""
-        out = {("word", pc) for pc, n in enumerate(counts) if n}
-        for pc, n in enumerate(counts):
-            if n and taken[pc]:
-                out.add(("way", pc, True))
-            if n and taken[pc] < n:
-                out.add(("way", pc, False))
-        return out
-
-    sets = [reached(*r) for r in results]
-    words = len(results[0][0])
-    everything = set().union(*sets)
-    click.echo(f"{program}: {len(cases)} cases, {words} words at -O0")
+    click.echo(f"{program}: {len(cases)} cases, {result['words']} words and {result['branches']} branches at -O0")
     click.echo(f"{'case':40} {'words':>8} {'ways':>8} {'only it':>8}")
-    for case, mine in zip(cases, sets):
-        others = set().union(*(s for s in sets if s is not mine))
-        only = len(mine - others)
-        click.echo(f"{case.name + ' eof=' + case.eof:40} {sum(k[0] == 'word' for k in mine):8} "
-                   f"{sum(k[0] == 'way' for k in mine):8} {only:8}")
-    reached_words = sum(k[0] == "word" for k in everything)
-    click.echo(f"{'all':40} {reached_words:8} {sum(k[0] == 'way' for k in everything):8}"
-               f"   {reached_words / words:.1%} of words")
+    for case, row in zip(cases, result["inputs"]):
+        click.echo(f"{case.name + ' eof=' + case.eof:40} {row['words_run']:8} {row['ways']:8} {row['only']:8}")
+    everything = result["all"]
+    click.echo(f"{'all':40} {everything['words_run']:8} {everything['ways']:8}"
+               f"   {everything['words_run'] / result['words']:.1%} of words, "
+               f"{everything['ways'] / max(2 * result['branches'], 1):.1%} of branch directions")
 
 
 if __name__ == "__main__":

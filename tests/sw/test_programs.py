@@ -108,3 +108,26 @@ def test_trace_keeps_the_eof_mode(tmp_path):
     traced = brainfunk("-e", "keep", "-m", "trace", "--limit", "20", "-f", source, "-o", trace, input=b"ab")
     assert traced.stdout.startswith(b"abb")
     assert brainfunk("-m", "analyze", "-t", trace).stdout == traced.stdout
+
+
+def test_coverage_adds_up_reports(tmp_path):
+    """Counters from runs on two inputs add up, and say what each reached that the other did not."""
+    source = tmp_path / "branchy.bf"
+    source.write_text(",[-[-[->+<]]]>.")   # how far it goes depends on the byte
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"profile": {"counts": True}}))
+    reports = []
+    for name, byte in (("small", b"\x01"), ("large", b"\x07")):
+        report = tmp_path / f"{name}.json"
+        brainfunk("-O0", "-m", "analyze", "-a", "profile", "--config", config, "-f", source, "-o", report, input=byte)
+        reports.append(report)
+    merged = json.loads(brainfunk("-O0", "-m", "coverage", "-f", source, *reports).stdout)
+    small, large = merged["inputs"]
+    assert large["words_run"] > small["words_run"]
+    assert large["only"] > 0
+    assert merged["all"]["words_run"] >= large["words_run"]
+    assert merged["all"]["counters"]["words"] == merged["words"]
+    # Counters of another program are refused.
+    other = tmp_path / "other.bf"
+    other.write_text("+[-]")
+    assert brainfunk("-O0", "-m", "coverage", "-f", other, *reports, check=False).returncode != 0

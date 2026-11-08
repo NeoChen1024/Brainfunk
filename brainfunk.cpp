@@ -2,6 +2,7 @@
 #include "trace.hpp"
 #include "trace_file.hpp"
 #include "analysis.hpp"
+#include "coverage.hpp"
 #include <getopt.h>
 
 #include <algorithm>
@@ -61,6 +62,9 @@ static void readcode(string& code, const std::string& filename) {
         << "              run     run the program (bf is the same)\n"
         << "              analyze run it through the analyses of -a, a JSON report to -o or stderr\n"
         << "              trace   run it, writing a trace file to -o; the input is read whole first\n"
+        << "              coverage  add up the counters of analysis reports named after the options,\n"
+        << "                      from profile with \"counts\", of this program as translated or loaded,\n"
+        << "                      and report what each reached and what only it did, to -o\n"
         << "              bit     the program as a listing, one instruction a line\n"
         << "              hex     a bincode image as text, one hexadecimal word a line\n"
         << "              bin     a bincode image file\n"
@@ -198,7 +202,7 @@ int main(int argc, char** argv) {
         helpmsg(argv, 1);
     }
     if (mode == "bf") mode = "run";
-    constexpr std::string_view modes[] = {"run", "analyze", "trace", "bit", "hex", "bin", "packed", "bfc", "llvm"};
+    constexpr std::string_view modes[] = {"run", "analyze", "trace", "coverage", "bit", "hex", "bin", "packed", "bfc", "llvm"};
     if (std::find(std::begin(modes), std::end(modes), mode) == std::end(modes)) {
         cerr << "Unknown mode: " << mode << '\n';
         helpmsg(argv, 1);
@@ -297,6 +301,58 @@ int main(int argc, char** argv) {
 
         if (mode == "run") {
             bf.run();
+        } else if (mode == "coverage") {
+            const std::vector<string> reports(argv + optind, argv + argc);
+            if (reports.empty()) throw BrainfunkException("coverage needs reports to add up");
+            const auto code = bf.bitcode();
+
+            /* What a run reached: each word that ran, then each branch direction taken. */
+            const auto reached = [&](const Coverage& flow) {
+                const auto counts = flow.expand(code);
+                std::vector<bool> r(code.size() + 2 * flow.branch_pc.size());
+                for (std::size_t pc = 0; pc < code.size(); ++pc) r[pc] = counts[pc] != 0;
+                for (std::size_t i = 0; i < flow.branch_pc.size(); ++i) {
+                    r[code.size() + 2 * i] = flow.taken[i] != 0;
+                    r[code.size() + 2 * i + 1] = flow.count[i] != flow.taken[i];
+                }
+                return r;
+            };
+            const auto tally = [&](const std::vector<bool>& r) {
+                std::size_t words = 0, ways = 0;
+                for (std::size_t k = 0; k < r.size(); ++k) (k < code.size() ? words : ways) += r[k];
+                return std::pair{words, ways};
+            };
+
+            std::vector<Coverage> flows;
+            for (const auto& path : reports) {
+                std::ifstream file(path);
+                if (!file) throw BrainfunkException("cannot open " + path);
+                const auto report = nlohmann::json::parse(file);
+                flows.push_back(Coverage::from_json(report.contains("analyses")
+                                                        ? report.at("analyses").at("profile").at("counters")
+                                                        : report));
+            }
+            std::vector<std::vector<bool>> sets;
+            Coverage all = flows.front();
+            for (std::size_t i = 0; i < flows.size(); ++i) {
+                sets.push_back(reached(flows[i]));
+                if (i) all.add(flows[i]);
+            }
+            nlohmann::json inputs = nlohmann::json::array();
+            for (std::size_t i = 0; i < sets.size(); ++i) {
+                std::size_t only = 0;
+                for (std::size_t k = 0; k < sets[i].size(); ++k) {
+                    bool elsewhere = false;
+                    for (std::size_t j = 0; j < sets.size() && !elsewhere; ++j) elsewhere = j != i && sets[j][k];
+                    only += sets[i][k] && !elsewhere;
+                }
+                const auto [words, ways] = tally(sets[i]);
+                inputs.push_back({{"report", reports[i]}, {"words_run", words}, {"ways", ways}, {"only", only}});
+            }
+            const auto [words, ways] = tally(reached(all));
+            const nlohmann::json out = {{"words", code.size()}, {"branches", all.branch_pc.size()}, {"inputs", inputs},
+                                        {"all", {{"words_run", words}, {"ways", ways}, {"counters", all.to_json()}}}};
+            *output << out.dump(1) << '\n';
         } else if (mode == "analyze") {
             /* The program keeps stdout, so the report goes to -o or stderr. */
             const auto summary = run_traced(bf, *analysis, std::cin, cout, range);

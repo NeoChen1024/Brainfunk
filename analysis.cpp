@@ -1,5 +1,6 @@
 #include "analysis.hpp"
 #include "trace_file.hpp"
+#include "coverage.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -78,8 +79,13 @@ public:
         code_.assign(bf.bitcode().begin(), bf.bitcode().end());
         count_.assign(code_.size(), 0);
         taken_.assign(code_.size(), 0);
+        if (counts_) flow_.begin(bf);
+    }
+    void end(const Brainfunk& bf, const TraceSummary& summary) override {
+        if (counts_) flow_.end(bf, summary);
     }
     void event(const TraceEvent& e) override {
+        if (counts_) flow_.event(e);
         ++count_[e.pc];
         ++total_;
         if (e.branch) {
@@ -121,10 +127,7 @@ public:
                                   {"branches", {{"total", static_branches}, {"both_ways", both},
                                                 {"taken_only", taken_only}, {"not_taken_only", not_taken_only},
                                                 {"never_run", static_branches - both - taken_only - not_taken_only}}}}}};
-        if (counts_) {
-            out["counts"] = count_;
-            out["taken_counts"] = taken_;
-        }
+        if (counts_) out["counters"] = flow_.coverage().to_json();
         return out;
     }
 
@@ -135,6 +138,7 @@ private:
 
     std::size_t                top_;
     bool                       counts_;
+    CoverageSink               flow_;
     std::vector<Bitcode>       code_;
     std::vector<std::uint64_t> count_, taken_;
     std::uint64_t              total_ = 0, branches_ = 0, taken_total_ = 0;

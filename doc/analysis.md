@@ -68,11 +68,30 @@ differ from its defaults. The report has `run` (how it ended, as a trace file's 
 | Analysis | Configuration | Reports |
 |---|---|---|
 | `stat` | | counts per opcode, static and dynamic; cell reads and writes; `F` strides |
-| `profile` | `top`: rows, 30; `counts`: every counter, false | the hottest instructions, with how often each branch was taken; coverage: the share of words that ran, and how many branches went both ways, one way, or never ran. With `counts`, a run count and a taken count for every word, which add up across runs |
+| `profile` | `top`: rows, 30; `counts`: the counters, false | the hottest instructions, with how often each branch was taken; coverage: the share of words that ran, and how many branches went both ways, one way, or never ran. With `counts`, `counters`: how often each conditional branch ran and was taken, and where the run entered and was cut, from which every word's count follows; see `coverage.hpp` |
 | `ngram` | `n`: lengths, `[2, 3, 4]`; `top`: rows, 30 | the commonest runs of opcodes, each with how its cells relate to the instruction before: `raw` reads a cell it wrote, `same` shares a cell, `near` touches a neighbour |
 | `deps` | | how many instructions back a read's cell was written; basic block lengths; instructions between taken branches; loop trip counts |
 | `values` | | values read and written, how often a branch's test is zero, how often `F` starts on a zero |
 | `issue` | `machines`: a list, below | cycles for each machine, against the first |
+
+### Coverage
+
+Only conditional branches change where a program goes, so `profile` with `counts` keeps just how often
+each ran and was taken, with where the run entered and, unless it halted, the word it was cut before.
+Every word's count follows, by adding up what flows into it; `coverage.hpp` has the rule, and the unit
+tests hold it to counting every word on thousands of random runs, cut short and started late among them.
+Runs of one program at one level add up branch by branch.
+
+```shell
+build/bin/brainfunk -O0 -m analyze -a profile --config counts.json -f prog.b -o a.json < input-a
+build/bin/brainfunk -O0 -m analyze -a profile --config counts.json -f prog.b -o b.json < input-b
+build/bin/brainfunk -O0 -m coverage -f prog.b a.json b.json        # counts.json: {"profile": {"counts": true}}
+```
+
+`-m coverage` takes the program as the runs had it, and reports for each run the words it reached, the
+branch directions it went, and how many of those no other run reached; then the same for all of them,
+with their counters added up. `tools/corpus/corpus.py inputs coverage` does this for a corpus program's
+inputs.
 
 ### `issue`
 

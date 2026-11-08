@@ -40,7 +40,7 @@ find_package(zstd REQUIRED)
 find_package(Threads REQUIRED)
 
 # The library every program links: interpreter, optimizer, code generators, image formats, traces.
-add_library(libbrainfunk STATIC libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp image.cpp trace_file.cpp analysis.cpp)
+add_library(libbrainfunk STATIC libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp image.cpp trace_file.cpp analysis.cpp coverage.cpp)
 set_target_properties(libbrainfunk PROPERTIES OUTPUT_NAME brainfunk)
 target_include_directories(libbrainfunk PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(libbrainfunk PUBLIC nlohmann_json::nlohmann_json PRIVATE brainfunk_warnings zstd::libzstd_shared Threads::Threads)
