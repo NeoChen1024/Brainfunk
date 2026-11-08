@@ -61,6 +61,7 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Branch predicted taken, not in it | 3 more |
 | A word that is not a branch, wrongly in the next-fetch table | 3 more |
 | Branch mispredicted, or the table's target wrong | 9 more |
+| Branch mispredicted, its cell's value known when it is in `M0` | 6 more; see [Early resolution](#early-resolution) |
 | `IO` | about 8, plus waiting for the byte |
 | Cache miss, instruction | about 20, holding the front end |
 | Cache miss, data | about 30 to restart the instruction, about 20 more to write back a dirty line |
@@ -183,6 +184,40 @@ history it could really have at fetch was worse on `mandel.b` (9.9% wrong agains
 are also small against `LostKng.b`, where the model shows 4096 next-fetch entries cutting branch cost
 from 1.24 to 0.47 CPI. That would need block RAM and a slower answer, for 7% of a CPI of 11 that is
 mostly instruction cache misses.
+
+### Early resolution
+
+A branch's cell is often known well before `X` reads it: just written by an add of a constant, or
+untouched for a while. Two more guesses find those, and a branch in `M0` acts on them, redirecting
+fetch in the next cycle and turning its guess around for `X`, which still checks it. A misprediction
+found there costs 6 cycles rather than 9.
+
+- The early store, four cells in registers, direct-mapped by the low two address bits with six more
+  as a tag, follows the cells `A` works on. A set, an input byte, and an add to a cell it holds are
+  worked out in `A`. Another write, or a read of a cell it lacks, leaves the cell pending, to be
+  filled by that instruction from `W`; adds to a pending cell are summed meanwhile, to go on top.
+  Every redirect empties it, since the wrong path may have written it, and so does the end of `F`,
+  whose `base_ptr` comes too late for `D` to work out the cells after it.
+- The zero bits, a bit per tape cell in eight lanes of block RAM, are written in order from `W`.
+  `D` works out the branch's cell and reads its bit, which `M0` believes unless a write of that cell
+  is still on its way. Matching those writes on eight address bits only, a false match costs a guess.
+
+Both only guess, so formal gives them free values, and `cosim --chaos` random ones.
+
+Over the first two million instructions, at `-O2`:
+
+| Program | CPI before | With the early store | With the zero bits | With both |
+|---|---|---|---|---|
+| `mandel.b` | 1.590 | 1.583 | 1.517 | 1.517 |
+| `fib.b` | 1.298 | 1.265 | 1.295 | 1.262 |
+| `long.b` | 1.360 | 1.343 | 1.356 | 1.339 |
+| `hanoi.b` | 1.054 | 1.049 | 1.052 | 1.046 |
+
+Resolving the early store's branches in `A` instead, for 5 cycles, with eight cells, did better
+(`fib.b` 1.248), but did not meet timing. Neither does this yet: at 168 MHz the worst path misses by
+0.17 ns to 0.9 ns depending on the placement relaxation, on paths scattered over the core, the caches
+and the loader. Before it, the design met timing by 0.04 ns at 0.85 and missed at 0.75, 0.8 and 0.9.
+The board runs it correctly regardless. It costs about 900 LUTs and 8 block RAMs.
 
 ## Memory
 

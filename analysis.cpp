@@ -737,8 +737,8 @@ private:
 };
 
 enum class MulMode { Split, PairUnit, Single };
-enum class Forward { None, Set, Add };
-constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add"};
+enum class Forward { None, Set, Add, Mul };
+constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add", "mul"};
 
 /* An in-order core that issues up to `width` instructions a cycle. The defaults are the scalar
  * core in rtl/ as it is; doc/analysis.md says what each field means. */
@@ -757,15 +757,15 @@ struct MachineConfig {
      * issues, at X, unless `forward` works them out in D: constants, or adds of constants too. Values
      * come from a direct-mapped store of `early_cells` cells, or from the whole tape if 0, wrong paths
      * aside. Every cell touched fills its slot, a cell read only once the D-cache has it, at X; a
-     * branch whose cell is not there resolves at X. With early_flush, a misprediction found after A
-     * empties the store, since the wrong path may have written it. With early_zero_bits, a branch
+     * branch whose cell is not there resolves at X. With early_flush, a misprediction empties the
+     * store, since the wrong path may have written it. With early_zero_bits, a branch
      * whose cell is not in the store tests a bit per cell of the whole tape instead, written in order
      * as values are known at X. */
-    unsigned        early_penalty = 0, late = 4, early_cells = 0;
+    unsigned        early_penalty = 6, late = 4, early_cells = 4;
     unsigned        zero_bits_penalty = 0;   // for a branch the zero bits resolve; 0 as early_penalty
-    bool            early_flush = true, early_zero_bits = false;
-    bool            early_partial = true;   // a branch whose value comes later resolves then; else at X
-    Forward         forward = Forward::None;
+    bool            early_flush = true, early_zero_bits = true;
+    bool            early_partial = false;   // a branch whose value comes later resolves then; else at X
+    Forward         forward = Forward::Add;
     json            predictor = predictor_spec(json::object(), true);
 
     static MachineConfig from(const json& j) {
@@ -798,9 +798,9 @@ struct MachineConfig {
         c.early_partial = j.value("early_partial", c.early_partial);
         c.zero_bits_penalty = j.value("zero_bits_penalty", c.zero_bits_penalty);
         if (c.early_cells && !std::has_single_bit(c.early_cells)) throw BrainfunkException("issue: early_cells must be a power of two");
-        const auto forward = j.value("forward", std::string("none"));
+        const auto forward = j.value("forward", std::string(FORWARD_NAMES[static_cast<int>(c.forward)]));
         const auto known = std::find(std::begin(FORWARD_NAMES), std::end(FORWARD_NAMES), forward);
-        if (known == std::end(FORWARD_NAMES)) throw BrainfunkException("issue: forward is none, set or add, not " + forward);
+        if (known == std::end(FORWARD_NAMES)) throw BrainfunkException("issue: forward is none, set, add or mul, not " + forward);
         c.forward = static_cast<Forward>(known - std::begin(FORWARD_NAMES));
         c.predictor = predictor_spec(j.value("predictor", json::object()), true);
         if (c.width == 0 || c.reads == 0 || c.writes == 0) throw BrainfunkException("issue: width, reads and writes are at least 1");
@@ -924,8 +924,13 @@ public:
                     if (read) known_[cell] = std::max(known_[cell], cycle_ + c_.late);
                 };
                 if (e.branch) held = slots_of_[e.read[0].cell & (c_.early_cells - 1)] == e.read[0].cell;
-                for (unsigned i = 0; i < e.reads; ++i) fill(e.read[i].cell, true);
-                for (unsigned i = 0; i < e.writes; ++i) fill(e.write[i].cell, false);
+                /* As the core keeps them: not F's cells, and a MUL's source only when it reads it alone. */
+                if (op != Opcode::F) {
+                    const unsigned reads = mul ? (pair || chained ? 0 : 1) : e.reads;
+                    for (unsigned i = 0; i < reads; ++i) fill(e.read[i].cell, true);
+                    if (mul) fill(e.read[1].cell, true);
+                    for (unsigned i = 0; i < e.writes; ++i) fill(e.write[i].cell, false);
+                }
             }
             note_values(e, op, mask);
         }
@@ -942,7 +947,7 @@ public:
                 }
                 early_ += penalty == early;
             }
-            if (c_.early_penalty && c_.early_cells && c_.early_flush && penalty > c_.early_penalty) {
+            if (c_.early_penalty && c_.early_cells && c_.early_flush) {
                 std::fill(slots_of_.begin(), slots_of_.end(), NONE);
                 ++flushes_;
             }
@@ -961,7 +966,7 @@ public:
     void note_values(const TraceEvent& e, Opcode op, addr_t mask) {
         if (!e.writes) return;
         const std::uint64_t t = cycle_, late = t + c_.late;
-        const bool sets = c_.forward != Forward::None, adds = c_.forward == Forward::Add;
+        const bool sets = c_.forward != Forward::None, adds = c_.forward >= Forward::Add, muls = c_.forward == Forward::Mul;
         const auto chained = [&](std::initializer_list<addr_t> cells) {
             std::uint64_t at = t;
             for (const auto cell : cells) at = std::max(at, known_[cell]);
@@ -981,7 +986,7 @@ public:
         case Opcode::MUL:
         case Opcode::MULC: {
             const bool unit = e.instruction->data() == 1 || e.instruction->data() == 255;
-            known_[e.write[0].cell] = adds && unit ? chained({e.read[0].cell, e.read[1].cell}) : late;
+            known_[e.write[0].cell] = muls && unit ? chained({e.read[0].cell, e.read[1].cell}) : late;
             if (op == Opcode::MULC) known_[e.write[1].cell] = sets ? t : late;
             break;
         }
@@ -1124,7 +1129,7 @@ class IssueAnalysis final : public Analysis {
 public:
     explicit IssueAnalysis(const json& config) {
         const auto machines = config.value("machines", json::array({json{{"name", "scalar"}},
-                                                                     json{{"name", "dual"}, {"width", 2}, {"penalty", 10}}}));
+                                                                     json{{"name", "dual"}, {"width", 2}, {"penalty", 10}, {"early_penalty", 7}}}));
         for (const auto& m : machines) machines_.emplace_back(MachineConfig::from(m));
         if (machines_.empty()) throw BrainfunkException("issue: no machines");
     }

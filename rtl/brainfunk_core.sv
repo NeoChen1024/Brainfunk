@@ -50,6 +50,19 @@
 //     to the target if so, and puts it in the next-fetch table for next time.
 // A next-fetch guess that turns out wrong takes its entry out of the table.
 //
+// Early resolution: a branch whose cell's value is already known needs no wait for X. Two more
+// guesses, which X checks like the others, find most of them, and a branch in M0 acts on them:
+//   - an early store of four cells, direct-mapped with partial tags, kept in A: a set, an input byte
+//     and an add to a value it holds are worked out there; any other write, and a read of a cell it
+//     lacks, leave the cell pending until that instruction's X fills in its value, unless something
+//     younger has taken it over. Adds to a pending cell are summed, to go on top of that value when
+//     it comes. Any redirect empties it, since the wrong path may have written it, and so does the
+//     end of a scan, whose base_ptr comes too late for D to work out the next cells.
+//   - a zero bit per cell of the tape, written in order from W and read with an address D works
+//     out, believed unless a write of the cell is still on the way.
+// A branch whose guess either finds wrong redirects fetch in the next cycle, through early_redirect,
+// and has its guess turned around for X; what is younger, in A and M0, goes.
+//
 // The fused instructions (MULC, DJN, MJN, SRUN) are not implemented yet and trap.
 module brainfunk_core #(
     parameter int PC_WIDTH    = 20,
@@ -118,6 +131,10 @@ module brainfunk_core #(
     output logic [31:0]           retire_instr,
     output logic [PC_WIDTH-1:0]   retire_next_pc,
     output logic [ADDR_WIDTH-1:0] retire_base_ptr
+`ifdef BRAINFUNK_RETIRE_PORT
+    ,
+    input  logic                  predict_chaos    // early guesses at random too
+`endif
 );
 
     localparam logic [3:0] OP_A = 4'd1, OP_S = 4'd2, OP_MUL = 4'd3, OP_F = 4'd4, OP_M = 4'd5,
@@ -130,6 +147,12 @@ module brainfunk_core #(
     logic scan_done; // and has now worked out where base_ptr ends up, and retires
     logic flush;
     assign flush = redirect || scan_stop;
+
+    // A branch that resolved early, registered like redirect: fetch from early_pc, and base_ptr is
+    // early_base. The branch is in M1: what is in A and M0 goes.
+    logic                  early_redirect;
+    logic [PC_WIDTH-1:0]   early_pc;
+    logic [ADDR_WIDTH-1:0] early_base;
 
     // ---- fetch ----
     logic                front_en;
@@ -152,6 +175,11 @@ module brainfunk_core #(
             d_valid  <= 1'b0;
         end else if (redirect) begin
             fetch_pc <= w_alt_pc;
+            i1_valid <= 1'b0;
+            i2_valid <= 1'b0;
+            d_valid  <= 1'b0;
+        end else if (early_redirect) begin
+            fetch_pc <= early_pc;
             i1_valid <= 1'b0;
             i2_valid <= 1'b0;
             d_valid  <= 1'b0;
@@ -309,8 +337,9 @@ module brainfunk_core #(
     assign scan_next_ea   = {m0_ea[ADDR_WIDTH-1:LINE_BITS] + (a_scan_back ? '1 : (ADDR_WIDTH-LINE_BITS)'(1)),
                              scan_next_cell ^ {LINE_BITS{a_scan_back}}};
 
-    logic a_issue, a_flag_mul_dst;
+    logic a_issue, a_go_on, a_flag_mul_dst;
     assign a_issue        = a_valid && !dmem_busy && (!a_multi || a_go);
+    assign a_go_on        = a_issue && !flush && !early_redirect;   // and nothing older takes it away
     assign a_flag_mul_dst = a_is_mul && a_last;
 
     // A can take a new instruction; the front end moves if it has one to give.
@@ -322,7 +351,7 @@ module brainfunk_core #(
     logic                  prev_mul;
     logic [ADDR_WIDTH-1:0] prev_mul_source;
     always_ff @(posedge clk) begin
-        if (rst || redirect) begin
+        if (rst || redirect || early_redirect) begin
             prev_mul <= 1'b0;
         end else if (a_valid && a_ready) begin
             prev_mul        <= a_is_mul && !a_mul_pair && !scan_done && a_mul_source != a_offset_2;
@@ -341,6 +370,55 @@ module brainfunk_core #(
                                     : prev_mul && d_short[ADDR_WIDTH-1:0] == prev_mul_source);
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
+    // The early store's size, see early resolution below.
+    localparam int L0_BITS = 2;
+    localparam int L0_SIZE = 1 << L0_BITS;
+    localparam int L0_TAG  = 8 - L0_BITS;   // address bits above the index a cell is matched on: a guess may alias
+
+    // The offset A adds first.
+    logic [ADDR_WIDTH-1:0] d_offset;
+    assign d_offset = ((d_is_mul && !d_mul_chained && !d_mul_pair) || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
+                                                                                              : d_addr[ADDR_WIDTH-1:0];
+    // From base_ptr as it will be when the word is in A, the cells of early resolution: the low bits of
+    // the one the early store looks up, the first uop's, and of a MUL's destination; and a branch's, for
+    // its zero bit. A move in A is added in with the same carry chain, three operands at once. A scan
+    // ending now decides late: for the zero bit, both ways are summed and it picks; the early store
+    // does without, see a_l0_blind.
+    localparam int ZB_SEEN = 8;   // low address bits a write is matched on, for the zero bits: a match may alias
+    logic [7:0]            d_l0_offset, d_l0_move, d_l0_base, d_l0_cell, d_l0_dst;
+    logic [ADDR_WIDTH-1:0] d_zb_move, d_zb_short, d_zb_moved, d_zb_addr;
+    logic [L0_TAG-1:0]     a_l0_cell, a_l0_dst;    // the tags; the slots are one-hot
+    logic [L0_SIZE-1:0]    a_l0_one, a_l0_put;    // the early store's slots for a_l0_cell and a_l0_dst
+    logic                  a_l0_blind;            // the cells are not known: the early store is emptied
+    logic [ZB_SEEN-1:0]    a_zb_addr;
+
+    function automatic logic [ADDR_WIDTH-1:0] sum3(input logic [ADDR_WIDTH-1:0] a, b, c);
+        sum3 = (a ^ b ^ c) + (((a & b) | (a & c) | (b & c)) << 1);
+    endfunction
+
+    assign d_l0_offset = (d_is_mul || d_is_scan || d_is_branch) ? d_short[7:0] : d_addr[7:0];
+    assign d_l0_base   = base_ptr[7:0];
+    assign d_l0_move   = (a_valid && a_is_move) ? a_offset_2[7:0] : 8'd0;
+    assign d_l0_cell   = 8'(sum3(ADDR_WIDTH'(d_l0_base), ADDR_WIDTH'(d_l0_move), ADDR_WIDTH'(d_l0_offset)));
+    assign d_l0_dst    = 8'(sum3(ADDR_WIDTH'(d_l0_base), ADDR_WIDTH'(d_l0_move), ADDR_WIDTH'(d_addr[7:0])));
+    assign d_zb_move   = a_offset_2;
+    assign d_zb_short  = d_short[ADDR_WIDTH-1:0];
+    assign d_zb_moved  = sum3(base_ptr, d_zb_move, d_zb_short);
+    assign d_zb_addr   = scan_done ? scan_base + d_zb_short : (a_valid && a_is_move) ? d_zb_moved : base_ptr + d_zb_short;
+
+    // Taken as A is ready, not only as D moves to it, which is later: if D does not, A is empty, and
+    // what these hold does not matter.
+    always_ff @(posedge clk) begin
+        if (a_ready) begin
+            a_l0_cell  <= d_l0_cell[L0_BITS +: L0_TAG];
+            a_zb_addr  <= d_zb_addr[ZB_SEEN-1:0];
+            a_l0_one   <= scan_done ? '0 : L0_SIZE'(1) << d_l0_cell[L0_BITS-1:0];
+            a_l0_dst   <= d_l0_dst[L0_BITS +: L0_TAG];
+            a_l0_put   <= scan_done ? '0 : L0_SIZE'(1) << d_l0_dst[L0_BITS-1:0];
+            a_l0_blind <= scan_done;
+        end
+    end
+
     logic drained;
     logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
 
@@ -354,7 +432,7 @@ module brainfunk_core #(
     assign io_in_ready = a_valid && a_is_in && a_phase == 2'd1 && drained;
 
     always_ff @(posedge clk) begin
-        if (rst || redirect) begin
+        if (rst || redirect || early_redirect) begin
             a_valid <= 1'b0;
         end else if (a_ready) begin
             a_valid <= front_en && d_valid;
@@ -364,6 +442,8 @@ module brainfunk_core #(
             base_ptr <= '0;
         end else if (redirect) begin
             base_ptr <= w_base;
+        end else if (early_redirect) begin
+            base_ptr <= early_base;
         end else if (scan_done) begin
             base_ptr <= scan_base;
         end else if (a_issue && (a_is_move || (a_is_scan && !a_scan_wide))) begin
@@ -405,8 +485,7 @@ module brainfunk_core #(
             a_scan_back     <= d_instr[19];
             a_scan_stride   <= d_scan_wide ? d_stride : '0;
             a_scan_more     <= 1'b0;
-            a_offset        <= ((d_is_mul && !d_mul_chained && !d_mul_pair) || d_is_scan || d_is_branch) ? d_short[ADDR_WIDTH-1:0]
-                                                                                          : d_addr[ADDR_WIDTH-1:0];
+            a_offset        <= d_offset;
             a_offset_2      <= d_is_mul ? d_addr[ADDR_WIDTH-1:0] : d_long[ADDR_WIDTH-1:0];
         end else if (a_is_mul) begin
             unique case (a_phase)
@@ -472,6 +551,8 @@ module brainfunk_core #(
     logic [(1 << LINE_BITS)-1:0] m0_bank2;
     logic [3:0]            m0_slot;
     logic [1:0]            m0_counter;
+    logic                  m0_l0_known, m0_l0_zero, m0_l0_fill;
+    logic [3:0]            m0_l0_seq;
 
     logic                  m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
     logic                  m1_is_scan, m1_is_out_read, m1_is_mul_src, m1_is_mul_dst, m1_is_halt, m1_is_trap;
@@ -484,6 +565,8 @@ module brainfunk_core #(
     logic [4:1]            m1_hit2;
     logic [3:0]            m1_slot;
     logic [1:0]            m1_counter;
+    logic                  m1_early_fixed, m1_l0_fill;
+    logic [3:0]            m1_l0_seq;
     logic [4:1]            m1_hit;
 
     logic                  m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
@@ -495,6 +578,8 @@ module brainfunk_core #(
     logic                  m2_next_taken, m2_target_wrong, m2_mul_unit, m2_mul_negate;
     logic [3:0]            m2_slot;
     logic [1:0]            m2_counter;
+    logic                  m2_early_fixed, m2_l0_fill;
+    logic [3:0]            m2_l0_seq;
     logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
     logic                  m2_pair, m2_s_from_w, m2_s_from_w1, m2_s_from_w2, m2_s_from_w_next;
     logic [ADDR_WIDTH-1:0] m2_ea2;
@@ -508,6 +593,8 @@ module brainfunk_core #(
     logic                  x_next_taken, x_target_wrong, x_mul_unit, x_mul_negate;
     logic [3:0]            x_slot;
     logic [1:0]            x_counter;
+    logic                  x_early_fixed, x_l0_fill;
+    logic [3:0]            x_l0_seq;
     logic                  x_from_w, x_from_early;
     logic [7:0]            x_early;
     logic                  x_pair, x_s_from_w, x_s_from_early;
@@ -552,6 +639,190 @@ module brainfunk_core #(
     assign x_operand = !x_pair ? x_addend : x_mul_negate ? ~x_source : x_source;
     assign x_sum     = x_value + x_operand + 8'(x_pair && x_mul_negate);
 
+    // ---- early resolution ----
+
+    // The guesses: from A, whether the early store holds a value for the cell, and whether it is
+    // zero; in M0, whether the zero bit is to be believed, and the bit. Both are acted on in M0.
+    logic       a_l0_known, a_l0_zero, m0_zb_known, m0_zb_zero;
+    logic       a_l0_alloc;  // A leaves its cell pending in the store, for this uop's X to fill in
+    logic [3:0] l0_seq;      // numbers the uops leaving A, so that a pending cell knows whose fill it waits for
+
+    logic m0_known, m0_zero, m0_early_wrong, m0_flip;
+    assign m0_known       = m0_l0_known || m0_zb_known;
+    assign m0_zero        = m0_l0_known ? m0_l0_zero : m0_zb_zero;
+    assign m0_early_wrong = m0_valid && !flush && !early_redirect && m0_is_branch && m0_known &&
+                            (m0_zero == m0_is_je) != m0_predict_taken;
+
+    // A branch that resolved early has its guess turned as it goes on to M1.
+    assign m0_flip = m0_early_wrong;
+
+    always_ff @(posedge clk) begin
+        early_redirect <= !rst && m0_early_wrong;
+        early_pc       <= m0_alt_pc;
+        early_base     <= m0_base_after;
+    end
+
+`ifdef FORMAL
+    // Any guess at all: what the core does must not depend on them.
+    (* anyseq *) logic f_l0_known, f_l0_zero, f_zb_known, f_zb_zero;
+    assign a_l0_known  = f_l0_known;
+    assign a_l0_zero   = f_l0_zero;
+    assign m0_zb_known = f_zb_known;
+    assign m0_zb_zero  = f_zb_zero;
+    assign a_l0_alloc  = 1'b0;
+    assign l0_seq      = '0;
+`else
+    // The early store. A cell is empty, pending, or has its value as of the youngest uop through A.
+    // A pending cell waits for its owner's X, and its value holds the adds since, to go on top.
+    // Each slot works out its own match, sums and next state, so that no lookup comes before a write;
+    // and it keeps whether its value is zero, for branches.
+    localparam logic [1:0] L0_EMPTY = 2'd0, L0_PENDING = 2'd1, L0_VALID = 2'd2;
+    // Packed, so that they are registers: every cell is read and emptied at once.
+    logic [L0_SIZE-1:0][1:0]        l0_state;
+    logic [L0_SIZE-1:0][L0_TAG-1:0] l0_tag;
+    logic [L0_SIZE-1:0][7:0]        l0_value;
+    logic [L0_SIZE-1:0][3:0]        l0_owner;
+    logic [L0_SIZE-1:0]             l0_zero;
+
+    // A's uop looks up the cell of A's first uop, which D worked out; a MUL's destination, which D also
+    // worked out, only ever goes pending.
+    logic [L0_SIZE-1:0] a_l0_hit, a_l0_valid, w_l0_fills;
+    logic               a_l0_match, a_l0_touch, a_l0_set;
+    assign a_l0_touch = a_is_add || a_is_set || a_is_mul || a_is_branch || a_is_in || (a_is_out && !a_last);
+    assign a_l0_set   = a_is_set || (a_is_in && a_last);
+    for (genvar i = 0; i < L0_SIZE; i++) begin : l0_slot
+        assign a_l0_hit[i]   = a_l0_one[i] && l0_state[i] != L0_EMPTY && l0_tag[i] == a_l0_cell;
+        assign a_l0_valid[i] = a_l0_one[i] && l0_state[i] == L0_VALID && l0_tag[i] == a_l0_cell;
+    end
+    assign a_l0_match = |a_l0_hit;
+    assign a_l0_alloc = a_l0_touch && (a_flag_mul_dst || (!a_l0_match && !a_l0_set));
+
+    // X's value reaches the store from W, so that nothing follows X's adder but a register. Whether the
+    // slot still waits for it, and the adds since, are read in X, and stand unless A's uop takes the
+    // slot or adds to it meanwhile; an add lets the cell go.
+    logic       w_l0_fill, w_l0_zero;
+    logic [3:0] w_l0_seq;
+    logic [7:0] w_l0_base, w_l0_since, x_l0_since, w_l0_filled;
+    always_comb begin
+        x_l0_since = '0;
+        for (int i = 0; i < L0_SIZE; i++) if (x_ea[L0_BITS-1:0] == L0_BITS'(i)) x_l0_since = l0_value[i];
+    end
+    always_ff @(posedge clk) begin
+        w_l0_fill  <= x_valid && !flush && !x_miss && x_l0_fill;
+        w_l0_seq   <= x_l0_seq;
+        w_l0_base  <= x_writes ? x_sum : x_value;
+        w_l0_since <= x_l0_since;
+    end
+    assign w_l0_filled = w_l0_base + w_l0_since;
+
+    // Whether a + b is zero, without the carries: bit i of a ^ b must be the carry into it, which for a
+    // zero sum is a | b one bit down.
+    function automatic logic sums_to_zero(input logic [7:0] a, input logic [7:0] b);
+        sums_to_zero = (a ^ b) == {a[6:0] | b[6:0], 1'b0};
+    endfunction
+    assign w_l0_zero = sums_to_zero(w_l0_base, w_l0_since);
+
+    // a_go_on comes late, so each slot works out its next state both ways, and it only picks.
+    logic l0_kill, a_data_zero;
+    assign l0_kill     = rst || flush || early_redirect || (a_valid && a_l0_blind);
+    assign a_data_zero = a_data == 8'd0;
+    for (genvar i = 0; i < L0_SIZE; i++) begin : l0_write
+        logic       x_waits, w_waits, w_taken, w_added, sel_add, sel_set, alloc, takes, sums, lets_go, go;
+        logic       z_add, held_zero, go_zero;
+        logic [1:0] held_state, go_state;
+        logic [7:0] added, held_value, go_value;
+        assign x_waits = l0_state[i] == L0_PENDING && x_ea[L0_BITS-1:0] == L0_BITS'(i) &&
+                         l0_tag[i] == x_ea[L0_BITS +: L0_TAG] && l0_owner[i] == x_l0_seq;
+        always_ff @(posedge clk) begin
+            w_waits <= x_valid && !flush && !x_miss && x_l0_fill && x_waits;
+            w_taken <= l0_kill || (go && takes);
+            w_added <= go && sums;
+        end
+        assign w_l0_fills[i] = w_l0_fill && w_waits && !w_taken && !w_added;
+        assign lets_go       = w_l0_fill && w_waits && !w_taken && w_added;
+
+        // What A's uop does to this slot, if it goes on: an add or a set to its cell, a read of it, or
+        // a MUL's destination, which goes pending.
+        assign sel_add = a_is_add && a_l0_one[i];
+        assign sel_set = a_l0_set && a_l0_one[i];
+        assign alloc   = (a_flag_mul_dst && a_l0_put[i]) ||
+                         (a_l0_one[i] && a_l0_touch && !a_flag_mul_dst && !a_l0_set && !a_l0_hit[i]);
+        assign takes   = sel_set || (sel_add && a_l0_valid[i]) || alloc;
+        assign sums    = sel_add && a_l0_hit[i] && !a_l0_valid[i];   // to a pending value
+        assign added   = l0_value[i] + a_data;
+        assign z_add   = sums_to_zero(l0_value[i], a_data);
+
+        // Without A's uop: a fill, or nothing.
+        assign held_state = (l0_kill || lets_go) ? L0_EMPTY : w_l0_fills[i] ? L0_VALID : l0_state[i];
+        assign held_value = w_l0_fills[i] ? w_l0_filled : l0_value[i];
+        assign held_zero  = w_l0_fills[i] ? w_l0_zero : l0_zero[i];
+        // With it, younger than the fill: it goes over it, and an add to a pending cell filled now,
+        // which would need both sums at once, lets the cell go. The zero bit matters only when valid.
+        assign go_state = l0_kill ? L0_EMPTY : sel_set ? L0_VALID :
+                          sel_add ? (a_l0_valid[i] ? L0_VALID : (a_l0_hit[i] && (w_l0_fills[i] || lets_go)) ? L0_EMPTY : L0_PENDING) :
+                          alloc ? L0_PENDING : held_state;
+        assign go_value = sel_set ? a_data : sel_add ? (a_l0_hit[i] ? added : 8'd0) : alloc ? 8'd0 : held_value;
+        assign go_zero  = sel_set ? a_data_zero : held_zero;
+        // Only A's uop's slots can differ both ways, which keeps a_go_on's own load small.
+        assign go = a_issue && (a_l0_one[i] || a_l0_put[i]);
+        always_ff @(posedge clk) begin
+            l0_state[i] <= go ? go_state : held_state;
+            l0_value[i] <= go ? go_value : held_value;
+            l0_zero[i]  <= (go && sel_add) ? z_add : go ? go_zero : held_zero;
+            if (go && takes) begin
+                l0_tag[i]   <= a_flag_mul_dst ? a_l0_dst : a_l0_cell;
+                l0_owner[i] <= l0_seq;
+            end
+        end
+    end
+    always_ff @(posedge clk) begin
+        if (rst) l0_seq <= '0;
+        else if (a_go_on) l0_seq <= l0_seq + 4'd1;
+    end
+
+    // The zero bits, read with the address of a branch's cell.
+    logic a_fresh;   // A has a word D gave it last cycle, or none
+    always_ff @(posedge clk) a_fresh <= a_ready;
+    logic zb_zero, m0_zb_clean;
+
+    zero_bits #(.ADDR_WIDTH(ADDR_WIDTH)) zero_bits_i (
+        .clk(clk), .rd_en(a_fresh), .raddr(d_zb_addr), .zero(zb_zero),
+        .we(dmem_we), .waddr(w_ea), .wzero(w_data == 8'd0)
+    );
+
+    // The bit was read as the branch went from D to A: writes from then on are not in it. Those are
+    // the ones in M1 to W once the branch is in M0, and the one that left W since, and one more: as
+    // it is in A, M0 to W and the one that just left W, which A compares, for M0 to have the answer.
+    logic                  w1_we, a_zb_clean;
+    logic [ZB_SEEN-1:0]    w1_ea;
+    always_ff @(posedge clk) begin
+        w1_we <= !rst && dmem_we;
+        w1_ea <= w_ea[ZB_SEEN-1:0];
+    end
+    assign a_zb_clean = !(m0_valid && m0_writes && a_zb_addr == m0_ea[ZB_SEEN-1:0]) &&
+                        !(m1_valid && m1_writes && a_zb_addr == m1_ea[ZB_SEEN-1:0]) &&
+                        !(m2_valid && m2_writes && a_zb_addr == m2_ea[ZB_SEEN-1:0]) &&
+                        !(x_valid && x_writes && a_zb_addr == x_ea[ZB_SEEN-1:0]) &&
+                        !(dmem_we && a_zb_addr == w_ea[ZB_SEEN-1:0]) && !(w1_we && a_zb_addr == w1_ea[ZB_SEEN-1:0]);
+    always_ff @(posedge clk) m0_zb_clean <= a_zb_clean;
+
+`ifdef BRAINFUNK_RETIRE_PORT
+    logic [31:0] noise = 32'hC0DE_5EED;
+    always_ff @(posedge clk) noise <= {noise[30:0], noise[31] ^ noise[21] ^ noise[1] ^ noise[0]};
+    logic a_l0_found;
+    assign a_l0_found  = |(a_l0_valid & l0_zero);
+    assign a_l0_known  = predict_chaos ? noise[0] : |a_l0_valid;
+    assign a_l0_zero   = predict_chaos ? noise[1] : a_l0_found;
+    assign m0_zb_known = predict_chaos ? noise[2] : m0_zb_clean;
+    assign m0_zb_zero  = predict_chaos ? noise[3] : zb_zero;
+`else
+    assign a_l0_known  = |a_l0_valid;
+    assign a_l0_zero   = |(a_l0_valid & l0_zero);
+    assign m0_zb_known = m0_zb_clean;
+    assign m0_zb_zero  = zb_zero;
+`endif
+`endif
+
     always_ff @(posedge clk) begin
         if (rst) begin
             m0_valid  <= 1'b0;
@@ -566,8 +837,8 @@ module brainfunk_core #(
             dmem_miss <= 1'b0;
             dmem_we   <= 1'b0;
         end else begin
-            m0_valid  <= a_issue && !flush;
-            m1_valid  <= m0_valid && !flush;
+            m0_valid  <= a_go_on;
+            m1_valid  <= m0_valid && !flush && !early_redirect;
             m2_valid  <= m1_valid && !flush;
             x_valid   <= m2_valid && !flush;
             w_valid   <= x_valid && !flush && !x_miss;
@@ -613,8 +884,12 @@ module brainfunk_core #(
         m0_pair          <= a_is_mul && a_mul_pair;
         m0_ea2           <= ea2;
         // as m0_valid, which the cache would otherwise have to decode on its way to the block RAM
-        m0_bank2         <= (!rst && a_issue && !flush && a_is_mul && a_mul_pair) ? (1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;
+        m0_bank2         <= (!rst && a_go_on && a_is_mul && a_mul_pair) ? (1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;
         m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
+        m0_l0_known      <= a_l0_known && a_is_branch;
+        m0_l0_zero       <= a_l0_zero;
+        m0_l0_fill       <= a_l0_alloc;
+        m0_l0_seq        <= l0_seq;
         m0_slot           <= a_slot;
         m0_counter       <= a_counter;
 
@@ -641,7 +916,7 @@ module brainfunk_core #(
         m1_no_read       <= m0_no_read;
         m1_is_branch     <= m0_is_branch;
         m1_is_je         <= m0_is_je;
-        m1_predict_taken <= m0_predict_taken;
+        m1_predict_taken <= m0_flip ? !m0_predict_taken : m0_predict_taken;
         m1_is_scan       <= m0_is_scan;
         m1_is_out_read   <= m0_is_out_read;
         m1_is_mul_src    <= m0_is_mul_src;
@@ -650,15 +925,18 @@ module brainfunk_core #(
         m1_is_trap       <= m0_is_trap;
         m1_data          <= m0_data;
         m1_pc            <= m0_pc;
-        m1_next_pc       <= m0_next_pc;
-        m1_alt_pc        <= m0_alt_pc;
+        m1_next_pc       <= m0_flip ? m0_alt_pc : m0_next_pc;
+        m1_alt_pc        <= m0_flip ? m0_next_pc : m0_alt_pc;
         m1_instr         <= m0_instr;
         m1_next_taken    <= m0_next_taken;
         m1_mul_unit      <= m0_mul_unit;
         m1_mul_negate    <= m0_mul_negate;
         m1_pair          <= m0_pair;
         m1_ea2           <= m0_ea2;
-        m1_target_wrong  <= m0_target_wrong;
+        m1_target_wrong  <= m0_target_wrong && !m0_flip;
+        m1_early_fixed   <= m0_flip;
+        m1_l0_fill       <= m0_l0_fill;
+        m1_l0_seq        <= m0_l0_seq;
         m1_slot           <= m0_slot;
         m1_counter       <= m0_counter;
 
@@ -701,6 +979,9 @@ module brainfunk_core #(
         m2_pair          <= m1_pair;
         m2_ea2           <= m1_ea2;
         m2_target_wrong  <= m1_target_wrong;
+        m2_early_fixed   <= m1_early_fixed;
+        m2_l0_fill       <= m1_l0_fill;
+        m2_l0_seq        <= m1_l0_seq;
         m2_slot           <= m1_slot;
         m2_counter       <= m1_counter;
 
@@ -742,6 +1023,9 @@ module brainfunk_core #(
         x_pair          <= m2_pair;
         x_ea2           <= m2_ea2;
         x_target_wrong  <= m2_target_wrong;
+        x_early_fixed   <= m2_early_fixed;
+        x_l0_fill       <= m2_l0_fill;
+        x_l0_seq        <= m2_l0_seq;
         x_slot           <= m2_slot;
         x_counter       <= m2_counter;
 
@@ -769,7 +1053,7 @@ module brainfunk_core #(
         w_instr      <= x_instr;
         w_is_branch  <= x_is_branch;
         w_taken      <= x_taken;
-        w_wrong_guess <= x_mispredict && x_next_taken;
+        w_wrong_guess <= (x_mispredict || (x_valid && !flush && x_early_fixed)) && x_next_taken;
         w_slot        <= x_slot;
         w_counter    <= x_counter;
         w_data       <= x_sum;
@@ -804,8 +1088,8 @@ module brainfunk_core #(
     // lengthens the path they start from.
     logic                d_learn, w_forget;
     logic                d_seq_forget;
-    assign d_learn      = front_en && !redirect && d_steer_taken;
-    assign d_seq_forget = front_en && !redirect && d_steer_seq;
+    assign d_learn      = front_en && !redirect && !early_redirect && d_steer_taken;
+    assign d_seq_forget = front_en && !redirect && !early_redirect && d_steer_seq;
     assign w_forget     = w_valid && w_wrong_guess;
     always_ff @(posedge clk) begin
         next_we         <= !rst && (w_forget || d_learn || d_seq_forget);

@@ -835,6 +835,7 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
                                                            machine("add, 1 cell, zero bits", 5, "add", 1, true),
                                                            machine("none, at X if not known", 5, "none", 0),
                                                            machine("add, 1 cell, zero bits at 7", 5, "add", 1, true)}}}}};
+    config["issue"]["machines"][1]["early_partial"] = true;   // waits for a value that comes late
     config["issue"]["machines"][5]["early_partial"] = false;
     config["issue"]["machines"][6]["zero_bits_penalty"] = 7;
     AnalysisSet set("issue", config);

@@ -103,7 +103,8 @@ is within 0.01% of the cosimulator on `long.b`, 1% on `hanoi.b`, 2% on `fib.b` a
 `tests/hw/test_cosim.py` keeps it there. It has no caches, so a program that misses, `LostKng.b`, takes
 far longer on the core.
 
-Without `--config` it compares `scalar`, the defaults, with `dual`, `width` 2 and `penalty` 10. Each
+Without `--config` it compares `scalar`, the defaults, with `dual`, `width` 2, `penalty` 10 and
+`early_penalty` 7. Each
 machine's fields, all optional:
 
 | Field | Default | Meaning |
@@ -121,14 +122,14 @@ machine's fields, all optional:
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
 | `io` | 7 | cycles an `IO` takes |
-| `early_penalty` | 0 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
+| `early_penalty` | 6 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
 | `late` | 4 | cycles after its writer issues that a value is known, at X, for `early_penalty` |
-| `forward` | `none` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds to known values (`A`, `DJN`, `MUL` by 1 or -1) |
-| `early_cells` | 0 | cells in a direct-mapped store the early values come from, each cell touched filling its slot, a cell read only once the D-cache has it at X; a branch whose cell is not there resolves at X; 0 the whole tape, wrong paths aside |
-| `early_flush` | true | a misprediction found after A empties that store, which the wrong path may have written |
-| `early_partial` | true | a branch whose cell's value is known only after it issues resolves when it is; false, at X |
+| `forward` | `add` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds of constants to known values (`A`, `DJN`); `mul`, `MUL` by 1 or -1 of known values too |
+| `early_cells` | 4 | cells in a direct-mapped store the early values come from, each cell touched filling its slot, a cell read only once the D-cache has it at X; a branch whose cell is not there resolves at X; 0 the whole tape, wrong paths aside |
+| `early_flush` | true | a misprediction empties that store, which the wrong path may have written |
+| `early_partial` | false | a branch whose cell's value is known only after it issues resolves when it is; false, at X |
 | `zero_bits_penalty` | 0 | what a misprediction the zero bits resolve costs, if not `early_penalty` |
-| `early_zero_bits` | false | a branch whose cell is not in the store tests a bit per cell of the whole tape instead, written in order as values are known at X |
+| `early_zero_bits` | true | a branch whose cell is not in the store tests a bit per cell of the whole tape instead, written in order as values are known at X |
 | `predictor` | `rtl` | how branches are guessed, below |
 
 A group closes at a taken branch, a misprediction, and a redirect. The report gives, for each machine,

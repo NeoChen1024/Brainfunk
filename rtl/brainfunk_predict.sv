@@ -81,3 +81,66 @@ module branch_predictor #(
         .wdata(dir_counter)
     );
 endmodule
+
+// A bit per tape cell, set while the cell is not zero: a guess for branches, which X still checks.
+// Written in order as W writes the cell; read with an address D works out, so that the bit is in a
+// register by the time the branch is in M0. Reading a cell in the same cycle it is written gives
+// either value, as block RAM may. The tape starts out zero, as block RAM does; a reset without a new
+// configuration leaves the bits as they were, which costs only time.
+//
+// Eight lanes of block RAM, a cell's low address bits choosing the lane: every lane's bit goes
+// straight to a register, and the choice is made after it, in M0.
+module zero_bits #(
+    parameter int ADDR_WIDTH = 16
+) (
+    input  logic                  clk,
+    input  logic                  rd_en,   // raddr was for the word that moved from D to A last cycle
+    input  logic [ADDR_WIDTH-1:0] raddr,
+    output logic                  zero,    // for that word, once it is in M0
+    input  logic                  we,
+    input  logic [ADDR_WIDTH-1:0] waddr,
+    input  logic                  wzero
+);
+    localparam int ROW_WIDTH = ADDR_WIDTH - 3;
+    logic [7:0] ram_q, nonzero;
+    logic [2:0] lane, lane_q;
+
+    // The block RAM reads every cycle, and its output is kept when it was for the word now in A: so
+    // that what decides it, which comes late, drives one register and no block RAM.
+    for (genvar k = 0; k < 8; k++) begin : lanes
+        zero_lane #(.ADDR_WIDTH(ROW_WIDTH)) lane_ram (
+            .clk(clk), .raddr(raddr[ADDR_WIDTH-1:3]), .nonzero(ram_q[k]),
+            .we(we && waddr[2:0] == 3'(k)), .waddr(waddr[ADDR_WIDTH-1:3]), .wnonzero(!wzero)
+        );
+    end
+
+    always_ff @(posedge clk) begin
+        lane <= raddr[2:0];
+        if (rd_en) begin
+            nonzero <= ram_q;   // the block RAM's outputs go straight to registers
+            lane_q  <= lane;
+        end
+    end
+    assign zero = !nonzero[lane_q];
+endmodule
+
+// One lane of the zero bits: a block RAM of its own.
+module zero_lane #(
+    parameter int ADDR_WIDTH = 13
+) (
+    input  logic                  clk,
+    input  logic [ADDR_WIDTH-1:0] raddr,
+    output logic                  nonzero,
+    input  logic                  we,
+    input  logic [ADDR_WIDTH-1:0] waddr,
+    input  logic                  wnonzero
+);
+    logic mem[0:(1 << ADDR_WIDTH) - 1];
+`ifdef VERILATOR
+    initial for (int i = 0; i < (1 << ADDR_WIDTH); i++) mem[i] = 1'b0;
+`endif
+    always_ff @(posedge clk) begin
+        if (we) mem[waddr] <= wnonzero;
+        nonzero <= mem[raddr];
+    end
+endmodule

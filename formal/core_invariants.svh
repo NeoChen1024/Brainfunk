@@ -243,7 +243,9 @@ assign ok_m2        = ok_x && !(m2_valid && m2_target_wrong);
 
 assign path_m1_pc   = m1_valid ? (m1_retire && !m1_is_scan ? m1_next_pc : m1_pc) : path_m2_pc;
 assign path_m1_base = m1_valid ? m1_base_after : path_m2_base;
-assign ok_m1        = ok_m2 && !(m1_valid && m1_target_wrong);
+// A branch that resolved early in M0 is in M1 as early_redirect sends fetch its way: what is
+// younger followed the guess it turned.
+assign ok_m1        = ok_m2 && !(m1_valid && m1_target_wrong) && !early_redirect;
 
 assign path_m0_pc   = m0_valid ? (m0_retire && !m0_is_scan ? m0_next_pc : m0_pc) : path_m1_pc;
 assign path_m0_base = m0_valid ? m0_base_after : path_m1_base;
@@ -402,6 +404,8 @@ always_ff @(posedge clk) if (!rst) begin
     if (ok_m1 && m0_valid && !m0_is_scan) assert (m0_base == path_m1_base);
     if (ok_m0 && a_valid) assert (a_pc == path_m0_pc);
     if (ok_m0 && !any_scan_read && !g_active && !scan_ending) assert (base_ptr == path_m0_base);
+    if (early_redirect) assert (m1_valid && m1_is_branch && !m1_target_wrong && early_pc == m1_next_pc);
+    if (early_redirect) assert (early_base == m1_base_after);
 
     // What has been fetched: each word follows the one before unless it was sent elsewhere.
     if (d_valid && i2_valid && !d_next_taken) assert (i2_pc == d_pc + PC_WIDTH'(1));

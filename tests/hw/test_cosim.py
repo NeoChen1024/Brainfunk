@@ -44,10 +44,10 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
-# the design changes. Some are close because of what they are there to catch: hanoi.b's, next-fetch false
-# hits left in the table (1.0539 as it is, 1.0565 with them); mandel.b's, unit MULs that stop reading both
-# cells at once (1.590 against 1.741).
-CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.65, "LostKng.b": 12.0, "fib.b": 1.33}
+# the design changes. Some are close because of what they are there to catch: hanoi.b's, the early store
+# gone (1.0464 as it is, 1.0516 without); fib.b's, adds to a pending cell of the early store forgotten
+# (1.2622 against 1.2908); mandel.b's, the zero bits gone (1.5168 against 1.5831).
+CPI_LIMITS = {"hanoi.b": 1.05, "mandel.b": 1.525, "LostKng.b": 11.5, "fib.b": 1.27}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -171,9 +171,10 @@ def test_stalls_on_a_real_program(tools, tmp_path):
 
 # How far the scalar machine of `brainfunk -m analyze -a issue` may be from the core, over the same first
 # instructions. The model has no caches, so LostKng.b, which waits on the instruction cache, is not here,
-# and mandel.b's branches cost the core more than the model sees: at the last count it was 7.3% short.
+# and mandel.b's branches cost the core more than the model sees: at the last count, with early
+# resolution, the model was 0.01% short on long.b, 1.0% on hanoi.b, 1.9% on fib.b and 6.2% on mandel.b.
 # A design change that the model does not follow shows up here.
-MODEL_TOLERANCE = {"hanoi.b": 0.02, "long.b": 0.01, "fib.b": 0.03, "mandel.b": 0.08}
+MODEL_TOLERANCE = {"hanoi.b": 0.02, "long.b": 0.01, "fib.b": 0.03, "mandel.b": 0.07}
 
 
 @pytest.mark.parametrize("name", MODEL_TOLERANCE)
