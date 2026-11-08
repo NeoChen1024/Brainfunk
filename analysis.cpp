@@ -655,6 +655,8 @@ private:
 };
 
 enum class MulMode { Split, PairUnit, Single };
+enum class Forward { None, Set, Add };
+constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add"};
 
 /* An in-order core that issues up to `width` instructions a cycle. The defaults are the scalar
  * core in rtl/ as it is; doc/analysis.md says what each field means. */
@@ -668,6 +670,13 @@ struct MachineConfig {
     unsigned        banks = 32;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
     unsigned        penalty = 9, steer = 3;
     unsigned        scan_base = 8, line_cells = 32, stride_limit = 16, io = 7;
+    /* Branches resolved before X: once the cell's value is known, a misprediction costs early_penalty
+     * (0: never early) plus the cycles until it is. Values are known `late` cycles after their writer
+     * issues, at X, unless `forward` works them out in D: constants, or adds of constants too. Values
+     * come from a direct-mapped store of `early_cells` cells, every cell touched filling its slot, or
+     * from the whole tape if 0; a branch whose cell is not there resolves at X. */
+    unsigned        early_penalty = 0, late = 4, early_cells = 0;
+    Forward         forward = Forward::None;
     json            predictor = predictor_spec(json::object(), true);
 
     static MachineConfig from(const json& j) {
@@ -692,6 +701,14 @@ struct MachineConfig {
         c.line_cells = j.value("line_cells", c.line_cells);
         c.stride_limit = j.value("stride_limit", c.stride_limit);
         c.io = j.value("io", c.io);
+        c.early_penalty = j.value("early_penalty", c.early_penalty);
+        c.late = j.value("late", c.late);
+        c.early_cells = j.value("early_cells", c.early_cells);
+        if (c.early_cells && !std::has_single_bit(c.early_cells)) throw BrainfunkException("issue: early_cells must be a power of two");
+        const auto forward = j.value("forward", std::string("none"));
+        const auto known = std::find(std::begin(FORWARD_NAMES), std::end(FORWARD_NAMES), forward);
+        if (known == std::end(FORWARD_NAMES)) throw BrainfunkException("issue: forward is none, set or add, not " + forward);
+        c.forward = static_cast<Forward>(known - std::begin(FORWARD_NAMES));
         c.predictor = predictor_spec(j.value("predictor", json::object()), true);
         if (c.width == 0 || c.reads == 0 || c.writes == 0) throw BrainfunkException("issue: width, reads and writes are at least 1");
         return c;
@@ -703,6 +720,7 @@ struct MachineConfig {
                 {"raw", raw}, {"mul", MUL_NAMES[static_cast<int>(mul)]}, {"two_mul", two_mul},
                 {"fetch_line", fetch_line}, {"banks", banks}, {"penalty", penalty}, {"steer", steer},
                 {"scan_base", scan_base}, {"line_cells", line_cells}, {"stride_limit", stride_limit}, {"io", io},
+                {"early_penalty", early_penalty}, {"late", late}, {"early_cells", early_cells}, {"forward", FORWARD_NAMES[static_cast<int>(forward)]},
                 {"predictor", predictor}};
     }
 };
@@ -794,10 +812,28 @@ public:
             ready_ = cycle_;
         }
 
+        bool held = true;   // the branch's cell is in the early store
+        if (c_.early_penalty) {
+            if (c_.early_cells) {
+                if (slots_of_.size() != c_.early_cells) slots_of_.assign(c_.early_cells, NONE);
+                if (e.branch) held = slots_of_[e.read[0].cell & (c_.early_cells - 1)] == e.read[0].cell;
+                for (unsigned i = 0; i < e.reads; ++i) slots_of_[e.read[i].cell & (c_.early_cells - 1)] = e.read[i].cell;
+                for (unsigned i = 0; i < e.writes; ++i) slots_of_[e.write[i].cell & (c_.early_cells - 1)] = e.write[i].cell;
+            }
+            note_values(e, op, mask);
+        }
         if (e.branch && e.taken) closed_ = true;
         if (guess.mispredict) {
             closed_ = true;
-            ready_ = cycle_ + 1 + c_.penalty;
+            unsigned penalty = c_.penalty;
+            if (c_.early_penalty && held) {
+                const auto known = known_[e.read[0].cell];
+                const auto wait = known > cycle_ ? known - cycle_ : 0;
+                penalty = static_cast<unsigned>(std::min<std::uint64_t>(penalty, c_.early_penalty + wait));
+                early_ += penalty == c_.early_penalty;
+            }
+            penalty_cycles_ += penalty;
+            ready_ = cycle_ + 1 + penalty;
         } else if (guess.steer) {
             closed_ = true;
             ready_ = cycle_ + 1 + c_.steer;
@@ -805,6 +841,42 @@ public:
     }
 
     [[nodiscard]] std::uint64_t cycles() const { return std::max(cycle_ + 1, ready_); }
+
+    /* When the values this instruction writes are known, for branches that resolve early. Its last
+     * part issued at cycle_. */
+    void note_values(const TraceEvent& e, Opcode op, addr_t mask) {
+        if (known_.size() != std::size_t{mask} + 1) known_.assign(std::size_t{mask} + 1, 0);
+        if (!e.writes) return;
+        const std::uint64_t t = cycle_, late = t + c_.late;
+        const bool sets = c_.forward != Forward::None, adds = c_.forward == Forward::Add;
+        const auto chained = [&](std::initializer_list<addr_t> cells) {
+            std::uint64_t at = t;
+            for (const auto cell : cells) at = std::max(at, known_[cell]);
+            return at;
+        };
+        switch (op) {
+        case Opcode::S:
+            known_[e.write[0].cell] = sets ? t : late;
+            break;
+        case Opcode::SRUN:
+            for (unsigned i = 0; i < e.fill; ++i) known_[(e.write[0].cell + i) & mask] = sets ? t : late;
+            break;
+        case Opcode::A:
+        case Opcode::DJN:
+            known_[e.write[0].cell] = adds ? chained({e.write[0].cell}) : late;
+            break;
+        case Opcode::MUL:
+        case Opcode::MULC: {
+            const bool unit = e.instruction->data() == 1 || e.instruction->data() == 255;
+            known_[e.write[0].cell] = adds && unit ? chained({e.read[0].cell, e.read[1].cell}) : late;
+            if (op == Opcode::MULC) known_[e.write[1].cell] = sets ? t : late;
+            break;
+        }
+        default:
+            known_[e.write[0].cell] = late;
+            break;
+        }
+    }
 
     [[nodiscard]] json report(std::uint64_t baseline) const {
         json reasons = json::object();
@@ -818,7 +890,7 @@ public:
                 {"speedup", baseline ? static_cast<double>(baseline) / static_cast<double>(total) : 1.0},
                 {"groups", groups_}, {"joined", share(reasons_[JOINED], instructions_)},
                 {"mispredicts", mispredicts_}, {"steers", steers_}, {"not_joined_because", reasons},
-                {"branches", branches_by}};
+                {"branches", branches_by}, {"penalty_cycles", penalty_cycles_}, {"resolved_early", early_}};
     }
 
     [[nodiscard]] const MachineConfig& config() const { return c_; }
@@ -923,7 +995,10 @@ private:
     bool     prev_split_mul_ = false, mul_unit_ = false;
     offset_t prev_src_offset_ = 0;
 
-    std::uint64_t instructions_ = 0, groups_ = 0, mispredicts_ = 0, steers_ = 0;
+    std::uint64_t instructions_ = 0, groups_ = 0, mispredicts_ = 0, steers_ = 0, penalty_cycles_ = 0, early_ = 0;
+    std::vector<std::uint64_t> known_;   // by cell, the cycle its value is known, for early_penalty
+    static constexpr addr_t    NONE = std::numeric_limits<addr_t>::max();
+    std::vector<addr_t>        slots_of_;   // the cell each slot of the early store holds
     std::array<std::uint64_t, 4> branch_kinds_{}, mispredicts_by_{};   // backward or forward, taken or not
     std::array<std::uint64_t, REASONS> reasons_{};
 };

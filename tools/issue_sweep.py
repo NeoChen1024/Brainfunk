@@ -96,8 +96,7 @@ def run_case(case: corpus.Case, config: Path | None) -> dict:
     row["instructions"] = run["executed"]
     row["ending"] = ("trapped" if run["trapped"] else "endless" if run["endless"] else
                      "halted" if run["halted"] else "limit")
-    row["machines"] = {m["name"]: {k: m[k] for k in ("cycles", "joined", "mispredicts", "steers",
-                                                      "not_joined_because")}
+    row["machines"] = {m["name"]: {k: v for k, v in m.items() if k not in ("config", "name", "speedup", "cpi")}
                        for m in result["analyses"]["issue"]["machines"]}
     row["order"] = [m["name"] for m in result["analyses"]["issue"]["machines"]]
     return row

@@ -121,12 +121,17 @@ machine's fields, all optional:
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
 | `io` | 7 | cycles an `IO` takes |
+| `early_penalty` | 0 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
+| `late` | 4 | cycles after its writer issues that a value is known, at X, for `early_penalty` |
+| `forward` | `none` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds to known values (`A`, `DJN`, `MUL` by 1 or -1) |
+| `early_cells` | 0 | cells in a direct-mapped store the early values come from, each cell touched filling its slot; a branch whose cell is not there resolves at X; 0 the whole tape |
 | `predictor` | `rtl` | how branches are guessed, below |
 
 A group closes at a taken branch, a misprediction, and a redirect. The report gives, for each machine,
 `cycles`, `cpi`, `speedup` against the first, `joined` (the share of instructions issued alongside an
 older one in the same cycle), `not_joined_because`, the share that could not, by reason, and
-`branches`: how many were backward or forward, taken or not, and how many of each were mispredicted.
+`branches`: how many were backward or forward, taken or not, and how many of each were mispredicted,
+`penalty_cycles`, what mispredictions cost, and `resolved_early`, how many cost only `early_penalty`.
 
 #### Predictors
 

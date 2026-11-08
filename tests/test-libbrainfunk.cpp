@@ -816,6 +816,39 @@ TEST_CASE("predictors guess branches as their kinds do", "[analysis]") {
     CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "gshare"}, {"direction", 1000}})), BrainfunkException);
 }
 
+TEST_CASE("branches resolve early once their cell's value is known", "[analysis]") {
+    /* A loop counted down by adds, each exit a misprediction for counters that guess it goes on. */
+    Brainfunk bf;
+    bf.translate(std::string(20, '+') + "[>+++[-.>+<]<-]");
+    const auto machine = [](const char* name, unsigned early, const char* forward, unsigned cells) {
+        return nlohmann::json{{"name", name}, {"early_penalty", early}, {"forward", forward}, {"early_cells", cells}};
+    };
+    const nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
+                                                           machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1)}}}}};
+    AnalysisSet set("issue", config);
+    std::istringstream in;
+    std::ostringstream out;
+    (void)run_traced(bf, set, in, out);
+    const auto machines = set.report().at("analyses").at("issue").at("machines");
+    const auto field = [&](std::size_t m, const char* name) { return machines.at(m).at(name).get<std::uint64_t>(); };
+    const auto mispredicts = field(0, "mispredicts");
+    REQUIRE(mispredicts >= 20);
+    CHECK(field(0, "penalty_cycles") == 9 * mispredicts);
+    CHECK(field(0, "resolved_early") == 0);
+    CHECK(field(2, "penalty_cycles") == 5 * mispredicts);    // an add of a known value is known in D
+    CHECK(field(2, "resolved_early") == mispredicts);
+    CHECK(field(1, "penalty_cycles") > field(2, "penalty_cycles"));   // without, the decrement just before waits for X
+    CHECK(field(1, "penalty_cycles") < field(0, "penalty_cycles"));
+    CHECK(field(3, "penalty_cycles") > field(2, "penalty_cycles"));   // one cell holds the counter or the cell after it, not both
+    CHECK(field(2, "cycles") < field(0, "cycles"));
+
+    const auto refused = [](const char* name, nlohmann::json value) {
+        return nlohmann::json{{"issue", {{"machines", {{{name, std::move(value)}}}}}}};
+    };
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused("forward", "all")), BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused("early_cells", 24)), BrainfunkException);
+}
+
 TEST_CASE("analyses report what the run did", "[analysis]") {
     /* [0] = 3, then count it down: S, then A and JN three times, then H. */
     const auto report = analyze({0x20000003u, 0x100000FFu, 0x700FFFFEu, HALT}, "stat,profile,ngram,deps,values");
