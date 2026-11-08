@@ -806,6 +806,11 @@ TEST_CASE("predictors guess branches as their kinds do", "[analysis]") {
     CHECK(machines.at(4).at("mispredicts") == 0);
     CHECK(machines.at(4).at("cycles") < machines.at(0).at("cycles"));
     CHECK(machines.at(0).at("config").at("predictor").at("kind") == "rtl");    // defaults filled in
+    for (const auto& m : machines) {
+        std::uint64_t steers = 0;
+        for (const auto& [why, n] : m.at("steers_by").items()) steers += n.get<std::uint64_t>();
+        CHECK(steers == m.at("steers"));
+    }
 
     const auto refused = [](nlohmann::json predictor) {
         return nlohmann::json{{"issue", {{"machines", {{{"predictor", std::move(predictor)}}}}}}};
@@ -814,6 +819,7 @@ TEST_CASE("predictors guess branches as their kinds do", "[analysis]") {
     CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "tournament"}, {"components", {{{"kind", "rtl"}}, {{"kind", "bimodal"}}}}})),
                     BrainfunkException);
     CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "gshare"}, {"direction", 1000}})), BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "issue", refused({{"kind", "rtl"}, {"next_counter", true}})), BrainfunkException);
 }
 
 TEST_CASE("branches resolve early once their cell's value is known", "[analysis]") {

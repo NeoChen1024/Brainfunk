@@ -391,6 +391,8 @@ json predictor_spec(const json& j, bool top) {
         field("next", 16);
         field("tag_bits", 8);
         s["forget"] = j.value("forget", kind == "rtl");
+        s["next_counter"] = j.value("next_counter", false);
+        if (kind == "rtl" && s["next_counter"].get<bool>()) throw BrainfunkException("issue: rtl's next-fetch table has no counters");
     } else if (kind == "rtl" || kind == "perfect") {
         throw BrainfunkException("issue: " + kind + " is not a component");
     }
@@ -576,6 +578,7 @@ public:
     explicit Predictor(const json& spec)
         : kind_(spec.at("kind").get<std::string>()), table_(table_size(spec, "next")),
           tag_bits_(spec.at("tag_bits").get<unsigned>()), forget_(spec.at("forget").get<bool>()),
+          next_counter_(spec.at("next_counter").get<bool>()),
           shift_(static_cast<unsigned>(std::countr_zero(spec.at("next").get<unsigned>()))) {
         if (kind_ == "rtl") {
             counters_ = std::make_unique<Counters>(table_size(spec, "direction"));
@@ -585,21 +588,28 @@ public:
         }
     }
 
+    /* Why decode sent fetch elsewhere. */
+    enum Steer { NO_STEER, TAKEN_MISS, WRONG_TARGET, NOT_TAKEN_HIT, NOT_A_BRANCH, STEERS };
+    static constexpr std::string_view STEER_NAMES[] = {"", "taken_miss", "wrong_target", "not_taken_hit", "not_a_branch"};
+
     struct Guess {
-        bool mispredict = false, steer = false;
+        bool  mispredict = false, steer = false;
+        Steer why = NO_STEER;
     };
 
     Guess see(addr_t pc, addr_t before, bool branch, bool taken, addr_t target) {
         Guess g;
         Entry& entry = table_[before & (table_.size() - 1)];
         const std::uint32_t tag = static_cast<std::uint32_t>(before >> shift_) & ((1u << tag_bits_) - 1);
-        const bool hit = entry.valid && entry.tag == tag;
+        const bool matches = entry.valid && entry.tag == tag;
+        const bool hit = matches && (!next_counter_ || entry.counter >= 2);   // fetch goes to the target
         if (!branch) {
             /* Fetch went somewhere a word that is not a branch does not go. */
             if (hit) {
                 g.steer = true;
-                entry.valid = false;
+                g.why = NOT_A_BRANCH;
             }
+            if (matches) entry.valid = false;
             return g;
         }
         const bool backward = target <= pc;
@@ -614,11 +624,15 @@ public:
                 const bool predict = counters_->predict(index, backward);
                 if (predict) {
                     g.steer = true;
+                    g.why = TAKEN_MISS;
                     entry = {true, tag, target};
                 }
                 g.mispredict = predict != taken;
             }
-            if (g.mispredict) g.steer = false;
+            if (g.mispredict) {
+                g.steer = false;
+                g.why = NO_STEER;
+            }
             counters_->update(index, backward, taken);
             if (history_bits_) history_ = ((history_ << 1) | (taken ? 1 : 0)) & ((addr_t{1} << history_bits_) - 1);
             return g;
@@ -627,12 +641,17 @@ public:
         const bool guess = direction_ ? direction_->predict(pc, backward) : taken;
         if (direction_) direction_->update(pc, backward, taken);
         g.mispredict = guess != taken;
-        const bool fetched = hit && entry.target == target;   // fetch went to the target with no gap
-        if (!g.mispredict) g.steer = taken ? !fetched : hit;  // D sends fetch where it guessed
+        if (!g.mispredict) {
+            /* D sends fetch where it guessed, unless fetch went there. */
+            g.why = taken ? (!hit ? TAKEN_MISS : entry.target != target ? WRONG_TARGET : NO_STEER) : hit ? NOT_TAKEN_HIT : NO_STEER;
+            g.steer = g.why != NO_STEER;
+        }
         if (taken) {
-            entry = {true, tag, target};
-        } else if (hit && forget_) {
-            entry.valid = false;
+            entry = matches ? Entry{true, tag, target, static_cast<std::uint8_t>(std::min(entry.counter + 1, 3))}
+                            : Entry{true, tag, target, 2};
+        } else if (matches) {
+            if (next_counter_ && entry.counter) --entry.counter;
+            if (forget_ && (!next_counter_ || entry.counter == 0)) entry.valid = false;
         }
         return g;
     }
@@ -642,11 +661,12 @@ private:
         bool          valid = false;
         std::uint32_t tag = 0;
         addr_t        target = 0;
+        std::uint8_t  counter = 2;   // with next_counter, taken at 2 or more
     };
     std::string                kind_;
     std::vector<Entry>         table_;
     unsigned                   tag_bits_;
-    bool                       forget_;
+    bool                       forget_, next_counter_;
     unsigned                   shift_;
     std::unique_ptr<Counters>  counters_;   // rtl
     unsigned                   history_bits_ = 0;
@@ -754,6 +774,7 @@ public:
             mispredicts_by_[kind] += guess.mispredict;
         }
         steers_ += guess.steer;
+        ++steers_by_[guess.why];
         pc_ = e.pc;
         const std::uint64_t at = ready_;
 
@@ -906,12 +927,14 @@ public:
         static constexpr std::string_view KINDS[] = {"backward_taken", "backward_not_taken", "forward_taken", "forward_not_taken"};
         json branches_by = json::object();
         for (int k = 0; k < 4; ++k) branches_by[std::string(KINDS[k])] = {{"count", branch_kinds_[k]}, {"mispredicts", mispredicts_by_[k]}};
+        json steers_by = json::object();
+        for (int k = Predictor::TAKEN_MISS; k < Predictor::STEERS; ++k) steers_by[std::string(Predictor::STEER_NAMES[k])] = steers_by_[k];
         const auto total = cycles();
         return {{"config", c_.to_json()}, {"cycles", total},
                 {"cpi", share(total, instructions_)},
                 {"speedup", baseline ? static_cast<double>(baseline) / static_cast<double>(total) : 1.0},
                 {"groups", groups_}, {"joined", share(reasons_[JOINED], instructions_)},
-                {"mispredicts", mispredicts_}, {"steers", steers_}, {"not_joined_because", reasons},
+                {"mispredicts", mispredicts_}, {"steers", steers_}, {"steers_by", steers_by}, {"not_joined_because", reasons},
                 {"branches", branches_by}, {"penalty_cycles", penalty_cycles_}, {"resolved_early", early_}, {"early_flushes", flushes_}};
     }
 
@@ -1022,7 +1045,8 @@ private:
     std::vector<std::uint64_t> final_;   // and the cycle it is known at X, for early_zero_bits
     static constexpr addr_t    NONE = std::numeric_limits<addr_t>::max();
     std::vector<addr_t>        slots_of_;   // the cell each slot of the early store holds
-    std::array<std::uint64_t, 4> branch_kinds_{}, mispredicts_by_{};   // backward or forward, taken or not
+    std::array<std::uint64_t, 4> branch_kinds_{}, mispredicts_by_{};
+    std::array<std::uint64_t, Predictor::STEERS> steers_by_{};   // backward or forward, taken or not
     std::array<std::uint64_t, REASONS> reasons_{};
 };
 

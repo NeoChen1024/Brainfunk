@@ -134,14 +134,18 @@ A group closes at a taken branch, a misprediction, and a redirect. The report gi
 older one in the same cycle), `not_joined_because`, the share that could not, by reason, and
 `branches`: how many were backward or forward, taken or not, and how many of each were mispredicted,
 `penalty_cycles`, what mispredictions cost, and `resolved_early`, how many cost only `early_penalty`.
+`steers_by` splits the steers: `taken_miss`, a taken guess fetch did not make; `wrong_target`;
+`not_taken_hit`, a next-fetch hit decode took back; `not_a_branch`, a hit on a word that is no branch.
 
 #### Predictors
 
 Branches are guessed in two parts. Fetch has a next-fetch table keyed by the word fetched before: a hit
 sends fetch to the target with no gap. Decode has a direction predictor; a taken guess that fetch did
 not make costs `steer` cycles, and a wrong direction `penalty`. Every predictor takes `next`, the
-next-fetch entries (16), `tag_bits` (8), and `forget` (whether a hit on a branch that is not taken drops
-the entry); `kind` picks the rest:
+next-fetch entries (16), `tag_bits` (8), `forget` (whether a hit on a branch that is not taken drops
+the entry, or with `next_counter` one whose counter has run down), and `next_counter` (false; not for
+`rtl`): a 2-bit counter in each entry, so that fetch goes to the target only at 2 or more; `kind` picks
+the rest:
 
 | `kind` | Fields, with defaults | Guess |
 |---|---|---|
