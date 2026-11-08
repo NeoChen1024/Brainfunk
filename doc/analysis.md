@@ -126,6 +126,8 @@ machine's fields, all optional:
 | `forward` | `none` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds to known values (`A`, `DJN`, `MUL` by 1 or -1) |
 | `early_cells` | 0 | cells in a direct-mapped store the early values come from, each cell touched filling its slot, a cell read only once the D-cache has it at X; a branch whose cell is not there resolves at X; 0 the whole tape, wrong paths aside |
 | `early_flush` | true | a misprediction found after A empties that store, which the wrong path may have written |
+| `early_partial` | true | a branch whose cell's value is known only after it issues resolves when it is; false, at X |
+| `zero_bits_penalty` | 0 | what a misprediction the zero bits resolve costs, if not `early_penalty` |
 | `early_zero_bits` | false | a branch whose cell is not in the store tests a bit per cell of the whole tape instead, written in order as values are known at X |
 | `predictor` | `rtl` | how branches are guessed, below |
 
@@ -144,8 +146,11 @@ sends fetch to the target with no gap. Decode has a direction predictor; a taken
 not make costs `steer` cycles, and a wrong direction `penalty`. Every predictor takes `next`, the
 next-fetch entries (16), `tag_bits` (8), `forget` (whether a hit on a branch that is not taken drops
 the entry, or with `next_counter` one whose counter has run down), and `next_counter` (false; not for
-`rtl`): a 2-bit counter in each entry, so that fetch goes to the target only at 2 or more; `kind` picks
-the rest:
+`rtl`): a 2-bit counter in each entry, so that fetch goes to the target only at 2 or more; `lookup`
+and `update` (0, 0): the cycles before a branch issues that its tables are read, and after, that its
+outcome is written back to counters and per-branch histories. Global histories take an outcome as the
+branch issues, as a core does that shifts in its guess and repairs the history after a misprediction.
+The core reads its tables in I1 and writes them in W: `lookup` 3, `update` 6. `kind` picks the rest:
 
 | `kind` | Fields, with defaults | Guess |
 |---|---|---|

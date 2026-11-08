@@ -830,9 +830,13 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
         return nlohmann::json{{"name", name}, {"early_penalty", early}, {"forward", forward}, {"early_cells", cells},
                               {"early_zero_bits", zero_bits}};
     };
-    const nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
+    nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
                                                            machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1),
-                                                           machine("add, 1 cell, zero bits", 5, "add", 1, true)}}}}};
+                                                           machine("add, 1 cell, zero bits", 5, "add", 1, true),
+                                                           machine("none, at X if not known", 5, "none", 0),
+                                                           machine("add, 1 cell, zero bits at 7", 5, "add", 1, true)}}}}};
+    config["issue"]["machines"][5]["early_partial"] = false;
+    config["issue"]["machines"][6]["zero_bits_penalty"] = 7;
     AnalysisSet set("issue", config);
     std::istringstream in;
     std::ostringstream out;
@@ -852,6 +856,11 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
     /* The cell the store lost is still in the zero bits, once X has written it there. */
     CHECK(field(4, "penalty_cycles") < field(3, "penalty_cycles"));
     CHECK(field(4, "penalty_cycles") >= field(2, "penalty_cycles"));
+    /* Not waiting for a value, a branch whose value is late goes on to X. */
+    CHECK(field(5, "penalty_cycles") > field(1, "penalty_cycles"));
+    CHECK(field(5, "penalty_cycles") % 5 == (9 * (mispredicts - field(5, "resolved_early"))) % 5);
+    /* What the zero bits resolve costs more than what the store does. */
+    CHECK(field(6, "penalty_cycles") > field(4, "penalty_cycles"));
 
     const auto refused = [](const char* name, nlohmann::json value) {
         return nlohmann::json{{"issue", {{"machines", {{{name, std::move(value)}}}}}}};

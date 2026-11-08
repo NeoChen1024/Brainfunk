@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <deque>
 #include <memory>
 #include <unordered_map>
 
@@ -392,6 +393,8 @@ json predictor_spec(const json& j, bool top) {
         field("tag_bits", 8);
         s["forget"] = j.value("forget", kind == "rtl");
         s["next_counter"] = j.value("next_counter", false);
+        field("lookup", 0);
+        field("update", 0);
         if (kind == "rtl" && s["next_counter"].get<bool>()) throw BrainfunkException("issue: rtl's next-fetch table has no counters");
     } else if (kind == "rtl" || kind == "perfect") {
         throw BrainfunkException("issue: " + kind + " is not a component");
@@ -421,27 +424,48 @@ private:
     std::size_t               mask_;
 };
 
-/* A direction guess at D. Every branch is predicted, then updated with how it went. */
+/* What a guess looked up, kept until its branch resolves to update the same entries, as the core
+ * carries table indices down its pipeline. Each predictor has words of its own in it. */
+struct Ticket {
+    static constexpr unsigned WORDS = 16;
+    std::array<std::uint32_t, WORDS> w{};
+};
+
+/* A direction guess at D. Every branch is predicted; then its outcome comes back twice: to global
+ * histories as soon as it is guessed, since the core shifts its guess in and repairs the history
+ * after a misprediction, so that on the right path it holds outcomes; and to counters and per-branch
+ * state once it resolves. */
 class Direction {
 public:
     virtual ~Direction() = default;
-    virtual bool predict(addr_t pc, bool backward) = 0;
-    virtual void update(addr_t pc, bool backward, bool taken) = 0;
+    virtual bool predict(addr_t pc, bool backward, Ticket& t) = 0;
+    virtual void speculate(bool taken) { (void)taken; }
+    virtual void resolve(addr_t pc, bool backward, bool taken, const Ticket& t) = 0;
 };
 
-std::unique_ptr<Direction> make_direction(const json& s);
+std::unique_ptr<Direction> make_direction(const json& s, unsigned& words);
+
+unsigned claim(unsigned& words, unsigned n) {
+    if (words + n > Ticket::WORDS) throw BrainfunkException("issue: predictor nested too deep");
+    words += n;
+    return words - n;
+}
+
+addr_t shifted(addr_t history, bool taken, unsigned bits) {
+    return bits ? ((history << 1) | (taken ? 1 : 0)) & ((addr_t{1} << bits) - 1) : 0;
+}
 
 class StaticDirection final : public Direction {
 public:
-    bool predict(addr_t, bool backward) override { return backward; }
-    void update(addr_t, bool, bool) override {}
+    bool predict(addr_t, bool backward, Ticket&) override { return backward; }
+    void resolve(addr_t, bool, bool, const Ticket&) override {}
 };
 
 class Bimodal final : public Direction {
 public:
     explicit Bimodal(const json& s) : counters_(table_size(s, "direction")) {}
-    bool predict(addr_t pc, bool backward) override { return counters_.predict(pc, backward); }
-    void update(addr_t pc, bool backward, bool taken) override { counters_.update(pc, backward, taken); }
+    bool predict(addr_t pc, bool backward, Ticket&) override { return counters_.predict(pc, backward); }
+    void resolve(addr_t pc, bool backward, bool taken, const Ticket&) override { counters_.update(pc, backward, taken); }
 
 private:
     Counters counters_;
@@ -450,54 +474,60 @@ private:
 /* Counters indexed by the pc and the last `history` branch outcomes, exclusive-ored. */
 class Gshare final : public Direction {
 public:
-    explicit Gshare(const json& s) : counters_(table_size(s, "direction")), bits_(s.at("history").get<unsigned>()) {}
-    bool predict(addr_t pc, bool backward) override { return counters_.predict(pc ^ history_, backward); }
-    void update(addr_t pc, bool backward, bool taken) override {
-        counters_.update(pc ^ history_, backward, taken);
-        if (bits_) history_ = ((history_ << 1) | (taken ? 1 : 0)) & ((addr_t{1} << bits_) - 1);
+    Gshare(const json& s, unsigned& words)
+        : counters_(table_size(s, "direction")), bits_(s.at("history").get<unsigned>()), slot_(claim(words, 1)) {}
+    bool predict(addr_t pc, bool backward, Ticket& t) override {
+        t.w[slot_] = pc ^ history_;
+        return counters_.predict(t.w[slot_], backward);
     }
+    void speculate(bool taken) override { history_ = shifted(history_, taken, bits_); }
+    void resolve(addr_t, bool backward, bool taken, const Ticket& t) override { counters_.update(t.w[slot_], backward, taken); }
 
 private:
     Counters counters_;
-    unsigned bits_;
+    unsigned bits_, slot_;
     addr_t   history_ = 0;
 };
 
 /* Each branch's own last `history` outcomes, from a table of `histories` by pc, next to its pc
- * bits, index counters: the trip counts of short loops, and patterns that repeat. */
+ * bits, index counters: the trip counts of short loops, and patterns that repeat. Histories take
+ * outcomes as branches resolve. */
 class Local final : public Direction {
 public:
-    explicit Local(const json& s)
-        : histories_(table_size(s, "histories"), 0), counters_(table_size(s, "direction")), bits_(s.at("history").get<unsigned>()) {}
-    bool predict(addr_t pc, bool backward) override { return counters_.predict(index(pc), backward); }
-    void update(addr_t pc, bool backward, bool taken) override {
-        counters_.update(index(pc), backward, taken);
-        auto& h = slot(pc);
-        if (bits_) h = ((h << 1) | (taken ? 1 : 0)) & ((addr_t{1} << bits_) - 1);
+    Local(const json& s, unsigned& words)
+        : histories_(table_size(s, "histories"), 0), counters_(table_size(s, "direction")),
+          bits_(s.at("history").get<unsigned>()), slot_(claim(words, 1)) {}
+    bool predict(addr_t pc, bool backward, Ticket& t) override {
+        t.w[slot_] = static_cast<std::uint32_t>((static_cast<std::size_t>(pc) << bits_) | slot(pc));
+        return counters_.predict(t.w[slot_], backward);
+    }
+    void resolve(addr_t pc, bool backward, bool taken, const Ticket& t) override {
+        counters_.update(t.w[slot_], backward, taken);
+        slot(pc) = shifted(slot(pc), taken, bits_);
     }
 
 private:
     addr_t& slot(addr_t pc) { return histories_[pc & (histories_.size() - 1)]; }
-    std::size_t index(addr_t pc) { return (static_cast<std::size_t>(pc) << bits_) | slot(pc); }
     std::vector<addr_t> histories_;
     Counters            counters_;
-    unsigned            bits_;
+    unsigned            bits_, slot_;
 };
 
 /* Counts a backward branch's taken runs: once a loop has gone round the same number of times
  * `confidence` times in a row, it guesses the exit. Otherwise its base guesses. */
 class Loop final : public Direction {
 public:
-    explicit Loop(const json& s)
-        : entries_(table_size(s, "entries")), confidence_(s.at("confidence").get<unsigned>()), base_(make_direction(s.at("base"))) {}
-    bool predict(addr_t pc, bool backward) override {
-        const bool base = base_->predict(pc, backward);
+    Loop(const json& s, unsigned& words)
+        : entries_(table_size(s, "entries")), confidence_(s.at("confidence").get<unsigned>()), base_(make_direction(s.at("base"), words)) {}
+    bool predict(addr_t pc, bool backward, Ticket& t) override {
+        const bool base = base_->predict(pc, backward, t);
         const Entry& e = entries_[pc & (entries_.size() - 1)];
         if (!backward || !e.valid || e.pc != pc || e.confidence < confidence_) return base;
         return e.iterations != e.trip;
     }
-    void update(addr_t pc, bool backward, bool taken) override {
-        base_->update(pc, backward, taken);
+    void speculate(bool taken) override { base_->speculate(taken); }
+    void resolve(addr_t pc, bool backward, bool taken, const Ticket& t) override {
+        base_->resolve(pc, backward, taken, t);
         if (!backward) return;
         Entry& e = entries_[pc & (entries_.size() - 1)];
         if (!e.valid || e.pc != pc) {
@@ -535,41 +565,47 @@ private:
 /* Two predictors, and 2-bit counters by pc, or pc and global history, of which to believe. */
 class Tournament final : public Direction {
 public:
-    explicit Tournament(const json& s)
-        : first_(make_direction(s.at("components")[0])), second_(make_direction(s.at("components")[1])),
-          chooser_(table_size(s, "chooser"), 1), bits_(s.at("chooser_history").get<unsigned>()) {}
-    bool predict(addr_t pc, bool backward) override {
-        a_ = first_->predict(pc, backward);
-        b_ = second_->predict(pc, backward);
-        return chooser_[index(pc)] >= 2 ? b_ : a_;
+    Tournament(const json& s, unsigned& words)
+        : slot_(claim(words, 2)), first_(make_direction(s.at("components")[0], words)),
+          second_(make_direction(s.at("components")[1], words)), chooser_(table_size(s, "chooser"), 1),
+          bits_(s.at("chooser_history").get<unsigned>()) {}
+    bool predict(addr_t pc, bool backward, Ticket& t) override {
+        const bool a = first_->predict(pc, backward, t), b = second_->predict(pc, backward, t);
+        t.w[slot_] = (pc ^ history_) & (chooser_.size() - 1);
+        t.w[slot_ + 1] = (a ? 1u : 0u) | (b ? 2u : 0u);
+        return chooser_[t.w[slot_]] >= 2 ? b : a;
     }
-    void update(addr_t pc, bool backward, bool taken) override {
-        if (a_ != b_) {
-            auto& c = chooser_[index(pc)];
-            c = b_ == taken ? (c < 3 ? c + 1 : 3) : (c ? c - 1 : 0);
+    void speculate(bool taken) override {
+        history_ = shifted(history_, taken, bits_);
+        first_->speculate(taken);
+        second_->speculate(taken);
+    }
+    void resolve(addr_t pc, bool backward, bool taken, const Ticket& t) override {
+        const bool a = t.w[slot_ + 1] & 1u, b = t.w[slot_ + 1] & 2u;
+        if (a != b) {
+            auto& c = chooser_[t.w[slot_]];
+            c = b == taken ? (c < 3 ? c + 1 : 3) : (c ? c - 1 : 0);
         }
-        first_->update(pc, backward, taken);
-        second_->update(pc, backward, taken);
-        if (bits_) history_ = ((history_ << 1) | (taken ? 1 : 0)) & ((addr_t{1} << bits_) - 1);
+        first_->resolve(pc, backward, taken, t);
+        second_->resolve(pc, backward, taken, t);
     }
 
 private:
-    std::size_t index(addr_t pc) const { return (pc ^ history_) & (chooser_.size() - 1); }
+    unsigned                   slot_;
     std::unique_ptr<Direction> first_, second_;
     std::vector<std::uint8_t>  chooser_;
     unsigned                   bits_;
     addr_t                     history_ = 0;
-    bool                       a_ = false, b_ = false;
 };
 
-std::unique_ptr<Direction> make_direction(const json& s) {
+std::unique_ptr<Direction> make_direction(const json& s, unsigned& words) {
     const auto kind = s.at("kind").get<std::string>();
     if (kind == "static") return std::make_unique<StaticDirection>();
     if (kind == "bimodal") return std::make_unique<Bimodal>(s);
-    if (kind == "gshare") return std::make_unique<Gshare>(s);
-    if (kind == "local") return std::make_unique<Local>(s);
-    if (kind == "loop") return std::make_unique<Loop>(s);
-    if (kind == "tournament") return std::make_unique<Tournament>(s);
+    if (kind == "gshare" || kind == "rtl") return std::make_unique<Gshare>(s, words);
+    if (kind == "local") return std::make_unique<Local>(s, words);
+    if (kind == "loop") return std::make_unique<Loop>(s, words);
+    if (kind == "tournament") return std::make_unique<Tournament>(s, words);
     throw BrainfunkException("issue: no direction predictor " + kind);
 }
 
@@ -579,13 +615,10 @@ public:
         : kind_(spec.at("kind").get<std::string>()), table_(table_size(spec, "next")),
           tag_bits_(spec.at("tag_bits").get<unsigned>()), forget_(spec.at("forget").get<bool>()),
           next_counter_(spec.at("next_counter").get<bool>()),
-          shift_(static_cast<unsigned>(std::countr_zero(spec.at("next").get<unsigned>()))) {
-        if (kind_ == "rtl") {
-            counters_ = std::make_unique<Counters>(table_size(spec, "direction"));
-            history_bits_ = spec.at("history").get<unsigned>();
-        } else if (kind_ != "perfect") {
-            direction_ = make_direction(spec);
-        }
+          shift_(static_cast<unsigned>(std::countr_zero(spec.at("next").get<unsigned>()))),
+          lookup_(spec.at("lookup").get<unsigned>()), update_(spec.at("update").get<unsigned>()) {
+        unsigned words = 0;
+        if (kind_ != "perfect") direction_ = make_direction(spec, words);
     }
 
     /* Why decode sent fetch elsewhere. */
@@ -597,7 +630,8 @@ public:
         Steer why = NO_STEER;
     };
 
-    Guess see(addr_t pc, addr_t before, bool branch, bool taken, addr_t target) {
+    /* `issue` is the cycle the word issues from A. */
+    Guess see(addr_t pc, addr_t before, bool branch, bool taken, addr_t target, std::uint64_t issue) {
         Guess g;
         Entry& entry = table_[before & (table_.size() - 1)];
         const std::uint32_t tag = static_cast<std::uint32_t>(before >> shift_) & ((1u << tag_bits_) - 1);
@@ -613,33 +647,29 @@ public:
             return g;
         }
         const bool backward = target <= pc;
+        const bool guess = direction_ ? direct(pc, backward, taken, issue) : taken;
         if (kind_ == "rtl") {
-            const auto index = pc ^ history_;
+            /* A hit is taken, unquestioned; the counters guess only on a miss. */
             if (hit) {
                 if (!taken || entry.target != target) {
                     g.mispredict = true;
                     if (forget_ || taken) entry.valid = false;
                 }
             } else {
-                const bool predict = counters_->predict(index, backward);
-                if (predict) {
+                if (guess) {
                     g.steer = true;
                     g.why = TAKEN_MISS;
                     entry = {true, tag, target};
                 }
-                g.mispredict = predict != taken;
+                g.mispredict = guess != taken;
             }
             if (g.mispredict) {
                 g.steer = false;
                 g.why = NO_STEER;
             }
-            counters_->update(index, backward, taken);
-            if (history_bits_) history_ = ((history_ << 1) | (taken ? 1 : 0)) & ((addr_t{1} << history_bits_) - 1);
             return g;
         }
 
-        const bool guess = direction_ ? direction_->predict(pc, backward) : taken;
-        if (direction_) direction_->update(pc, backward, taken);
         g.mispredict = guess != taken;
         if (!g.mispredict) {
             /* D sends fetch where it guessed, unless fetch went there. */
@@ -657,21 +687,53 @@ public:
     }
 
 private:
+    /* The direction guess, from tables read `lookup` cycles before the branch issues, which hold
+     * every outcome that came back by then: a global history's at issue, a counter's `update`
+     * cycles after. With both 0, every outcome is back by the next branch. */
+    bool direct(addr_t pc, bool backward, bool taken, std::uint64_t issue) {
+        Ticket t;
+        if (!lookup_ && !update_) {
+            const bool guess = direction_->predict(pc, backward, t);
+            direction_->speculate(taken);
+            direction_->resolve(pc, backward, taken, t);
+            return guess;
+        }
+        const std::uint64_t read = issue > lookup_ ? issue - lookup_ : 0;
+        while (!histories_.empty() && histories_.front().first <= read) {
+            direction_->speculate(histories_.front().second);
+            histories_.pop_front();
+        }
+        while (!resolving_.empty() && resolving_.front().at <= read) {
+            const auto& r = resolving_.front();
+            direction_->resolve(r.pc, r.backward, r.taken, r.ticket);
+            resolving_.pop_front();
+        }
+        const bool guess = direction_->predict(pc, backward, t);
+        histories_.emplace_back(issue, taken);
+        resolving_.push_back({issue + update_, pc, backward, taken, t});
+        return guess;
+    }
+
     struct Entry {
         bool          valid = false;
         std::uint32_t tag = 0;
         addr_t        target = 0;
         std::uint8_t  counter = 2;   // with next_counter, taken at 2 or more
     };
+    struct Resolving {
+        std::uint64_t at;
+        addr_t        pc;
+        bool          backward, taken;
+        Ticket        ticket;
+    };
     std::string                kind_;
     std::vector<Entry>         table_;
     unsigned                   tag_bits_;
     bool                       forget_, next_counter_;
-    unsigned                   shift_;
-    std::unique_ptr<Counters>  counters_;   // rtl
-    unsigned                   history_bits_ = 0;
-    addr_t                     history_ = 0;
-    std::unique_ptr<Direction> direction_;  // the others; none for perfect
+    unsigned                   shift_, lookup_, update_;
+    std::unique_ptr<Direction> direction_;   // none for perfect
+    std::deque<std::pair<std::uint64_t, bool>> histories_;
+    std::deque<Resolving>                      resolving_;
 };
 
 enum class MulMode { Split, PairUnit, Single };
@@ -700,7 +762,9 @@ struct MachineConfig {
      * whose cell is not in the store tests a bit per cell of the whole tape instead, written in order
      * as values are known at X. */
     unsigned        early_penalty = 0, late = 4, early_cells = 0;
+    unsigned        zero_bits_penalty = 0;   // for a branch the zero bits resolve; 0 as early_penalty
     bool            early_flush = true, early_zero_bits = false;
+    bool            early_partial = true;   // a branch whose value comes later resolves then; else at X
     Forward         forward = Forward::None;
     json            predictor = predictor_spec(json::object(), true);
 
@@ -731,6 +795,8 @@ struct MachineConfig {
         c.early_cells = j.value("early_cells", c.early_cells);
         c.early_flush = j.value("early_flush", c.early_flush);
         c.early_zero_bits = j.value("early_zero_bits", c.early_zero_bits);
+        c.early_partial = j.value("early_partial", c.early_partial);
+        c.zero_bits_penalty = j.value("zero_bits_penalty", c.zero_bits_penalty);
         if (c.early_cells && !std::has_single_bit(c.early_cells)) throw BrainfunkException("issue: early_cells must be a power of two");
         const auto forward = j.value("forward", std::string("none"));
         const auto known = std::find(std::begin(FORWARD_NAMES), std::end(FORWARD_NAMES), forward);
@@ -747,7 +813,7 @@ struct MachineConfig {
                 {"raw", raw}, {"mul", MUL_NAMES[static_cast<int>(mul)]}, {"two_mul", two_mul},
                 {"fetch_line", fetch_line}, {"banks", banks}, {"penalty", penalty}, {"steer", steer},
                 {"scan_base", scan_base}, {"line_cells", line_cells}, {"stride_limit", stride_limit}, {"io", io},
-                {"early_penalty", early_penalty}, {"late", late}, {"early_cells", early_cells}, {"early_flush", early_flush}, {"early_zero_bits", early_zero_bits}, {"forward", FORWARD_NAMES[static_cast<int>(forward)]},
+                {"early_penalty", early_penalty}, {"late", late}, {"early_cells", early_cells}, {"early_flush", early_flush}, {"early_zero_bits", early_zero_bits}, {"early_partial", early_partial}, {"zero_bits_penalty", zero_bits_penalty}, {"forward", FORWARD_NAMES[static_cast<int>(forward)]},
                 {"predictor", predictor}};
     }
 };
@@ -766,15 +832,6 @@ public:
         const Bitcode& in = *e.instruction;
         const Opcode op = in.opcode();
         const addr_t target = e.branch ? e.pc + 1 + static_cast<addr_t>(in.jump_offset()) : 0;
-        const auto guess = predictor_.see(e.pc, before, e.branch, e.taken, target);
-        mispredicts_ += guess.mispredict;
-        if (e.branch) {
-            const int kind = (target <= e.pc ? 0 : 2) + (e.taken ? 0 : 1);
-            ++branch_kinds_[kind];
-            mispredicts_by_[kind] += guess.mispredict;
-        }
-        steers_ += guess.steer;
-        ++steers_by_[guess.why];
         pc_ = e.pc;
         const std::uint64_t at = ready_;
 
@@ -840,6 +897,16 @@ public:
             ready_ = cycle_;
         }
 
+        const auto guess = predictor_.see(e.pc, before, e.branch, e.taken, target, cycle_);
+        mispredicts_ += guess.mispredict;
+        if (e.branch) {
+            const int kind = (target <= e.pc ? 0 : 2) + (e.taken ? 0 : 1);
+            ++branch_kinds_[kind];
+            mispredicts_by_[kind] += guess.mispredict;
+        }
+        steers_ += guess.steer;
+        ++steers_by_[guess.why];
+
         bool held = true;   // the branch's cell is in the early store
         if (c_.early_penalty) {
             if (known_.size() != std::size_t{mask} + 1) {
@@ -869,8 +936,11 @@ public:
             if (c_.early_penalty && (held || c_.early_zero_bits)) {
                 const auto known = held ? known_[e.read[0].cell] : final_[e.read[0].cell];
                 const auto wait = known > cycle_ ? known - cycle_ : 0;
-                penalty = static_cast<unsigned>(std::min<std::uint64_t>(penalty, c_.early_penalty + wait));
-                early_ += penalty == c_.early_penalty;
+                const unsigned early = !held && c_.zero_bits_penalty ? c_.zero_bits_penalty : c_.early_penalty;
+                if (c_.early_partial || wait == 0) {
+                    penalty = static_cast<unsigned>(std::min<std::uint64_t>(penalty, early + wait));
+                }
+                early_ += penalty == early;
             }
             if (c_.early_penalty && c_.early_cells && c_.early_flush && penalty > c_.early_penalty) {
                 std::fill(slots_of_.begin(), slots_of_.end(), NONE);
