@@ -820,11 +820,13 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
     /* A loop counted down by adds, each exit a misprediction for counters that guess it goes on. */
     Brainfunk bf;
     bf.translate(std::string(20, '+') + "[>+++[-.>+<]<-]");
-    const auto machine = [](const char* name, unsigned early, const char* forward, unsigned cells) {
-        return nlohmann::json{{"name", name}, {"early_penalty", early}, {"forward", forward}, {"early_cells", cells}};
+    const auto machine = [](const char* name, unsigned early, const char* forward, unsigned cells, bool zero_bits = false) {
+        return nlohmann::json{{"name", name}, {"early_penalty", early}, {"forward", forward}, {"early_cells", cells},
+                              {"early_zero_bits", zero_bits}};
     };
     const nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
-                                                           machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1)}}}}};
+                                                           machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1),
+                                                           machine("add, 1 cell, zero bits", 5, "add", 1, true)}}}}};
     AnalysisSet set("issue", config);
     std::istringstream in;
     std::ostringstream out;
@@ -841,6 +843,9 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
     CHECK(field(1, "penalty_cycles") < field(0, "penalty_cycles"));
     CHECK(field(3, "penalty_cycles") > field(2, "penalty_cycles"));   // one cell holds the counter or the cell after it, not both
     CHECK(field(2, "cycles") < field(0, "cycles"));
+    /* The cell the store lost is still in the zero bits, once X has written it there. */
+    CHECK(field(4, "penalty_cycles") < field(3, "penalty_cycles"));
+    CHECK(field(4, "penalty_cycles") >= field(2, "penalty_cycles"));
 
     const auto refused = [](const char* name, nlohmann::json value) {
         return nlohmann::json{{"issue", {{"machines", {{{name, std::move(value)}}}}}}};
