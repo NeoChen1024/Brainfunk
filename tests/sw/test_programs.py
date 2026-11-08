@@ -1,4 +1,7 @@
 """The command-line programs: what they accept, refuse, and report."""
+import json
+import sys
+
 import pytest
 
 from sw_support import ROOT, brainfunk, program, run
@@ -18,22 +21,19 @@ def test_multiply_beyond_the_offset_field_still_encodes(tmp_path):
     brainfunk("-m", "hex", "-f", source)
 
 
-def test_stat_counts_to_stderr():
-    report = brainfunk("-O0", "-m", "stat", "-s", "++[->+<]>.").stderr.decode().splitlines()
-    assert "MUL\t1\t1" in report
-    assert "memory_reads\t4" in report
-
-
-def test_stat_to_a_file(tmp_path):
-    out = tmp_path / "stat.out"
-    brainfunk("-m", "stat", "-s", "+", "-o", out)
-    assert any(line.startswith("total\t") for line in out.read_text().splitlines())
+def test_analyze_counts_to_stderr():
+    report = json.loads(brainfunk("-O0", "-m", "analyze", "-s", "++[->+<]>.").stderr)
+    stat = report["analyses"]["stat"]
+    assert stat["dynamic"]["MUL"] == 1
+    assert stat["memory_reads"] == 4
 
 
 def test_stat_compare(tmp_path):
     source = tmp_path / "hello.bf"
     source.write_text("++++++++[>++++++++<-]>+.+.+.")
-    assert "hello.bf" in run("sh", ROOT / "tests" / "stat-compare.sh", source).stdout.decode()
+    table = run(sys.executable, ROOT / "tools" / "stat_compare.py", source).stdout.decode().splitlines()
+    assert table[0].startswith("program\tlevel")
+    assert [row.split("\t")[:2] for row in table[1:]] == [["hello.bf", str(level)] for level in range(4)]
 
 
 def test_illegal_word_stops_the_run(tmp_path):
@@ -57,9 +57,9 @@ def test_trace_runs_again(tmp_path):
     source.write_text(",[.,]")
     trace = tmp_path / "echo.bft"
     assert brainfunk("-m", "trace", "-f", source, "-o", trace, input=b"traced").stdout == b"traced"
-    replayed = brainfunk("-m", "stat", "-t", trace)
+    replayed = brainfunk("-m", "analyze", "-t", trace)
     assert replayed.stdout == b"traced"
-    assert any(line.startswith("total\t") for line in replayed.stderr.decode().splitlines())
+    assert json.loads(replayed.stderr)["analyses"]["stat"]["dynamic_total"] > 0
     partial = tmp_path / "part.bft"
     brainfunk("-m", "trace", "--skip", "3", "--limit", "4", "-f", source, "-o", partial, input=b"traced")
     brainfunk("-t", partial)
@@ -67,14 +67,14 @@ def test_trace_runs_again(tmp_path):
 
 @pytest.mark.parametrize("args", [["-m", "trace", "-s", "+"],               # no file to write to
                                   ["-m", "run", "--skip", "1", "-s", "+"],  # a range is for stat and trace
-                                  ["-m", "stat", "--limit", "x", "-s", "+"]],
-                         ids=["trace-without-o", "range-with-run", "bad-count"])
+                                  ["-m", "analyze", "--limit", "x", "-s", "+"],
+                                  ["-m", "stat", "-s", "+"]],
+                         ids=["trace-without-o", "range-with-run", "bad-count", "stat-is-analyze-now"])
 def test_trace_options_are_checked(args):
     assert brainfunk(*args, check=False).returncode != 0
 
 
 def test_analyze_reports_json(tmp_path):
-    import json
     source = tmp_path / "count.bf"
     source.write_text("++++++++[>+++++<-]>[<+>-]<.")
     report = tmp_path / "report.json"

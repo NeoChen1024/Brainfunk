@@ -92,7 +92,9 @@ ExecutionStats count(std::string_view code, int level, std::size_t memory_size,
     brainfunk.optimize(level);
     std::istringstream in{std::string(input)};
     std::ostringstream out;
-    return brainfunk.run_counted(in, out);
+    StatSink stat;
+    (void)run_traced(brainfunk, stat, in, out);
+    return stat.stats;
 }
 
 } // namespace

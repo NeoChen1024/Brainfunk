@@ -270,11 +270,6 @@ public:
     /* Execute the translated program */
     void run(std::istream& is = std::cin, std::ostream& os = std::cout);
 
-    /* Execute the program from reset while counting what it does.  Much slower
-     * than run(). */
-    [[nodiscard]] ExecutionStats run_counted(std::istream& is = std::cin,
-                                             std::ostream& os = std::cout);
-
     /* Execute exactly one bitcode instruction. Returns false on halt. */
     [[nodiscard]] bool step(std::istream& is = std::cin, std::ostream& os = std::cout);
 

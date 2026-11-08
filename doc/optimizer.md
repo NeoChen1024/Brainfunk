@@ -97,7 +97,7 @@ instructions that do not touch that cell.
 
 This is the only level that does not reduce the work a machine with a single memory port has to
 do, with one exception: `DJN` reads its cell once where `A` and `JN` read it twice. The other
-rewrites remove an instruction fetch and decode, while their memory accesses stay. `-m stat`
+rewrites remove an instruction fetch and decode, while their memory accesses stay. `-m analyze`
 reports both.
 
 `MULC` must run after folding. Fusing earlier would force the clear to happen even when folding

@@ -69,10 +69,10 @@ iterations, and memory reads and writes
 as JSON: profiles, opcode n-grams, dependence distances, values, and cycle estimates for configurable
 cores. See [doc/analysis.md](doc/analysis.md).
 
-`tests/stat-compare.sh` compares those numbers across optimization levels:
+`tools/stat_compare.py` compares those numbers across optimization levels:
 
 ```shell
-sh tests/stat-compare.sh 3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
+tools/stat_compare.py 3rdparty/rdebath-Brainfuck/testing/Mandelbrot.b
 ```
 
 # Usage

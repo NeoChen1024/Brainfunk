@@ -6,19 +6,19 @@ analyses, which say what a run did, as JSON.
 
 ```shell
 build/bin/brainfunk -O2 -m trace -f program.b -o program.bft < input       # keep a run
-build/bin/brainfunk -m stat -t program.bft                                  # run it again, checked against the file
+build/bin/brainfunk -m analyze -t program.bft                               # run it again, checked against the file
 build/bin/brainfunk -O2 -m analyze -a profile,ngram,issue -f program.b -o report.json
 build/bin/brainfunk -m analyze -a issue --config machines.json -t program.bft -o report.json
 build/bin/brainfunk -O2 -m analyze -a deps --skip 100000000 --limit 10000000 -f program.b
 ```
 
 `--skip N` runs the first N instructions without reporting them, and `--limit N` stops after N
-more, for `stat`, `trace` and `analyze`. A trace file keeps its own range.
+more, for `analyze` and `trace`. A trace file keeps its own range.
 
 ## Events
 
 `trace.hpp` holds the instrumented loop, `run_traced()`, apart from `Brainfunk::run()`, which stays
-as fast as it was; the unit tests hold the two to the same output, tape and `base_ptr` on thousands
+as fast as it was; `-m analyze` without `-a` runs `stat`, the counts. The unit tests hold the two to the same output, tape and `base_ptr` on thousands
 of random programs at every level. Each instruction becomes one `TraceEvent`:
 
 | Field | What it is |
@@ -38,7 +38,8 @@ as the core retires it once.
 An `F` that never finds a zero would run for ever in `run()`. `F` writes nothing, so the cells it tests
 repeat within a tape's length of strides; the traced loop stops there and reports the run `endless`.
 
-A sink is anything with `begin`, `event` and `end`; `Sinks<A, B>` hands each event to several.
+A sink is anything with `begin`, `event` and `end`; `Sinks<A, B>` hands each event to several, and
+`StatSink` is the counts that `stat` reports.
 
 ## Trace files
 

@@ -39,22 +39,6 @@ static void readcode(string& code, const std::string& filename) {
 }
 
 // ------------------------------------------------------------------
-// print_stats  -  one "name<TAB>static<TAB>dynamic" row per opcode, then totals
-// ------------------------------------------------------------------
-
-static void print_stats(std::ostream& os, const ExecutionStats& stats) {
-    os << "opcode\tstatic\tdynamic\n";
-    for (std::size_t i = 0; i < stats.static_count.size(); ++i) {
-        os << opcode_name(static_cast<Opcode>(i)) << '\t' << stats.static_count[i] << '\t'
-           << stats.dynamic_count[i] << '\n';
-    }
-    os << "total\t" << stats.static_total() << '\t' << stats.dynamic_total() << '\n'
-       << "scan_iterations\t" << stats.scan_iterations << '\n'
-       << "memory_reads\t" << stats.memory_reads << '\n'
-       << "memory_writes\t" << stats.memory_writes << '\n';
-}
-
-// ------------------------------------------------------------------
 // helpmsg
 // ------------------------------------------------------------------
 
@@ -73,23 +57,22 @@ static void print_stats(std::ostream& os, const ExecutionStats& stats) {
         << "  -o out    where the output of a mode that writes one goes (default standard output)\n"
         << "  -m mode   what to do (default run):\n"
         << "              run     run the program (bf is the same)\n"
-        << "              stat    run it, counting what it does; the report goes to -o or stderr\n"
+        << "              analyze run it through the analyses of -a, a JSON report to -o or stderr\n"
         << "              trace   run it, writing a trace file to -o; the input is read whole first\n"
-        << "              analyze run it through the analyses -a names, a JSON report to -o or stderr\n"
         << "              bit     the program as a listing, one instruction a line\n"
         << "              hex     a bincode image as text, one hexadecimal word a line\n"
         << "              bin     a bincode image file\n"
         << "              packed  a packed image file, compressed, as bfload sends to the board\n"
         << "              bfc     C99\n"
         << "              llvm    portable textual LLVM IR\n"
-        << "  -a list   analyses, comma separated: " << [] {
+        << "  -a list   analyses, comma separated, stat by default: " << [] {
                std::string names;
                for (const auto& name : analysis_names()) names += (names.empty() ? "" : ",") + name;
                return names;
            }() << "\n"
         << "  --config file  JSON with a member per analysis, configuring it; see doc/analysis.md\n"
-        << "  --skip N  stat, trace, analyze: run the first N instructions without counting them\n"
-        << "  --limit N stat, trace, analyze: stop after counting N instructions\n"
+        << "  --skip N  analyze, trace: run the first N instructions without reporting them\n"
+        << "  --limit N analyze, trace: stop after reporting N instructions\n"
         << "  -h        show this help\n"
         << "\n"
         << "doc/bincode.txt describes the image formats; bit, hex, bin and packed convert between\n"
@@ -204,18 +187,18 @@ int main(int argc, char** argv) {
         helpmsg(argv, 1);
     }
     if (mode == "bf") mode = "run";
-    constexpr std::string_view modes[] = {"run", "stat", "trace", "analyze", "bit", "hex", "bin", "packed", "bfc", "llvm"};
+    constexpr std::string_view modes[] = {"run", "analyze", "trace", "bit", "hex", "bin", "packed", "bfc", "llvm"};
     if (std::find(std::begin(modes), std::end(modes), mode) == std::end(modes)) {
         cerr << "Unknown mode: " << mode << '\n';
         helpmsg(argv, 1);
     }
 
-    if (ranged && (mode != "stat" && mode != "trace" && mode != "analyze")) {
-        cerr << "--skip and --limit are for stat, trace and analyze\n";
+    if (ranged && mode != "trace" && mode != "analyze") {
+        cerr << "--skip and --limit are for analyze and trace\n";
         return 1;
     }
-    if (!trace_path.empty() && (ranged || (mode != "stat" && mode != "run" && mode != "analyze"))) {
-        cerr << "A trace file runs again with run, stat or analyze, over its own range\n";
+    if (!trace_path.empty() && (ranged || (mode != "run" && mode != "analyze"))) {
+        cerr << "A trace file runs again with run or analyze, over its own range\n";
         return 1;
     }
     if (mode == "trace" && !output_owner) {
@@ -248,12 +231,7 @@ int main(int argc, char** argv) {
             bf.load_bincode(header.words);
             std::istringstream in(header.input);
             TraceCheck check(reader);
-            if (mode == "stat") {
-                StatSink stat;
-                Sinks sinks(stat, check);
-                (void)run_traced(bf, sinks, in, cout, header.range());
-                print_stats(output_owner ? *output : cerr, stat.stats);
-            } else if (mode == "analyze") {
+            if (mode == "analyze") {
                 Sinks sinks(*analysis, check);
                 (void)run_traced(bf, sinks, in, cout, header.range());
                 auto about = header.meta;
@@ -304,13 +282,8 @@ int main(int argc, char** argv) {
 
         if (mode == "run") {
             bf.run();
-        } else if (mode == "stat") {
-            /* The program keeps stdout, so the report goes to -o or stderr. */
-            StatSink stat;
-            const auto summary = run_traced(bf, stat, std::cin, cout, range);
-            print_stats(output_owner ? *output : cerr, stat.stats);
-            if (summary.trapped) throw BrainfunkException("Empty instruction");
         } else if (mode == "analyze") {
+            /* The program keeps stdout, so the report goes to -o or stderr. */
             const auto summary = run_traced(bf, *analysis, std::cin, cout, range);
             nlohmann::json about = {{"level", image.empty() ? nlohmann::json(opt_level) : nlohmann::json(nullptr)},
                                     {"words", bf.bitcode().size()}, {"skip", range.skip},

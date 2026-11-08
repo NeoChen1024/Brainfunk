@@ -1,5 +1,4 @@
 #include "libbrainfunk.hpp"
-#include "trace.hpp"
 #include "ctre.hpp"
 
 #include <algorithm>
@@ -357,7 +356,7 @@ void Brainfunk::run(std::istream& is, std::ostream& os) {
 }
 
 // ------------------------------------------------------------------
-//  run_counted  -  run() with instruction and memory access counts
+//  ExecutionStats, which StatSink in trace.hpp fills
 // ------------------------------------------------------------------
 
 std::uint64_t ExecutionStats::static_total() const noexcept {
@@ -366,12 +365,6 @@ std::uint64_t ExecutionStats::static_total() const noexcept {
 
 std::uint64_t ExecutionStats::dynamic_total() const noexcept {
     return std::accumulate(dynamic_count.begin(), dynamic_count.end(), std::uint64_t{0});
-}
-
-ExecutionStats Brainfunk::run_counted(std::istream& is, std::ostream& os) {
-    StatSink sink;
-    if (run_traced(*this, sink, is, os).trapped) throw BrainfunkException("Empty instruction");
-    return sink.stats;
 }
 
 // ------------------------------------------------------------------
