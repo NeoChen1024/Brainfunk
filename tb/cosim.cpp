@@ -50,7 +50,6 @@ private:
 struct Result {
     std::uint64_t cycles  = 0;
     std::uint64_t retired = 0;
-    std::uint64_t paired  = 0;   // retired as the older of two at once
     bool          halted  = false;
     bool          trapped = false;
     bool          truncated = false;
@@ -164,35 +163,13 @@ public:
             const std::uint32_t retire_next_pc = top_.retire_next_pc;
             const std::uint32_t retire_base_ptr = top_.retire_base_ptr;
 
-            const bool retire2 = top_.retire2_valid;
-            const bool wrote2 = top_.dmem_we2_o;
-            const std::uint32_t write2_addr = top_.dmem_addr2_o;
-            const std::uint32_t write2_data = top_.dmem_wdata2_o;
-            const std::uint32_t retire2_pc = top_.retire2_pc;
-            const std::uint32_t retire2_instr = top_.retire2_instr;
-            const std::uint32_t retire2_base_ptr = top_.retire2_base_ptr;
-
             if (wrote && !retire) throw Divergence{"write outside a retiring cycle"};
-            if (wrote2 && !retire2) throw Divergence{"second write outside a retiring cycle"};
-            if (retire2 && !retire) throw Divergence{"second retire without the first"};
             if (wrote) written_.push_back(write_addr);
-            if (wrote2) written_.push_back(write2_addr);
 
             tick_high();
             ++result.cycles;
             ++cycles_since_retire;
 
-            if (retire2) {
-                /* The older of the two: the word before, which only ever goes on to the next one. */
-                check_retire(iss, iss_in, iss_out, image, result, retire2_pc, retire2_instr,
-                             static_cast<std::uint32_t>((retire2_pc + 1) % ROM_SIZE), retire2_base_ptr, wrote2, write2_addr, write2_data);
-                const auto op = retire2_instr >> 28;
-                result.cycles_per_op[op] += cycles_since_retire;
-                ++result.count_per_op[op];
-                cycles_since_retire = 0;
-                ++result.retired;
-                ++result.paired;
-            }
             if (retire) {
                 check_retire(iss, iss_in, iss_out, image, result, retire_pc, retire_instr,
                              retire_next_pc, retire_base_ptr, wrote, write_addr, write_data);
@@ -262,7 +239,6 @@ private:
         top_.clk = 0;
         top_.eval();
         if (top_.dmem_we_o) written_.push_back(top_.dmem_addr_o);
-        if (top_.dmem_we2_o) written_.push_back(top_.dmem_addr2_o);
         tick_high();
     }
 
@@ -375,7 +351,7 @@ void print_json(const Result& result) {
         ops[std::string(opcode_name(static_cast<Opcode>(op)))] = {{"count", result.count_per_op[op]},
                                                                    {"cycles", result.cycles_per_op[op]}};
     }
-    const nlohmann::json out = {{"retired", result.retired}, {"paired", result.paired}, {"cycles", result.cycles}, {"halted", result.halted},
+    const nlohmann::json out = {{"retired", result.retired}, {"cycles", result.cycles}, {"halted", result.halted},
                                 {"trapped", result.trapped}, {"truncated", result.truncated}, {"ops", ops}};
     std::cout << out.dump() << std::endl;
 }

@@ -44,11 +44,11 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
-# the design changes. Some are close because of what they are there to catch: mandel.b's, adds to a pending
-# cell of the early store forgotten (1.2477 as it is, 1.2495 without); hanoi.b's, the zero bits gone (0.7433
-# against 0.7457); long.b's, fetch stopping at three queued words even before a pair (1.0660 against 1.0717)
-# and pairs only within a fetched block (1.0731).
-CPI_LIMITS = {"hanoi.b": 0.745, "mandel.b": 1.249, "LostKng.b": 11.0, "fib.b": 1.05, "long.b": 1.068}
+# the design changes. Some are close because of what they are there to catch: hanoi.b's, next-fetch false
+# hits left in the table (1.0535 as it is, about 1.056 with them); mandel.b's, unit MULs that stop reading
+# both cells at once, and the direction table's counters read as they are written (1.503 as it is, 1.590
+# with them).
+CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.51, "LostKng.b": 12.0, "fib.b": 1.30, "long.b": 1.365}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -82,9 +82,9 @@ LONG_SCAN_IMAGE = "".join(f"{word:08x}\n" for word in [
 ])
 
 
-# A MUL that writes its own source, then one with the same source, which must read it again. The second
-# image puts a line boundary between them, so that an instruction cache miss empties A in between. A factor
-# of 2, because MULs with factors of 1 and -1 read both cells at once and share nothing.
+# A MUL that writes its own source, then one with the same source, which must read the new value. The
+# second image puts a line boundary between them, so that an instruction cache miss empties A in between.
+# A factor of 2, so that both go through the multiplier.
 MUL_SELF_WORDS = [0x20000005,   # [0] = 5
                   0x20000101,   # [1] = 1
                   0x30000002,   # [0] += [0] * 2: 15
@@ -96,8 +96,7 @@ MUL_SELF_IMAGES = {
     "across_a_line": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS[:2] + [0x20000200] * 5 + MUL_SELF_WORDS[2:]),
 }
 
-# MULs in a row with one source and factors other than 1 and -1, so that each takes it from the one before
-# and needs its own factor in the multiplier.
+# MULs in a row with one source and factors other than 1 and -1, each with its own factor in the multiplier.
 MUL_CHAIN_WORDS = [0x20000003,  # [0] = 3
                    0x20000101,  # [1] = 1
                    0x20000201,  # [2] = 1
@@ -109,7 +108,7 @@ MUL_CHAIN_WORDS = [0x20000003,  # [0] = 3
 MUL_CHAIN_IMAGE = "".join(f"{word:08x}\n" for word in MUL_CHAIN_WORDS)
 
 
-def test_muls_sharing_a_source(tools, tmp_path):
+def test_muls_in_a_row_with_one_source(tools, tmp_path):
     image = tmp_path / "mul_chain.hex"
     image.write_text(MUL_CHAIN_IMAGE)
     assert cosim_json(image)["halted"]
@@ -170,13 +169,11 @@ def test_stalls_on_a_real_program(tools, tmp_path):
     assert cosim_json("--stall", image)["halted"]
 
 
-# How far the default machine of `brainfunk -m analyze -a issue` may be from the core, over the same first
-# instructions. The model has no caches, so LostKng.b, which waits on the instruction cache, is not here,
-# and mandel.b's branches cost the core more than the model sees; nor does it have the core's fetch, two
-# words a block into a queue of four. At the last count, with dual issue, the model was 0.9% short on
-# long.b, 3.1% on hanoi.b, 3.8% on mandel.b and 5.0% on fib.b. A design change that the model does not
-# follow shows up here.
-MODEL_TOLERANCE = {"hanoi.b": 0.04, "long.b": 0.015, "fib.b": 0.06, "mandel.b": 0.05}
+# How far the default machine of `brainfunk -m analyze -a issue`, caches and SDRAM included, may be from
+# the core over the same first instructions. At the last count it was 0.0% off on long.b, 0.1% short on
+# hanoi.b, 1.6% on mandel.b and 1.8% on fib.b, and 2.7% over on LostKng.b, which waits on the instruction
+# cache. A design change that the model does not follow shows up here.
+MODEL_TOLERANCE = {"hanoi.b": 0.005, "long.b": 0.005, "fib.b": 0.025, "mandel.b": 0.025, "LostKng.b": 0.035}
 
 
 @pytest.mark.parametrize("name", MODEL_TOLERANCE)

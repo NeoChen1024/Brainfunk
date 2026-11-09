@@ -98,37 +98,39 @@ inputs.
 ### `issue`
 
 A trace-driven model of in-order cores that issue up to `width` instructions a cycle, from the dual-issue
-study. Its defaults are the core in `rtl/` as it is, which issues pairs of simple instructions; over the
-first two million instructions, it is short of the cosimulator by 0.9% on `long.b`, 3.1% on `hanoi.b`,
-3.8% on `mandel.b` and 5.0% on `fib.b`, and `tests/hw/test_cosim.py` keeps it there. It has no caches
-and no fetch queue, so a program that misses, `LostKng.b`, takes far longer on the core.
+study. Its defaults are the scalar core in `rtl/` as it is, caches and SDRAM included; over the first
+two million instructions, it is 0.0% off the cosimulator on `long.b`, 0.1% short on `hanoi.b`, 1.6% on
+`mandel.b` and 1.8% on `fib.b`, and 2.7% over on `LostKng.b`, which waits on the instruction cache, and
+`tests/hw/test_cosim.py` keeps it there. Over 86 programs of the corpus it is 4.1% off on average and 1.5%
+short at the median; 61 are within 5%, and the worst is 23% short.
 
-Without `--config` it compares `rtl`, the defaults, with `scalar`, `width` 1, `penalty` 9 and
-`early_penalty` 6, the core before dual issue, and with `dual`, the defaults without the core's pairing
-rules: `raw` 1 and any two instructions together. Each machine's fields, all optional:
+Without `--config` it compares `rtl`, the defaults, with the two designs that tag `rtl-dual-issue` built
+and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual issue`, `width` 2,
+`raw` 0, `penalty` 10, `early_penalty` 7 and all four pairing rules. Each machine's fields, all optional:
 
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | `machine` | |
-| `width` | 2 | instructions issued a cycle |
+| `width` | 1 | instructions issued a cycle |
 | `reads`, `writes` | 2, 2 | cell reads and writes a cycle |
 | `branches` | 1 | branches a cycle |
-| `raw` | 0 | a read in the same cycle as a write of its cell: 0 never; 1 when cheap: a branch's zero test, after `S`, a `MUL`'s source, an add after an add; 2 always |
+| `raw` | 1 | a read in the same cycle as a write of its cell: 0 never; 1 when cheap: a branch's zero test, after `S`, a `MUL`'s source, an add after an add; 2 always |
 | `mul` | `pair-unit` | `split`: source, a cycle for the multiplier, destination, and a `MUL` after one with the same source takes it from a register; `pair-unit`: factors of 1 and -1 read both cells at once, unless they share a bank of different lines; `single`: every `MUL` does |
 | `two_mul` | true | two `MUL` destinations in one cycle |
+| `share_source` | false | with `split`, a `MUL` right after one with the same source takes it from a register |
 | `fetch_line` | 0 | a group stays within an aligned run of this many words; 0 any two in a row |
-| `pair_simple` | true | only `A`, `S`, `M`, `JE` and `JN` share a group |
-| `branch_first`, `branch_last` | false, true | a branch only opens a group; a branch closes its group |
-| `pair_disjoint` | true | two in a group touch different cells |
-| `write_banks` | 8 | two writes in a group are to cells different modulo this; 0 any |
+| `pair_simple` | false | only `A`, `S`, `M`, `JE` and `JN` share a group |
+| `branch_first`, `branch_last` | false, false | a branch only opens a group; a branch closes its group |
+| `pair_disjoint` | false | two in a group touch different cells |
+| `write_banks` | 0 | two writes in a group are to cells different modulo this; 0 any |
 | `early_second` | true | a branch second in its group may resolve early |
 | `early_store` | true | with `early_cells`, a store of values; false, only the zero bits |
 | `banks` | 32 | cells per line of banks, two cells in one bank of different lines conflicting; 0 none |
-| `penalty` | 10 | cycles lost to a misprediction |
+| `penalty` | 9 | cycles lost to a misprediction |
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
 | `io` | 7 | cycles an `IO` takes |
-| `early_penalty` | 7 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
+| `early_penalty` | 0 | cycles a misprediction costs when the branch resolves as soon as its cell's value is known, rather than at X; 0 never |
 | `late` | 4 | cycles after its writer issues that a value is known, at X, for `early_penalty` |
 | `forward` | `add` | values decode works out itself, known as their writer issues: `none`; `set`, constants; `add`, constants and adds of constants to known values (`A`, `DJN`); `mul`, `MUL` by 1 or -1 of known values too |
 | `early_cells` | 4 | cells in a direct-mapped store the early values come from, each cell touched filling its slot, a cell read only once the D-cache has it at X; a branch whose cell is not there resolves at X; 0 the whole tape, wrong paths aside |
@@ -137,6 +139,7 @@ rules: `raw` 1 and any two instructions together. Each machine's fields, all opt
 | `zero_bits_penalty` | 0 | what a misprediction the zero bits resolve costs, if not `early_penalty` |
 | `early_zero_bits` | true | a branch whose cell is not in the store tests a bit per cell of the whole tape instead, written in order as values are known at X |
 | `predictor` | `rtl` | how branches are guessed, below |
+| `memory` | the core's | the caches and SDRAM, below; `false` or `null` for a memory that always hits |
 
 A group closes at a taken branch, a misprediction, and a redirect. The report gives, for each machine,
 `cycles`, `cpi`, `speedup` against the first, `joined` (the share of instructions issued alongside an
@@ -145,6 +148,31 @@ older one in the same cycle), `not_joined_because`, the share that could not, by
 `penalty_cycles`, what mispredictions cost, and `resolved_early`, how many cost only `early_penalty`.
 `steers_by` splits the steers: `taken_miss`, a taken guess fetch did not make; `wrong_target`;
 `not_taken_hit`, a next-fetch hit decode took back; `not_a_branch`, a hit on a word that is no branch.
+`memory` counts `i_misses`, `d_misses`, `writebacks` and `refreshes`, and `i_cycles` and `d_cycles`,
+what instructions waited for each cache.
+
+#### Memory
+
+Two direct-mapped caches share an SDRAM that moves a line at a time, as in the core. An instruction
+whose word misses waits for its line, which fetch asked for `fetch_lead` + `i_request` cycles after it
+would have fetched the word, and issues `i_resume` cycles after the line's last word. An instruction
+whose cell misses issues again `d_resume` cycles after its line's last word, or `penalty` + 1 cycles
+after it first issued if that is later; the line asks for the SDRAM `d_request` cycles after the
+first issue, and first writes back the line it replaces if that was written. `F` reads a line a
+cycle and starts again from a line that misses. The SDRAM takes one request at a time, a read for
+`read_busy` cycles with its last word at `read_latency`, a write back for `write_busy`, and refreshes
+for `refresh_busy` cycles every `refresh_every` once it is idle. The defaults are measured on the
+cosimulator: a run of misses to clean lines, of misses to written ones, and of straight-line code,
+each within 0.1%.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `i_lines`, `i_words` | 512, 8 | instruction cache lines, and words in a line |
+| `d_lines`, `d_cells` | 512, 32 | data cache lines, and cells in a line |
+| `read_latency`, `read_busy`, `write_busy` | 15, 17, 19 | SDRAM cycles, above |
+| `refresh_every`, `refresh_busy` | 1170, 14 | |
+| `fetch_lead`, `i_request`, `i_resume` | 5, 4, 12 | |
+| `d_request`, `d_resume` | 7, 7 | |
 
 #### Predictors
 
@@ -182,10 +210,9 @@ families' geometric means, with the families split into held-out folds.
 ```json
 {"issue": {"machines": [
     {"name": "rtl"},
-    {"name": "scalar", "width": 1, "penalty": 9, "early_penalty": 6},
-    {"name": "rtl, aligned fetch", "fetch_line": 8},
-    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single",
-     "pair_simple": false, "branch_last": false, "pair_disjoint": false, "write_banks": 0},
+    {"name": "dual", "width": 2, "penalty": 10},
+    {"name": "dual, aligned fetch", "width": 2, "penalty": 10, "fetch_line": 8},
+    {"name": "wide", "width": 4, "reads": 4, "writes": 4, "branches": 2, "raw": 2, "mul": "single"},
     {"name": "rtl, tournament",
      "predictor": {"kind": "tournament", "forget": true, "next": 64,
                    "components": [{"kind": "loop", "base": {"kind": "local"}}, {"kind": "gshare", "history": 8}]}}

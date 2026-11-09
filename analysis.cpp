@@ -9,6 +9,7 @@
 #include <limits>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 using nlohmann::json;
@@ -740,24 +741,77 @@ enum class MulMode { Split, PairUnit, Single };
 enum class Forward { None, Set, Add, Mul };
 constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add", "mul"};
 
-/* An in-order core that issues up to `width` instructions a cycle. The defaults are the core in
- * rtl/ as it is, which issues pairs of simple instructions; doc/analysis.md says what each field means. */
+/* The caches and the SDRAM behind them, as the core has them; doc/analysis.md says what each field means.
+ * Both caches are direct-mapped and share the SDRAM, which moves a line at a time and refreshes on its own. */
+struct MemoryConfig {
+    bool     on = true;
+    unsigned i_lines = 512, i_words = 8;     // instruction cache: lines, and words in a line
+    unsigned d_lines = 512, d_cells = 32;    // data cache: lines, and cells in a line; written back
+    unsigned read_latency = 15;              // SDRAM: a line read, from the request to its last word
+    unsigned read_busy = 17, write_busy = 19;   // and until the next request, after a read or a write
+    unsigned refresh_every = 1170, refresh_busy = 14;
+    unsigned fetch_lead = 5;                 // a word's fetch to its issue
+    unsigned i_request = 4, i_resume = 12;   // a fetch that misses to the request; the last word to the issue
+    unsigned d_request = 7, d_resume = 7;    // an issue that misses to the request; the last word to the issue again
+
+    static MemoryConfig from(const json& j) {
+        MemoryConfig m;
+        if (j.is_boolean()) {
+            m.on = j.get<bool>();
+            return m;
+        }
+        if (j.is_null()) {
+            m.on = false;
+            return m;
+        }
+        if (!j.is_object()) throw BrainfunkException("issue: memory is an object, true, false or null");
+        for (const auto& [key, value] : j.items()) {
+            if (!field(m, key)) throw BrainfunkException("issue: memory has no field " + key);
+            *field(m, key) = value.get<unsigned>();
+        }
+        if (!m.i_lines || !m.i_words || !m.d_lines || !m.d_cells) throw BrainfunkException("issue: memory sizes are at least 1");
+        return m;
+    }
+
+    [[nodiscard]] json to_json() const {
+        if (!on) return false;
+        json out = json::object();
+        for (const auto* name : NAMES) out[name] = *field(const_cast<MemoryConfig&>(*this), name);
+        return out;
+    }
+
+private:
+    static constexpr const char* NAMES[] = {"i_lines", "i_words", "d_lines", "d_cells", "read_latency", "read_busy",
+                                            "write_busy", "refresh_every", "refresh_busy", "fetch_lead", "i_request",
+                                            "i_resume", "d_request", "d_resume"};
+    static unsigned* field(MemoryConfig& m, std::string_view name) {
+        unsigned* const fields[] = {&m.i_lines, &m.i_words, &m.d_lines, &m.d_cells, &m.read_latency, &m.read_busy,
+                                    &m.write_busy, &m.refresh_every, &m.refresh_busy, &m.fetch_lead, &m.i_request,
+                                    &m.i_resume, &m.d_request, &m.d_resume};
+        for (std::size_t i = 0; i < std::size(NAMES); ++i) if (name == NAMES[i]) return fields[i];
+        return nullptr;
+    }
+};
+
+/* An in-order core that issues up to `width` instructions a cycle. The defaults are the scalar core in
+ * rtl/ as it is; doc/analysis.md says what each field means. */
 struct MachineConfig {
     std::string     name = "machine";
-    unsigned        width = 2, reads = 2, writes = 2, branches = 1;
-    unsigned        raw = 0;            // same-cycle reads of a cell written in the group: 0 never, 1 cheap cases, 2 always
+    unsigned        width = 1, reads = 2, writes = 2, branches = 1;
+    unsigned        raw = 1;            // same-cycle reads of a cell written in the group: 0 never, 1 cheap cases, 2 always
     MulMode         mul = MulMode::PairUnit;
     bool            two_mul = true;     // two MUL destinations in a cycle
+    bool            share_source = false;   // a split MUL after one with the same source takes it from a register
     unsigned        fetch_line = 0;     // a group stays within an aligned run of this many words; 0 any
-    bool            pair_simple = true;   // only A, S, M, JE and JN share a group
+    bool            pair_simple = false;  // only A, S, M, JE and JN share a group
     bool            branch_first = false; // a branch only opens a group
-    bool            branch_last = true;   // a branch closes its group
-    bool            pair_disjoint = true; // two in a group touch different cells
-    unsigned        write_banks = 8;      // two writes in a group are to cells different modulo this; 0 any
+    bool            branch_last = false;  // a branch closes its group
+    bool            pair_disjoint = false; // two in a group touch different cells
+    unsigned        write_banks = 0;      // two writes in a group are to cells different modulo this; 0 any
     bool            early_second = true;  // a branch second in its group may resolve early
     bool            early_store = true;   // with early_cells, a store of values; else only the zero bits
     unsigned        banks = 32;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
-    unsigned        penalty = 10, steer = 3;
+    unsigned        penalty = 9, steer = 3;
     unsigned        scan_base = 8, line_cells = 32, stride_limit = 16, io = 7;
     /* Branches resolved before X: once the cell's value is known, a misprediction costs early_penalty
      * (0: never early) plus the cycles until it is. Values are known `late` cycles after their writer
@@ -768,12 +822,13 @@ struct MachineConfig {
      * store, since the wrong path may have written it. With early_zero_bits, a branch
      * whose cell is not in the store tests a bit per cell of the whole tape instead, written in order
      * as values are known at X. */
-    unsigned        early_penalty = 7, late = 4, early_cells = 4;
+    unsigned        early_penalty = 0, late = 4, early_cells = 4;
     unsigned        zero_bits_penalty = 0;   // for a branch the zero bits resolve; 0 as early_penalty
     bool            early_flush = true, early_zero_bits = true;
     bool            early_partial = false;   // a branch whose value comes later resolves then; else at X
-    Forward         forward = Forward::Add;
+    Forward         forward = Forward::Add;   // these early fields are what tag rtl-dual-issue built, once early_penalty is set
     json            predictor = predictor_spec(json::object(), true);
+    MemoryConfig    memory;
 
     static MachineConfig from(const json& j) {
         MachineConfig c;
@@ -789,6 +844,7 @@ struct MachineConfig {
         else if (mul == "single") c.mul = MulMode::Single;
         else throw BrainfunkException("issue: mul is split, pair-unit or single, not " + mul);
         c.two_mul = j.value("two_mul", c.two_mul);
+        c.share_source = j.value("share_source", c.share_source);
         c.fetch_line = j.value("fetch_line", c.fetch_line);
         c.pair_simple = j.value("pair_simple", c.pair_simple);
         c.branch_first = j.value("branch_first", c.branch_first);
@@ -817,6 +873,7 @@ struct MachineConfig {
         if (known == std::end(FORWARD_NAMES)) throw BrainfunkException("issue: forward is none, set, add or mul, not " + forward);
         c.forward = static_cast<Forward>(known - std::begin(FORWARD_NAMES));
         c.predictor = predictor_spec(j.value("predictor", json::object()), true);
+        if (j.contains("memory")) c.memory = MemoryConfig::from(j.at("memory"));
         if (c.width == 0 || c.reads == 0 || c.writes == 0) throw BrainfunkException("issue: width, reads and writes are at least 1");
         return c;
     }
@@ -824,13 +881,13 @@ struct MachineConfig {
     [[nodiscard]] json to_json() const {
         static constexpr std::string_view MUL_NAMES[] = {"split", "pair-unit", "single"};
         return {{"name", name}, {"width", width}, {"reads", reads}, {"writes", writes}, {"branches", branches},
-                {"raw", raw}, {"mul", MUL_NAMES[static_cast<int>(mul)]}, {"two_mul", two_mul},
+                {"raw", raw}, {"mul", MUL_NAMES[static_cast<int>(mul)]}, {"two_mul", two_mul}, {"share_source", share_source},
                 {"fetch_line", fetch_line}, {"pair_simple", pair_simple}, {"branch_first", branch_first},
                 {"branch_last", branch_last}, {"pair_disjoint", pair_disjoint}, {"write_banks", write_banks},
                 {"early_second", early_second}, {"early_store", early_store}, {"banks", banks}, {"penalty", penalty}, {"steer", steer},
                 {"scan_base", scan_base}, {"line_cells", line_cells}, {"stride_limit", stride_limit}, {"io", io},
                 {"early_penalty", early_penalty}, {"late", late}, {"early_cells", early_cells}, {"early_flush", early_flush}, {"early_zero_bits", early_zero_bits}, {"early_partial", early_partial}, {"zero_bits_penalty", zero_bits_penalty}, {"forward", FORWARD_NAMES[static_cast<int>(forward)]},
-                {"predictor", predictor}};
+                {"predictor", predictor}, {"memory", memory.to_json()}};
     }
 };
 
@@ -838,9 +895,95 @@ struct MachineConfig {
 enum Reason { JOINED, CLOSED, LATER, FULL, PORTS, BRANCHES, CONFLICT, DEPENDENCE, KIND, REASONS };
 constexpr std::string_view REASON_NAMES[] = {"joined", "closed", "later", "full", "ports", "branches", "conflict", "dependence", "kind"};
 
+/* MemoryConfig for one machine: when an instruction whose word or cells miss can go on. The SDRAM
+ * takes the misses in the order they come, between its refreshes. */
+class MemorySystem {
+public:
+    explicit MemorySystem(const MemoryConfig& c)
+        : c_(c), i_tags_(c.i_lines, NONE), d_tags_(c.d_lines, NONE), d_dirty_(c.d_lines, false),
+          next_refresh_(c.refresh_every) {}
+
+    /* The word at pc, which would issue at `at` from the cache: when it can. A miss holds fetch, which
+     * was `fetch_lead` cycles ahead of issue, until the line is in. */
+    std::uint64_t fetch(addr_t pc, std::uint64_t at) {
+        const std::uint64_t line = pc / c_.i_words;
+        auto& tag = i_tags_[line % c_.i_lines];
+        if (tag == line) return at;
+        tag = line;
+        ++i_misses_;
+        const auto fetched = at > c_.fetch_lead ? at - c_.fetch_lead : 0;
+        const auto ready = std::max(at, read(fetched + c_.i_request) + c_.i_resume);
+        i_cycles_ += ready - at;
+        return ready;
+    }
+
+    /* A cell of an instruction that would issue at `at`: when it can. A miss is found at X and
+     * restarts the instruction, `restart` cycles at least, once the line is in, after writing back the
+     * one it replaces if that was written. */
+    std::uint64_t data(addr_t cell, bool write, std::uint64_t at, unsigned restart) {
+        const std::uint64_t line = cell / c_.d_cells;
+        const auto index = line % c_.d_lines;
+        std::uint64_t ready = at;
+        if (d_tags_[index] != line) {
+            ++d_misses_;
+            auto request = at + c_.d_request;
+            if (d_tags_[index] != NONE && d_dirty_[index]) {
+                ++writebacks_;
+                request = write_back(request);
+            }
+            ready = std::max(at + 1 + restart, read(request) + c_.d_resume);
+            d_tags_[index] = line;
+            d_dirty_[index] = false;
+            d_cycles_ += ready - at;
+        }
+        if (write) d_dirty_[index] = true;
+        return ready;
+    }
+
+    [[nodiscard]] json report() const {
+        return {{"i_misses", i_misses_}, {"d_misses", d_misses_}, {"writebacks", writebacks_},
+                {"i_cycles", i_cycles_}, {"d_cycles", d_cycles_}, {"refreshes", refreshes_}};
+    }
+
+private:
+    /* When the SDRAM takes a request made at t: once it is free, and has refreshed if that was due. */
+    std::uint64_t start(std::uint64_t t) {
+        t = std::max(t, free_);
+        while (c_.refresh_every && t >= next_refresh_) {
+            const auto at = std::max(next_refresh_, free_);
+            free_ = at + c_.refresh_busy;
+            next_refresh_ = at + c_.refresh_every;
+            t = std::max(t, free_);
+            ++refreshes_;
+        }
+        return t;
+    }
+    /* A line read: when its last word is in. */
+    std::uint64_t read(std::uint64_t t) {
+        const auto s = start(t);
+        free_ = s + c_.read_busy;
+        return s + c_.read_latency;
+    }
+    /* A line written back: when the next request can be made, which waits for the SDRAM anyway. */
+    std::uint64_t write_back(std::uint64_t t) {
+        const auto s = start(t);
+        free_ = s + c_.write_busy;
+        return s;
+    }
+
+    static constexpr std::uint64_t NONE = std::numeric_limits<std::uint64_t>::max();
+    MemoryConfig               c_;
+    std::vector<std::uint64_t> i_tags_, d_tags_;   // the line each holds
+    std::vector<bool>          d_dirty_;
+    std::uint64_t              free_ = 0, next_refresh_ = 0;
+    std::uint64_t              i_misses_ = 0, d_misses_ = 0, writebacks_ = 0, i_cycles_ = 0, d_cycles_ = 0, refreshes_ = 0;
+};
+
 class Machine {
 public:
-    explicit Machine(MachineConfig config) : c_(std::move(config)), predictor_(c_.predictor) {}
+    explicit Machine(MachineConfig config) : c_(std::move(config)), predictor_(c_.predictor) {
+        if (c_.memory.on) memory_.emplace(c_.memory);
+    }
 
     void see(const TraceEvent& e, addr_t before, addr_t mask) {
         mask_ = mask;
@@ -849,7 +992,29 @@ public:
         const Opcode op = in.opcode();
         const addr_t target = e.branch ? e.pc + 1 + static_cast<addr_t>(in.jump_offset()) : 0;
         pc_ = e.pc;
-        const std::uint64_t at = ready_;
+        std::uint64_t at = ready_;
+        std::uint64_t scan_misses = 0;   // what F's reads wait for the data cache
+        if (memory_) {
+            at = memory_->fetch(e.pc, at);
+            if (op == Opcode::F) {
+                /* A line a cycle; a miss restarts F from that line once it is in. */
+                const auto stride = static_cast<std::int64_t>(in.step());
+                std::uint64_t t = at, last = std::numeric_limits<std::uint64_t>::max();
+                for (std::uint64_t i = 0; i <= e.steps; ++i) {
+                    const auto cell = static_cast<addr_t>((static_cast<std::int64_t>(e.read[0].cell) + static_cast<std::int64_t>(i) * stride)) & mask;
+                    const std::uint64_t line = cell / c_.memory.d_cells;
+                    if (line == last) continue;
+                    last = line;
+                    const auto ready = memory_->data(cell, false, t, c_.penalty);
+                    scan_misses += ready - t;
+                    t = ready + 1;
+                }
+            } else {
+                for (unsigned i = 0; i < e.reads; ++i) at = memory_->data(e.read[i].cell, false, at, c_.penalty);
+                for (unsigned i = 0; i < e.writes; ++i) at = memory_->data(e.write[i].cell, true, at, c_.penalty);
+                for (unsigned i = 1; i < e.fill; ++i) at = memory_->data((e.write[0].cell + i) & mask, true, at, c_.penalty);
+            }
+        }
 
         const bool mul = op == Opcode::MUL || op == Opcode::MULC;
         bool chained = false, pair = false;
@@ -858,7 +1023,7 @@ public:
             const addr_t src = e.read[0].cell, dst = e.read[1].cell;
             const bool conflict = c_.banks && src != dst && (src % c_.banks) == (dst % c_.banks);
             pair = c_.mul == MulMode::Single || (c_.mul == MulMode::PairUnit && unit && !conflict);
-            chained = !pair && prev_split_mul_ && in.src_offset() == prev_src_offset_;
+            chained = !pair && c_.share_source && prev_split_mul_ && in.src_offset() == prev_src_offset_;
             prev_split_mul_ = !pair && src != dst && op == Opcode::MUL;
             prev_src_offset_ = in.src_offset();
             mul_unit_ = unit;
@@ -869,7 +1034,7 @@ public:
         if (op == Opcode::F || op == Opcode::IO || op == Opcode::H) {
             open(next_cycle(at));
             closed_ = true;
-            ready_ = cycle_ + (op == Opcode::F ? scan_cost(e) : op == Opcode::IO ? c_.io : 1);
+            ready_ = cycle_ + (op == Opcode::F ? scan_cost(e) + scan_misses : op == Opcode::IO ? c_.io : 1);
         } else if (op == Opcode::SRUN) {
             for (unsigned i = 0; i < e.fill; ++i) {
                 place(Uop{.writes = 1, .write = (e.write[0].cell + i) & mask, .writer = WRITER_SET}, i ? cycle_ : at);
@@ -1027,7 +1192,8 @@ public:
                 {"speedup", baseline ? static_cast<double>(baseline) / static_cast<double>(total) : 1.0},
                 {"groups", groups_}, {"joined", share(reasons_[JOINED], instructions_)},
                 {"mispredicts", mispredicts_}, {"steers", steers_}, {"steers_by", steers_by}, {"not_joined_because", reasons},
-                {"branches", branches_by}, {"penalty_cycles", penalty_cycles_}, {"resolved_early", early_}, {"early_flushes", flushes_}};
+                {"branches", branches_by}, {"penalty_cycles", penalty_cycles_}, {"resolved_early", early_}, {"early_flushes", flushes_},
+                {"memory", memory_ ? memory_->report() : json(nullptr)}};
     }
 
     [[nodiscard]] const MachineConfig& config() const { return c_; }
@@ -1134,8 +1300,9 @@ private:
         if (u.branch && c_.branch_last) closed_ = true;
     }
 
-    MachineConfig c_;
-    Predictor     predictor_;
+    MachineConfig               c_;
+    Predictor                   predictor_;
+    std::optional<MemorySystem> memory_;
     addr_t        mask_ = 0, pc_ = 0, first_pc_ = 0;
 
     std::uint64_t cycle_ = 0, ready_ = 0, source_cycle_ = 0;
@@ -1163,9 +1330,9 @@ public:
     explicit IssueAnalysis(const json& config) {
         const auto machines = config.value("machines", json::array({
             json{{"name", "rtl"}},
-            json{{"name", "scalar"}, {"width", 1}, {"penalty", 9}, {"early_penalty", 6}},
-            json{{"name", "dual"}, {"raw", 1}, {"pair_simple", false}, {"branch_last", false}, {"pair_disjoint", false},
-                 {"write_banks", 0}}}));
+            json{{"name", "early resolve"}, {"early_penalty", 6}},
+            json{{"name", "dual issue"}, {"width", 2}, {"raw", 0}, {"penalty", 10}, {"early_penalty", 7}, {"pair_simple", true},
+                 {"branch_last", true}, {"pair_disjoint", true}, {"write_banks", 8}}}));
         for (const auto& m : machines) machines_.emplace_back(MachineConfig::from(m));
         if (machines_.empty()) throw BrainfunkException("issue: no machines");
     }

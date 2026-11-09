@@ -758,26 +758,57 @@ constexpr std::uint32_t HALT = 0x90000000u;
 } // namespace
 
 TEST_CASE("the issue model counts cycles as the cores would take them", "[analysis]") {
-    /* Eight adds to eight cells, then H, which waits for everything. */
-    const auto independent = analyze({add(0), add(1), add(2), add(3), add(4), add(5), add(6), add(7), HALT}, "issue");
-    CHECK(cycles_of(independent, 0) == 5);    // the core: in pairs
-    CHECK(cycles_of(independent, 1) == 9);    // scalar: one a cycle
-    CHECK(cycles_of(independent, 2) == 5);    // dual: in pairs
+    /* Eight adds to eight cells, then H, which waits for everything; with a memory that always hits. */
+    const nlohmann::json widths = {{"issue", {{"machines", {{{"name", "scalar"}, {"memory", false}},
+                                                           {{"name", "dual"}, {"width", 2}, {"memory", false}}}}}}};
+    const auto independent = analyze({add(0), add(1), add(2), add(3), add(4), add(5), add(6), add(7), HALT}, "issue", widths);
+    CHECK(cycles_of(independent, 0) == 9);    // one a cycle
+    CHECK(cycles_of(independent, 1) == 5);    // in pairs
 
     /* Adds to one cell, one after another: a pair would chain two adders, which only raw 2 allows. */
-    const nlohmann::json config = {{"issue", {{"machines", {{{"name", "strict"}, {"raw", 1}, {"pair_disjoint", false}, {"write_banks", 0}},
-                                                           {{"name", "chained"}, {"raw", 2}, {"pair_disjoint", false}, {"write_banks", 0}},
-                                                           {{"name", "the core"}}}}}}};
+    const nlohmann::json config = {{"issue", {{"machines", {{{"name", "strict"}, {"width", 2}, {"raw", 1}, {"memory", false}},
+                                                           {{"name", "chained"}, {"width", 2}, {"raw", 2}, {"memory", false}},
+                                                           {{"name", "disjoint"}, {"width", 2}, {"pair_disjoint", true}, {"memory", false}}}}}}};
     const auto chain = analyze({add(0), 0x10000002u, add(0), 0x10000002u, HALT}, "issue", config);
     CHECK(cycles_of(chain, 0) == 3);   // A+A of constants folds in D, so even raw 1 pairs them
     CHECK(cycles_of(chain, 1) == 3);
-    CHECK(cycles_of(chain, 2) == 5);   // the core pairs no two instructions on one cell
+    CHECK(cycles_of(chain, 2) == 5);   // pair_disjoint pairs no two instructions on one cell
 
-    const nlohmann::json narrow = {{"issue", {{"machines", {{{"width", 2}, {"writes", 1}}}}}}};
+    const nlohmann::json narrow = {{"issue", {{"machines", {{{"width", 2}, {"writes", 1}, {"memory", false}}}}}}};
     CHECK(cycles_of(analyze({add(0), add(1), add(2), add(3), HALT}, "issue", narrow), 0) == 5);   // one write a cycle
 
     CHECK_THROWS_AS(analyze({HALT}, "issue", {{"issue", {{"machines", {{{"mul", "fast"}}}}}}}), BrainfunkException);
     CHECK_THROWS_AS(analyze({HALT}, "nonsense"), BrainfunkException);
+}
+
+TEST_CASE("the issue model's caches miss, write back and share the SDRAM", "[analysis]") {
+    const auto memory = [](const nlohmann::json& report, std::size_t machine, const char* field) {
+        return report.at("analyses").at("issue").at("machines").at(machine).at("memory").at(field).get<std::uint64_t>();
+    };
+    const nlohmann::json both = {{"issue", {{"machines", {{{"name", "core"}}, {{"name", "ideal"}, {"memory", false}}}}}}};
+
+    /* Cells 0 and 16384 share a line of the data cache: each add misses, and from the second on
+     * writes back the line the one before wrote. Eight words are one line of the instruction cache. */
+    constexpr std::uint32_t up = 0x50000000u | 16384u, down = 0x50000000u | (0x100000u - 16384u);
+    const auto thrash = analyze({add(0), up, add(0), down, add(0), up, add(0), HALT}, "issue", both);
+    CHECK(memory(thrash, 0, "i_misses") == 1);
+    CHECK(memory(thrash, 0, "d_misses") == 4);
+    CHECK(memory(thrash, 0, "writebacks") == 3);
+    CHECK(cycles_of(thrash, 1) == 8);
+    /* A clean miss costs a read; a dirty one a write back first. */
+    const auto clean = analyze({add(0), add(64), add(128), add(192), add(256), add(320), HALT}, "issue", both);
+    CHECK(memory(clean, 0, "d_misses") == 6);
+    CHECK(memory(clean, 0, "writebacks") == 0);
+    CHECK(memory(clean, 0, "d_cycles") > 6 * 20);
+    CHECK(memory(thrash, 0, "d_cycles") / 4 > memory(clean, 0, "d_cycles") / 6);
+
+    /* Cells in one line miss once; words beyond a line miss again. */
+    const auto line = analyze({add(0), add(1), add(2), add(3), add(4), add(5), add(6), add(7), add(8), HALT}, "issue", both);
+    CHECK(memory(line, 0, "d_misses") == 1);
+    CHECK(memory(line, 0, "i_misses") == 2);
+
+    CHECK_THROWS_AS(analyze({HALT}, "issue", {{"issue", {{"machines", {{{"memory", {{"d_ways", 2}}}}}}}}}), BrainfunkException);
+    CHECK_THROWS_AS(analyze({HALT}, "issue", {{"issue", {{"machines", {{{"memory", 3}}}}}}}), BrainfunkException);
 }
 
 TEST_CASE("predictors guess branches as their kinds do", "[analysis]") {
@@ -831,7 +862,7 @@ TEST_CASE("branches resolve early once their cell's value is known", "[analysis]
     bf.translate(std::string(20, '+') + "[>+++[-.>+<]<-]");
     const auto machine = [](const char* name, unsigned early, const char* forward, unsigned cells, bool zero_bits = false) {
         return nlohmann::json{{"name", name}, {"width", 1}, {"penalty", 9}, {"early_penalty", early}, {"forward", forward},
-                              {"early_cells", cells}, {"early_zero_bits", zero_bits}};
+                              {"early_cells", cells}, {"early_zero_bits", zero_bits}, {"early_partial", false}};
     };
     nlohmann::json config = {{"issue", {{"machines", {machine("late", 0, "none", 0), machine("none", 5, "none", 0),
                                                            machine("add", 5, "add", 0), machine("add, 1 cell", 5, "add", 1),

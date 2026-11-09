@@ -29,7 +29,6 @@ module sdram_phy (
 
     logic [20:0]   burst_addr;
     int            read_left = 0, write_left = 0, read_delay = 0;
-    logic [1:0]    burst_bank;
     logic [31:0]   lfsr = 32'hACE1_2345;
     logic          driving = 1'b0;
     logic [31:0]   driven;

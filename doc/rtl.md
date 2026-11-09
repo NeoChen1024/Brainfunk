@@ -1,6 +1,6 @@
 # RTL
 
-`rtl/brainfunk_core.sv` is a pipelined core that issues pairs of simple instructions, for the instruction set in
+`rtl/brainfunk_core.sv` is a scalar pipelined core for the instruction set in
 [bitcode.txt](bitcode.txt) and [bincode.txt](bincode.txt), built for clock speed and checked
 against the C++ interpreter at every retire. Code and tape live in SDRAM, behind two caches.
 
@@ -8,10 +8,9 @@ It does not implement the fused instructions (`MULC`, `DJN`, `MJN`, `SRUN`) and 
 them, so programs must come from `-O2` or lower.
 
 ```text
-rtl/brainfunk_core.sv    the core, and the predecoding the instruction cache does for it
+rtl/brainfunk_core.sv    the core
 rtl/brainfunk_predict.sv next-fetch and direction tables, which only guess
-rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines; the instruction cache reads
-                         two words at once, the data cache whole lines, with a second read and write port
+rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines; the data cache reads whole lines
 rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
 rtl/sdram_ctrl.sv        SDRAM controller
 rtl/brainfunk_soc.sv     all of those together
@@ -25,14 +24,13 @@ bfload.cpp               packs an image, and sends it to the board
 ## Pipeline
 
 ```text
-IF  I1 I2  Q   D   A   M0 M1 M2  X   W
+IF  I1 I2  D   A   M0 M1 M2  X   W
 ```
 
 | Stage | Work |
 |---|---|
-| `IF`, `I1`, `I2` | Instruction memory read, three clock edges, two words at a time |
-| `Q` | Check the next-fetch guess, predict `JE` and `JN`, redirect fetch; pair words up, queue them |
-| `D` | Decode one word, or a pair, from the fetch queue |
+| `IF`, `I1`, `I2` | Instruction memory read, three clock edges |
+| `D` | Decode; check the next-fetch guess, predict `JE` and `JN`, redirect fetch |
 | `A` | `base_ptr` + offset; `M` moves `base_ptr` here |
 | `M0`, `M1`, `M2` | Data memory read, three clock edges; `M0` compares addresses with older writes |
 | `X` | Result and zero test; resolves branches and the end of `F` |
@@ -57,14 +55,12 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Event | Cycles |
 |---|---|
 | `A`, `S`, `M`, `JE`, `JN` | 1 |
-| Two of `A`, `S`, `M`, then one of those or `JE`, `JN` | 1 for both, mostly; see [Dual issue](#dual-issue) |
-| `MUL` | 1 with a factor of 1 or -1; otherwise 3: source, multiplier, destination, or 2 sharing the previous `MUL`'s source |
+| `MUL` | 1 with a factor of 1 or -1; otherwise 3: source, multiplier, destination |
 | `F` | 1 per line reached, plus 7 to end, plus up to 4 waiting for an older write |
 | Branch predicted taken, in the next-fetch table | nothing more |
 | Branch predicted taken, not in it | 3 more |
 | A word that is not a branch, wrongly in the next-fetch table | 3 more |
-| Branch mispredicted, or the table's target wrong | 10 more |
-| Branch mispredicted, its cell's value known when it is in `M0` | 7 more; see [Early resolution](#early-resolution) |
+| Branch mispredicted, or the table's target wrong | 9 more |
 | `IO` | about 8, plus waiting for the byte |
 | Cache miss, instruction | about 20, holding the front end |
 | Cache miss, data | about 30 to restart the instruction, about 20 more to write back a dirty line |
@@ -125,10 +121,8 @@ DSP block a cycle after the source's value leaves `X`, so the destination waits 
 
 In the corpus, nearly every factor is 1 or -1: 100% of `MUL` in `mandel.b` and `LostKng.b`, though
 none in `long.b`. Those need no multiplier: the destination adds or subtracts the source's value as it
-left `X` a cycle before, so it follows the source straight away. And a `MUL` right after another with
-the same source, which that one did not write, needs no read of its own, because `mul_operand` still
-holds the value; that is 12% of `MUL` in `mandel.b`. Everything else still goes through the DSP block,
-which now takes its factor from the destination in `M2`, so that a shared source works with any factor.
+left `X` a cycle before, so it follows the source straight away. Everything else still goes through
+the DSP block, which takes its factor from the destination in `M2`.
 
 | Program | `MUL` before | `MUL` after | Cycles |
 |---|---|---|---|
@@ -141,17 +135,17 @@ core decodes which bank the second port wants as it leaves `A`, so that the mult
 comes before the block RAM. Two cells in the same bank of different lines cannot go together, and `D`
 tells that from the offsets alone, because both are `base_ptr` plus a constant: those go the old way,
 and none of the corpus has any. The source has forwarding of its own, as wide as the first port's, and
-the cache gives one hit for both reads, so that `X`'s restart has no more to look at than before. A `MUL`
-that reads both cells shares its source with nothing, which leaves sharing to other factors.
+the cache gives one hit for both reads, so that `X`'s restart has no more to look at than before.
 
 | Program | `MUL` before | `MUL` after | Cycles |
 |---|---|---|---|
 | `mandel.b` | 2.44 cycles | 1.85 | 2.47 G → 2.25 G |
 | `hanoi.b` | 2.21 cycles | 1.23 | 72.5 M → 71.1 M |
 
-This is the first part of dual issue, which a trace model of the core put at 1.5 to 1.7 times fewer
-cycles on these programs, with this as most of its gain on `mandel.b`. It cost 614 LUTs and one block
-RAM, at the same 168 MHz.
+It cost 614 LUTs and one block RAM, at the same 168 MHz. Before it, a `MUL` right after another with
+the same source took that source from `mul_operand` instead of reading it; since a factor of 1 or -1
+reads both cells at once, only other factors could still do that, and nothing in the corpus does, so it
+went.
 
 ### Branch prediction
 
@@ -163,23 +157,26 @@ branches cost `mandel.b` with a direction table alone. A table that only improve
 save 0.14 CPI there; removing the gap saves 0.67.
 
 The next-fetch table has 16 entries, in logic rather than block RAM so it can answer in one cycle.
-It is looked up with the address fetched one slot before the block it predicts, so its answer is in
-registers by the time that block is fetched, and the fetch after it goes to the target with no gap.
-An entry says which of the block's two words is the branch, and a block ends there. That slot can be
-anything, a block on a wrong path included, because the same path through a program gives the same
-slots. A hit is taken as taken, without asking the direction table. `Q` then learns what the word is. If it is not a branch, what follows is fetched again. If it is, `A` compares the
+It is looked up with the address fetched one slot before the word it predicts, so its answer is in
+registers by the time that word is fetched, and the fetch after it goes to the target with no gap.
+That slot can be anything, a word on a wrong path included, because the same path through a program
+gives the same slots. A hit is taken as taken, without asking the direction table. `D` then learns
+what the word is. If it is not a branch, what follows is fetched again. If it is, `A` compares the
 target, and `X` treats a wrong one as a misprediction, which keeps the comparison off the path to
 `fetch_pc`. Entries match on 8 address bits above the index; a false match only costs its check.
 
-Entries go in when `Q` redirects fetch to a taken branch, and come out when a guess proves wrong.
+Entries go in when `D` redirects fetch to a taken branch, and come out when a guess proves wrong.
 Keeping them would be better for `bottles.b` (CPI 1.79 against 2.08) and `e.b`, where the same
 branch is taken again soon, and much worse for `fib.b` (2.83 against 1.42) and `squares.b` (2.40
 against 1.91). Two-bit hysteresis might get both, at the cost of updating the entry on every hit.
 
-The direction table has 4096 2-bit counters in block RAM, in two copies so that both words of a block
-have theirs, read as the block is fetched to arrive with it in `Q`. It decides when the next-fetch
-table has no opinion. A counter written as it is read reads as anything, as block RAM does, so the
-write is passed along to the read instead: before that, `mandel.b` lost 3% to it. Each counter counts how far the branch disagrees
+The direction table has 4096 2-bit counters in one block RAM, read to arrive with the word in `D`.
+It decides when the next-fetch table has no opinion. A counter written as it is read reads as anything,
+as block RAM does, so such a write is left out. Simulation makes that read wrong on purpose, and
+leaving the write out took `mandel.b` from 1.590 CPI to 1.503; keeping it for a cycle later would have
+made it 1.501. Passing the write along to the read did as well, but put a multiplexer on the way from
+the block RAM to `fetch_pc`, which missed 168 MHz by 0.4 ns. On the corpus, 1024 counters do as well as
+4096, but a block RAM of 9 Kbit holds either. Each counter counts how far the branch disagrees
 with backward taken, forward not taken, so zeros start out as that guess, and counters that are
 shared tend to agree. The static guess was wrong 92% of the time on `LostKng.b`, whose branches are
 mostly forward and taken; with the table, 2.6%.
@@ -190,77 +187,40 @@ are also small against `LostKng.b`, where the model shows 4096 next-fetch entrie
 from 1.24 to 0.47 CPI. That would need block RAM and a slower answer, for 7% of a CPI of 11 that is
 mostly instruction cache misses.
 
-### Early resolution
+### Tried and removed
 
-A branch's cell is often known well before `X` reads it: just written by an add of a constant, or
-untouched for a while. Two more guesses find those, and a branch in `M0` acts on them, redirecting
-fetch in the next cycle and turning its guess around for `X`, which still checks it. A misprediction
-found there costs 7 cycles rather than 10 (6 rather than 9 when the core was scalar).
+Two larger steps were built and verified, and then taken out again, because what
+matters is the clock times the instructions per cycle, and neither paid for its clock. Tag
+`rtl-dual-issue` has both, with their documentation.
 
-- The early store, four cells in registers, direct-mapped by the low two address bits with six more
-  as a tag, follows the cells `A` works on. A set, an input byte, and an add to a cell it holds are
-  worked out in `A`. Another write, or a read of a cell it lacks, leaves the cell pending, to be
-  filled by that instruction from `W`; adds to a pending cell are summed meanwhile, to go on top.
-  Every redirect empties it, since the wrong path may have written it, and so does the end of `F`,
-  whose `base_ptr` comes too late for `D` to work out the cells after it.
-- The zero bits, a bit per tape cell in eight lanes of block RAM, are written in order from `W`.
-  `D` works out the branch's cell and reads its bit, which `M0` believes unless a write of that cell
-  is still on its way. Matching those writes on eight address bits only, a false match costs a guess.
+- Early resolution: a 4-cell store of known values kept in `A`, and a zero bit per tape cell in 8 block
+  RAMs, so that a branch whose cell's value was known resolved in `M0` for 6 cycles rather than 9.
+  About 900 LUTs and 8 block RAMs; `mandel.b` 1.590 to 1.517 CPI. It missed 168 MHz by 0.17 to 0.9 ns.
+- Dual issue: two words a cycle into a queue of four, and pairs of `A`, `S`, `M`, `JE` and `JN` on
+  different cells, the second on the data cache's second port. About 9900 LUTs against 5500;
+  `mandel.b` 1.517 to 1.248 CPI, but at 120 to 130 MHz.
 
-Both only guess, so formal gives them free values, and `cosim --chaos` random ones.
+Over the corpus (`tools/issue_sweep.py`, 93 programs in 29 families, each family counting once), the
+issue model, caches and SDRAM included, gives these, each changing one thing in the core as it is:
 
-Over the first two million instructions, at `-O2`, on the scalar core:
+| Change | Cycles saved |
+|---|---|
+| Line scanning, against a cell per cycle (already in) | 24%, mostly in a few families |
+| A factor of 1 or -1 in one cycle (already in) | 4% |
+| A memory that never misses | 19% |
+| `IO` in 2 cycles rather than 7 | 7% |
+| `F` ending in 2 cycles rather than 8 | 5% |
+| Early resolution, both guesses | 3% |
+| Dual issue, with early resolution | 19% |
+| Dual issue, without | 17% |
+| A cycle more or less of misprediction | 1% |
+| A static guess in place of the tables | 27% more cycles |
+| 8 or 64 next-fetch entries, 256 or 1024 counters | within 1% |
 
-| Program | CPI before | With the early store | With the zero bits | With both |
-|---|---|---|---|---|
-| `mandel.b` | 1.590 | 1.583 | 1.517 | 1.517 |
-| `fib.b` | 1.298 | 1.265 | 1.295 | 1.262 |
-| `long.b` | 1.360 | 1.343 | 1.356 | 1.339 |
-| `hanoi.b` | 1.054 | 1.049 | 1.052 | 1.046 |
-
-Resolving the early store's branches in `A` instead, for 5 cycles, with eight cells, did better
-(`fib.b` 1.248), but did not meet timing. Neither did this: at 168 MHz the worst path missed by
-0.17 ns to 0.9 ns depending on the placement relaxation, on paths scattered over the core, the caches
-and the loader. Before it, the design met timing by 0.04 ns at 0.85 and missed at 0.75, 0.8 and 0.9.
-It costs about 900 LUTs and 8 block RAMs.
-
-### Dual issue
-
-`D` issues two words at once when the first is an `A`, `S` or `M` and the second an `A`, `S`, `M`,
-`JE` or `JN`, and their cells, if both have one, are in different banks of a line, and if both are
-written, in different lanes of the zero bits. Both cells are `base_ptr` plus a constant, so all of that
-is in the words, and `Q` works it out as it queues them; a pair can span two fetched blocks. Different
-banks also make them different cells, so the second never needs the first one's result, and the cache
-can serve both at once. The first word is the companion: it reads and writes through the data cache's
-second port, has forwarding of its own, and its move, if it is an `M`, is folded into the second's
-offset. A miss on either restarts the pair from the first. A branch is always last, so the pair resolves
-as one.
-
-Fetch reads two words a cycle, the instruction cache keeping even and odd words in banks of their own,
-within a line of eight, into a queue of four. Fetch waits with three words queued unless `D` is about to
-take a pair. The cache also predecodes each word, and works out its branch target, from the block RAM's
-output on its way to the register, where there is time; `Q` then only combines them.
-
-Over the first two million instructions, at `-O2`:
-
-| Program | CPI, scalar | Dual issue | Instructions issued in pairs |
-|---|---|---|---|
-| `mandel.b` | 1.517 | 1.248 | 49% |
-| `fib.b` | 1.262 | 1.047 | 51% |
-| `long.b` | 1.339 | 1.066 | 58% |
-| `hanoi.b` | 1.046 | 0.743 | 64% |
-| `LostKng.b` | 11.19 | 10.97 | |
-
-The issue model's default machine follows this core within 1% to 5%; it has no fetch queue or caches.
-
-It does not meet timing at 168 MHz. Over several rounds of restructuring the worst path went from
--3.2 ns to between -1.7 and -2.3 ns, depending on placement, which puts it at about 120 to 130 MHz,
-where the scalar core missed by 0.17 ns at best. Below about 140 MHz it is slower than the scalar
-core at 168 on `mandel.b`. What
-is left is spread out: `Q`'s steering to the next fetch and the next-fetch table's three lookups, the
-zero bits' address in `D`, the fetch queue's count, and `X`'s misprediction to the redirect. The tables
-did not become distributed RAM, and some nets cross the chip, so placement moves the result by half a
-nanosecond. It costs about 9900 LUTs against 5500, and 49 small block RAMs against 47.
+Dual issue would need about 135 MHz to match the scalar core at 168. Four-wide, with every read and
+write port it could want, would save 44% of the cycles, or 58% with a memory that never misses: the
+wider the core, the more the memory matters. Against the cosimulator the model is within 4% on average
+over the corpus, mostly optimistic; see doc/analysis.md.
 
 ## Memory
 
