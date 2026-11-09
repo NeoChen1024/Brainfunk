@@ -61,13 +61,14 @@ It uses them to:
 | `A 0,1 ; A 1,2 ; A 0,3` | `A 0,4 ; A 1,2`, merged across the unrelated cell |
 | `S 0,0 ; A 0,5` | `S 0,5` |
 | `S 0,1 ; S 0,2` | `S 0,2`, the first write is dead |
-| `S 0,1 ; IO 0,0` | `IO 0,0`, input always stores, so the write is dead |
 | `S 0,3 ; MUL 1,0,2` | `S 0,3 ; A 1,6` |
 | `S` of a value the cell is known to hold | removed |
 | `JE` or `F` testing a cell known to be zero | removed, with the loop body |
 
 A pending write reaches memory before anything reads its cell, and all of them before any
-boundary, so the order of `IO` and the state at `H` do not change.
+boundary, so the order of `IO` and the state at `H` do not change. Input counts as reading its cell:
+at the end of input it may store nothing, with EOF mode `keep`, and the mode belongs to whatever runs
+the program, not to the program, so a write before input is never dead.
 
 ### What is known across a boundary
 

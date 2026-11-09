@@ -62,10 +62,11 @@ struct Outcome {
 };
 
 Outcome execute(std::string_view code, int level, std::size_t memory_size, std::string_view input,
-                addr_t step_limit) {
+                addr_t step_limit, EofMode eof = EofMode::Zero) {
     Brainfunk brainfunk(memory_size);
     brainfunk.translate(code);
     brainfunk.optimize(level);
+    brainfunk.set_eof(eof);
 
     std::istringstream in{std::string(input)};
     std::ostringstream out;
@@ -86,15 +87,19 @@ Outcome execute(std::string_view code, int level, std::size_t memory_size, std::
     return outcome;
 }
 
+/* Every run in these tests has a limit: a program that does not halt, under a mode it was not
+ * expected to run in, must fail the test rather than run until memory runs out. */
 ExecutionStats count(std::string_view code, int level, std::size_t memory_size,
-                     std::string_view input) {
+                     std::string_view input, EofMode eof = EofMode::Zero, std::uint64_t step_limit = 1'000'000) {
     Brainfunk brainfunk(memory_size);
     brainfunk.translate(code);
     brainfunk.optimize(level);
+    brainfunk.set_eof(eof);
     std::istringstream in{std::string(input)};
     std::ostringstream out;
     StatSink stat;
-    (void)run_traced(brainfunk, stat, in, out);
+    const auto summary = run_traced(brainfunk, stat, in, out, TraceRange{0, step_limit});
+    if (!summary.halted) throw std::runtime_error("count: no halt within " + std::to_string(step_limit) + " steps");
     return stat.stats;
 }
 
@@ -107,6 +112,12 @@ TEST_CASE("programs run and translate", "[translate]") {
           "data pointer wraps backwards");
     EXPECT(run(",.") == std::string(1, '\0'),
           "EOF input stores zero");
+    for (int level = OPT_NONE; level <= OPT_MAX; ++level) {
+        /* With keep, input at the end leaves the cell: the [-] before it is not dead. */
+        const auto outcome = execute(",[.[-],]", level, MEMSIZE, "ab", 1000, EofMode::Keep);
+        INFO("level " << level);
+        CHECK((outcome.halted && outcome.output == "ab"));
+    }
 
     EXPECT(dump("[-]").find("S\t0") != std::string::npos,
           "odd decrement loop becomes set-zero");
@@ -216,7 +227,8 @@ TEST_CASE("fold", "[optimizer]") {
     }
     EXPECT(contains(folded(",[-]+++."), "S\t0, 3"), "set then add becomes one set");
     EXPECT(!contains(folded(",[-]++[-]."), "S\t0, 2"), "overwritten set is dropped");
-    EXPECT(!contains(folded(",[-]+,."), "S\t0, 1"), "write overwritten by input is dropped");
+    EXPECT(contains(folded(",[-]+,."), "S\t0, 1"),
+          "a write before input stays: with keep, the end of input leaves it");
     {
         const auto listing = folded(",>[-]++[->+++<]");
         EXPECT(!contains(listing, "MUL"), "multiply from a known cell folds away");
@@ -421,13 +433,15 @@ TEST_CASE("every level agrees with the unoptimized program", "[differential]") {
         ProgramGenerator generator(seed);
         const auto code = generator.program();
         const std::size_t memory_size = seed % 2 == 0 ? std::size_t{16} : MEMSIZE;
-        const auto reference = execute(code, OPT_NONE, memory_size, input, step_limit);
+        /* The optimizer does not know the EOF mode, which an image can be run with any of. */
+        const auto eof = static_cast<EofMode>(seed % 3);
+        const auto reference = execute(code, OPT_NONE, memory_size, input, step_limit, eof);
         if (!reference.halted) continue;   // cannot compare a truncated run
         ++halted_programs;
 
         /* Lazy moves only remove M: everything else runs exactly as often. */
-        const auto before = count(code, OPT_NONE, memory_size, input);
-        const auto after = count(code, OPT_LAZY_MOVE, memory_size, input);
+        const auto before = count(code, OPT_NONE, memory_size, input, eof);
+        const auto after = count(code, OPT_LAZY_MOVE, memory_size, input, eof);
         for (std::size_t i = 0; i < before.dynamic_count.size(); ++i) {
             if (static_cast<Opcode>(i) == Opcode::M) {
                 EXPECT(after.dynamic_count[i] <= before.dynamic_count[i], "lazy move adds no M");
@@ -443,8 +457,9 @@ TEST_CASE("every level agrees with the unoptimized program", "[differential]") {
 
         for (int level = OPT_NONE + 1; level <= OPT_MAX; ++level) {
             /* Optimized code never takes more steps than the original. */
-            const auto optimized = execute(code, level, memory_size, input, step_limit);
-            if (!(optimized == reference)) FAIL_CHECK("level " << level << " differs on seed " << seed << ": " << code);
+            const auto optimized = execute(code, level, memory_size, input, step_limit, eof);
+            if (!(optimized == reference))
+                FAIL_CHECK("level " << level << " -e " << eof_mode_name(eof) << " differs on seed " << seed << ": " << code);
             EXPECT(optimized.steps <= reference.steps, "optimized code takes no extra steps");
         }
     }

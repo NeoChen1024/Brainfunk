@@ -129,13 +129,11 @@ public:
                 break;
 
             case Opcode::IO:
-                if (instruction.data() == IO_IN) {
-                    /* Input always stores, even at end of input: earlier writes are dead. */
-                    pending_.erase(key(instruction.addr_offset()));
-                    known_.erase(key(instruction.addr_offset()));
-                } else {
-                    flush_cell(instruction.addr_offset());
-                }
+                /* Input may store nothing: with EOF mode keep, the end of input leaves the cell as
+                 * it was. The mode is the runner's, not the program's, so a write before input is
+                 * never dead, and what the cell holds after is unknown. */
+                flush_cell(instruction.addr_offset());
+                if (instruction.data() == IO_IN) known_.erase(key(instruction.addr_offset()));
                 out_.push_back(instruction);
                 break;
 
