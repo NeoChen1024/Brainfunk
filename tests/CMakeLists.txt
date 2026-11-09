@@ -60,6 +60,24 @@ brainfunk_pytest(sw.codegen LABEL sw PROCESSORS 8 FILES tests/sw/test_codegen.py
 brainfunk_pytest(sw.listing LABEL sw PROCESSORS 2 FILES tests/sw/test_listing.py)
 brainfunk_pytest(sw.programs LABEL sw PROCESSORS 2 FILES tests/sw/test_programs.py)
 
+# The timing diagrams in doc/diagrams/: each committed SVG must be what its WaveDrom source renders to.
+execute_process(COMMAND ${Python3_EXECUTABLE} -c "import wavedrom"
+                RESULT_VARIABLE wavedrom_missing OUTPUT_QUIET ERROR_QUIET)
+if(wavedrom_missing)
+    message(STATUS "python wavedrom missing: the diagram test is not registered")
+else()
+    add_test(NAME sw.diagrams COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/render_diagrams.py --check)
+    set_tests_properties(sw.diagrams PROPERTIES LABELS sw)
+endif()
+# And the Mermaid diagrams in the docs, which GitHub draws itself, must parse.
+find_program(MMDC mmdc)
+if(NOT MMDC)
+    message(STATUS "mermaid-cli (mmdc) missing: the Mermaid test is not registered")
+else()
+    add_test(NAME sw.mermaid COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/render_diagrams.py --mermaid)
+    set_tests_properties(sw.mermaid PROPERTIES LABELS sw TIMEOUT 120)
+endif()
+
 # The corpus: every input of every program, at every level, against what inputs.lock says it gives.
 # Needs the corpus tool's packages, and the submodules checked out.
 execute_process(COMMAND ${Python3_EXECUTABLE} -c "import blake3, click, tqdm"

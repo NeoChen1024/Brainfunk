@@ -25,6 +25,46 @@ tb/                      Verilator cosimulation, SDRAM and flash models, loader 
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
 bfload.cpp               packs an image, and sends it to the board
+tools/render_diagrams.py renders the timing diagrams in doc/diagrams/, and checks the Mermaid ones
+```
+
+On the YADAN Board, the dashed parts are the board's own; another board replaces them, and gives
+`brainfunk_system` a clock, its pins and a line memory.
+
+```mermaid
+flowchart TB
+    rx_pin(["UART RX"]) --> rx
+    flash_pins(["SPI flash"]) <--> flash
+    subgraph top["yadan_top"]
+        pll["yadan_pll"]
+        subgraph system["brainfunk_system"]
+            rx["uart_rx, rx_fifo"]
+            flash["flash_ctrl"]
+            cmd["Break, button, commands"]
+            loader["image_loader"]
+            soc["brainfunk_soc"]
+            tx["tx_fifo, uart_tx"]
+        end
+        led["LED"]
+        subgraph sdram["sdram_memory"]
+            ctrl["sdram_ctrl"]
+            phy["sdram_phy"]
+        end
+    end
+    pll -- "clk, sdclk" --> system
+    rx -- "commands" --> cmd
+    rx -- "images" --> loader
+    rx -- "program input" --> soc
+    flash -- "boot image" --> loader
+    loader -- "load port" --> soc
+    soc -- "program output" --> tx
+    tx --> tx_pin(["UART TX"])
+    system -- "running, halted, trapped" --> led
+    soc == "line memory port" ==> ctrl
+    ctrl --> phy
+    phy <--> sdram_pins(["embedded SDRAM"])
+    classDef board stroke-dasharray: 6 4
+    class top,pll,phy,led board
 ```
 
 ## Pipeline
@@ -252,6 +292,33 @@ words in order, written by fetching 8 words, with the next request not taken bef
 word. Its comment has the details. `sdram_ctrl` is one; another board's memory, behind its own
 controller, would be another.
 
+```mermaid
+flowchart LR
+    pred["branch_predictor<br>next-fetch and direction tables"] <--> core
+    core["brainfunk_core<br>IF I1 I2 D A M0 M1 M2 X W"]
+    core -- "imem: a word" --> ic["icache<br>16 KiB, 32-byte lines"]
+    core -- "dmem: two cells, a line's zero bits, a write" --> dc
+    subgraph dc["dcache: 16 KiB, 32-byte lines, write-back"]
+        cells["32 cell RAMs<br>a whole line per read"]
+        tags["tags, dirty bits"]
+        zt["zero table<br>a bit per tape cell"]
+    end
+    loader(["image_loader"]) -- "load port" --> arb
+    dc -- "fill, write-back, clear" --> arb
+    ic -- "fill" --> arb
+    arb["arbiter<br>loader, then D, then I"] == "line memory port" ==> mem(["line memory"])
+```
+
+A read, and a request from another client waiting for it to finish, since the next request takes
+the read data over:
+
+![A line read on the line memory port](diagrams/line-read.svg)
+
+A write: the client has three cycles from each fetch to put the word out, which is what a block RAM
+read and its registers take.
+
+![A line write on the line memory port](diagrams/line-write.svg)
+
 | Line memory word address | Contents |
 |---|---|
 | `0x000000` | Code, one instruction per word |
@@ -269,6 +336,30 @@ and everything younger and restarts from fetch, the same as a misprediction back
 a restarted instruction must find everything in the cache at once, which holds because `MUL`'s two
 cells are about 2 KiB apart at most; and input reads its cell before taking a byte, so that its
 write cannot miss, because a byte taken cannot be asked for again.
+
+The data cache, from a miss to the line it brings in:
+
+```mermaid
+stateDiagram-v2
+    [*] --> RESET
+    RESET --> CLEAR: swept, CLEAR_TAPE
+    RESET --> IDLE: swept
+    CLEAR --> CLEAR_WAIT: req_ready
+    CLEAR_WAIT --> CLEAR: written, more lines
+    CLEAR_WAIT --> IDLE: last line written
+    IDLE --> TAG_1: dmem_miss
+    TAG_1 --> TAG_2
+    TAG_2 --> DECIDE
+    DECIDE --> WRITEBACK: victim dirty
+    DECIDE --> REQUEST: victim clean
+    WRITEBACK --> WRITEBACK_WAIT: req_ready
+    WRITEBACK_WAIT --> REQUEST: 8 words fetched
+    REQUEST --> FILL: req_ready
+    FILL --> TAG_WRITE: 8th word
+    TAG_WRITE --> IDLE
+    note right of RESET: invalidates every tag, makes the zero table all zeros
+    note right of WRITEBACK: the zero table takes the victim's bits
+```
 
 ### SDRAM
 

@@ -5,7 +5,9 @@
 # Build
 
 CMake 3.25 or later, Ninja, and a C++20 compiler. The tests need Catch2 3, pytest and
-pytest-xdist; the hardware ones also Verilator, and formal SymbiYosys and Bitwuzla.
+pytest-xdist; the hardware ones also Verilator, and formal SymbiYosys and Bitwuzla. python-wavedrom
+renders the timing diagrams in `doc/diagrams/`, and checks the committed ones; mermaid-cli checks that
+the Mermaid diagrams in the docs parse.
 
 ```shell
 cmake --workflow --preset default    # configure, build into build/, run every test that needs no board

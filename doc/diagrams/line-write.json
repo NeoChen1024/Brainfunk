@@ -1,0 +1,15 @@
+{"signal": [
+  {"name": "clk",           "wave": "p................."},
+  {"name": "mem_req_valid", "wave": "01.0.............."},
+  {"name": "mem_req_write", "wave": "x1.x.............."},
+  {"name": "mem_req_line",  "wave": "x=.x..............", "data": ["A"]},
+  {"name": "mem_req_ready", "wave": "0.10.............."},
+  {},
+  {"name": "mem_wr_fetch",  "wave": "0....1...01...0...", "node": ".....A....D"},
+  {"name": "mem_wr_data",   "wave": "x.......====x====x", "data": ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7"],
+   "node": "........B....E"}
+],
+ "edge": ["A~>B 3 cycles", "D~>E 3 cycles"],
+ "head": {"text": "Line memory: a write"},
+ "foot": {"text": "word k three cycles after the k-th fetch, which may come with gaps"}
+}

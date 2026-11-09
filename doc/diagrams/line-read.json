@@ -1,0 +1,15 @@
+{"signal": [
+  {"name": "clk",           "wave": "p................."},
+  {"name": "mem_req_valid", "wave": "01.0.....1......0."},
+  {"name": "mem_req_write", "wave": "x0.x.....1......x."},
+  {"name": "mem_req_line",  "wave": "x=.x.....=......x.", "data": ["A", "B"]},
+  {"name": "mem_req_ready", "wave": "0.10...........10.", "node": "...............B"},
+  {},
+  {"name": "mem_rd_valid",  "wave": "0.....1...01...0.."},
+  {"name": "mem_rd_data",   "wave": "x.....====x====x..", "data": ["A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7"],
+   "node": "..............C"}
+],
+ "edge": ["C~>B"],
+ "head": {"text": "Line memory: a read, and a request waiting behind it"},
+ "foot": {"text": "taken where valid and ready are both high; words may come with gaps, and B waits for the last"}
+}
