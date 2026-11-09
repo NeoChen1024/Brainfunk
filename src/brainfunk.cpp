@@ -1,8 +1,8 @@
-#include "libbrainfunk.hpp"
-#include "trace.hpp"
-#include "trace_file.hpp"
-#include "analysis.hpp"
-#include "coverage.hpp"
+#include "brainfunk/libbrainfunk.hpp"
+#include "brainfunk/trace.hpp"
+#include "brainfunk/trace_file.hpp"
+#include "brainfunk/analysis.hpp"
+#include "brainfunk/coverage.hpp"
 #include <getopt.h>
 
 #include <algorithm>
@@ -82,7 +82,7 @@ static void readcode(string& code, const std::string& filename) {
         << "  -h        show this help\n"
         << "\n"
         << "doc/bincode.txt describes the image formats; bit, hex, bin and packed convert between\n"
-        << "them without loss. trace_file.hpp describes trace files.\n";
+        << "them without loss. include/brainfunk/trace_file.hpp describes trace files.\n";
     std::exit(status);
 }
 

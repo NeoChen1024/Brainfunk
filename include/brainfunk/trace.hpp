@@ -12,7 +12,7 @@
  * and Sinks<A, B, ...> hands each event to several. The sinks themselves are in analysis.hpp and
  * trace_file.hpp. */
 
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <array>
 #include <cstdint>

@@ -1,9 +1,9 @@
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 #include "program_generator.hpp"
-#include "trace.hpp"
-#include "trace_file.hpp"
-#include "analysis.hpp"
-#include "coverage.hpp"
+#include "brainfunk/trace.hpp"
+#include "brainfunk/trace_file.hpp"
+#include "brainfunk/analysis.hpp"
+#include "brainfunk/coverage.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

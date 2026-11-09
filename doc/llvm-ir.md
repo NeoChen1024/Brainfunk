@@ -7,7 +7,7 @@ optimization passes.
 ```text
 Brainfuck source -> Brainfunk Bitcode -> portable program.ll
                                            +
-                                     llvm-ir-wrapper.c
+                                  tools/llvm-ir-wrapper.c
                                            |
                               target Clang optimization
                                            |
@@ -91,15 +91,15 @@ opt -passes=verify program.ll -disable-output
 Compile through the provided pipeline:
 
 ```sh
-./compile-llvm-ir.sh program.bf program
+tools/compile-llvm-ir.sh program.bf program
 ```
 
-`compile-llvm-ir.sh` follows the same two-argument convention as `compile.sh`. Its compiler
+`tools/compile-llvm-ir.sh` follows the same two-argument convention as `tools/compile.sh`. Its compiler
 and flags are configurable:
 
 ```sh
 CLANG=clang CFLAGS='-O3 -target aarch64-linux-gnu --sysroot=/path/to/sysroot' \
-    ./compile-llvm-ir.sh program.bf program-aarch64
+    tools/compile-llvm-ir.sh program.bf program-aarch64
 ```
 
 Clang warns when it assigns a concrete target to target-neutral IR; the pipeline suppresses

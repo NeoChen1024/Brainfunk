@@ -11,7 +11,7 @@
  * Each takes its part of a JSON configuration, keyed by its name; what it does not find takes
  * a default. */
 
-#include "trace.hpp"
+#include "brainfunk/trace.hpp"
 
 #include <nlohmann/json.hpp>
 

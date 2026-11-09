@@ -141,7 +141,7 @@ def test_llvm_backend(sources, tmp_path, name, level):
     run(LLVM_AS, ir, "-o", tmp_path / "program.bc")
     run(LLVM_OPT, "-passes=verify", ir, "-disable-output")
     run(CLANG, "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic", "-Wno-override-module",
-        ROOT / "llvm-ir-wrapper.c", ir, "-o", executable)
+        ROOT / "tools" / "llvm-ir-wrapper.c", ir, "-o", executable)
     assert run(executable, input=stdin).stdout == reference(path, stdin, tuple(eof))
 
 
@@ -167,13 +167,13 @@ def test_llvm_ir_is_portable(sources, tmp_path, target):
 @needs_llvm
 def test_compile_llvm_ir_script(sources, tmp_path):
     executable = tmp_path / "hello"
-    run("sh", ROOT / "compile-llvm-ir.sh", sources["hello"], executable, env_extra={"CFLAGS": "-O2 -pipe"})
+    run("sh", ROOT / "tools" / "compile-llvm-ir.sh", sources["hello"], executable, env_extra={"CFLAGS": "-O2 -pipe"})
     assert run(executable).stdout == reference(sources["hello"], EMPTY)
 
 
 def test_compile_c_script(sources, tmp_path):
     executable = tmp_path / "hello"
-    run("sh", ROOT / "compile.sh", sources["hello"], executable)
+    run("sh", ROOT / "tools" / "compile.sh", sources["hello"], executable)
     assert run(executable).stdout == reference(sources["hello"], EMPTY)
 
 

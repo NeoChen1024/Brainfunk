@@ -1,4 +1,4 @@
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <ostream>
 #include <string>

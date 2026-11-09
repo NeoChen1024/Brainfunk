@@ -1,7 +1,7 @@
 /* Random Brainfuck programs for differential testing. */
 #pragma once
 
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <array>
 #include <cstddef>

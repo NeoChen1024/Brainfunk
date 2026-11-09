@@ -1,6 +1,6 @@
-#include "analysis.hpp"
-#include "trace_file.hpp"
-#include "coverage.hpp"
+#include "brainfunk/analysis.hpp"
+#include "brainfunk/trace_file.hpp"
+#include "brainfunk/coverage.hpp"
 
 #include <algorithm>
 #include <bit>

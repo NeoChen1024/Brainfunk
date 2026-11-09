@@ -94,7 +94,7 @@ build/bin/brainfunk -m bit -f <source-file>
 build/bin/brainfunk -m llvm -f <source-file> -o program.ll
 
 # Emit LLVM IR and compile it with the C runtime wrapper:
-./compile-llvm-ir.sh <source-file> <executable>
+tools/compile-llvm-ir.sh <source-file> <executable>
 
 # Open the visualizer (100 ms per optimized instruction):
 build/bin/visualbrainfunk -f <source-file> -t 100
@@ -111,7 +111,7 @@ When the Brainfuck program executes `,`, the TUI displays a program-input prompt
 The next byte is delivered to the program rather than interpreted as a TUI command.
 
 The LLVM emitter writes plain text and has no build-time or runtime dependency on LLVM.
-`llvm-ir-wrapper.c` supplies the tape, `main()`, and byte I/O callbacks; Clang performs
+`tools/llvm-ir-wrapper.c` supplies the tape, `main()`, and byte I/O callbacks; Clang performs
 target selection and optimization only when the emitted IR is compiled. See
 [doc/llvm-ir.md](doc/llvm-ir.md) for the ABI and portability contract.
 
@@ -134,10 +134,6 @@ The programs keep their authors' licenses, not this repository's. See
 [rtl/](rtl) is a pipelined SystemVerilog core for the current instruction set, verified against the
 interpreter by lock-step cosimulation and formal checks, and run on a YADAN Board at 168 MHz. See
 [doc/rtl.md](doc/rtl.md).
-
-The Logisim circuit in [CPU/](CPU) implements an earlier 24-bit instruction format:
-
-![CPU core](https://github.com/NeoChen1024/Brainfunk/raw/master/CPU/CPU.png)
 
 # Credits
 

@@ -8,7 +8,7 @@
 // Exit status is non-zero on the first divergence. --json prints the results as one JSON object.
 #include "Vbrainfunk_soc_sdram.h"
 #include "Vbrainfunk_soc_sdram__Dpi.h"
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 #include "program_generator.hpp"
 #include "svdpi.h"
 #include "verilated.h"

@@ -1,4 +1,4 @@
-#include "trace_file.hpp"
+#include "brainfunk/trace_file.hpp"
 
 #include <zstd.h>
 

@@ -3,8 +3,8 @@ set -eu
 
 CLANG="${CLANG:-clang}"
 CFLAGS="${CFLAGS:--O3 -pipe -flto}"
-ROOT="$(dirname "$0")"
-BRAINFUNK="${BRAINFUNK:-$ROOT/build/bin/brainfunk}"
+HERE="$(dirname "$0")"
+BRAINFUNK="${BRAINFUNK:-$HERE/../build/bin/brainfunk}"
 
 if [ "$#" -lt 2 ]; then
     echo "${0}: <infile> <outfile>" >&2
@@ -26,4 +26,4 @@ msg_echo "$SRC"
 # CFLAGS is intentionally word-split so callers can supply multiple compiler flags.
 # shellcheck disable=SC2086
 "$CLANG" -std=c99 -Wno-override-module $CFLAGS \
-    "$ROOT/llvm-ir-wrapper.c" "$TMPDIR_PATH/program.ll" -o "$OUT"
+    "$HERE/llvm-ir-wrapper.c" "$TMPDIR_PATH/program.ll" -o "$OUT"

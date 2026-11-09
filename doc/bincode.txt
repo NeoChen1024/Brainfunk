@@ -88,13 +88,10 @@ Only their low log2(MEMSIZE) bits have any effect, because base_ptr wraps.
 Implementations
 ---------------
 
-image.cpp (encode_bincode, decode_bincode), the C++ interpreter (brainfunk -b) and rtl/
+src/image.cpp (encode_bincode, decode_bincode), the C++ interpreter (brainfunk -b) and rtl/
 implement this format.
 rtl/ does not implement the fused instructions yet and traps on them; run it on
 code from -O2 or lower.
-
-CPU/Brainfunk.circ still implements the earlier 24-bit format, and cannot load
-this output.
 
 
 Program images

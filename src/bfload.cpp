@@ -1,6 +1,6 @@
 /* bfload -- packs a program image for the YADAN board's loader, and sends it over the serial port.
  * The packed format is in doc/bincode.txt, the board's side in doc/rtl.md. */
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <getopt.h>
 

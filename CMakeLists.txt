@@ -40,27 +40,30 @@ find_package(zstd REQUIRED)
 find_package(Threads REQUIRED)
 
 # The library every program links: interpreter, optimizer, code generators, image formats, traces.
-add_library(libbrainfunk STATIC libbrainfunk.cpp optimizer.cpp llvm_codegen.cpp image.cpp trace_file.cpp analysis.cpp coverage.cpp)
+# Its headers are include/brainfunk/, included as "brainfunk/...".
+add_library(libbrainfunk STATIC src/libbrainfunk.cpp src/optimizer.cpp src/llvm_codegen.cpp src/image.cpp src/trace_file.cpp
+            src/analysis.cpp src/coverage.cpp)
 set_target_properties(libbrainfunk PROPERTIES OUTPUT_NAME brainfunk)
-target_include_directories(libbrainfunk PUBLIC ${PROJECT_SOURCE_DIR})
+target_include_directories(libbrainfunk PUBLIC ${PROJECT_SOURCE_DIR}/include
+                           PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/ctre/single-header)
 target_link_libraries(libbrainfunk PUBLIC nlohmann_json::nlohmann_json PRIVATE brainfunk_warnings zstd::libzstd_shared Threads::Threads)
 
-add_executable(brainfunk brainfunk.cpp)
+add_executable(brainfunk src/brainfunk.cpp)
 target_link_libraries(brainfunk PRIVATE libbrainfunk brainfunk_warnings)
 
-add_executable(bfload bfload.cpp)
+add_executable(bfload src/bfload.cpp)
 target_link_libraries(bfload PRIVATE libbrainfunk brainfunk_warnings)
 
 # The naive interpreter and the text tool stand alone.
-add_executable(bf bf.cpp)
-add_executable(bfstrip bfstrip.cpp)
+add_executable(bf src/bf.cpp)
+add_executable(bfstrip src/bfstrip.cpp)
 target_link_libraries(bf PRIVATE brainfunk_warnings)
 target_link_libraries(bfstrip PRIVATE brainfunk_warnings)
 
 set(CURSES_NEED_WIDE TRUE)
 find_package(Curses)
 if(CURSES_FOUND)
-    add_executable(visualbrainfunk visualbrainfunk.cpp)
+    add_executable(visualbrainfunk src/visualbrainfunk.cpp)
     target_include_directories(visualbrainfunk PRIVATE ${CURSES_INCLUDE_DIRS})
     target_link_libraries(visualbrainfunk PRIVATE libbrainfunk brainfunk_warnings ${CURSES_LIBRARIES})
 else()

@@ -1,6 +1,6 @@
 /* Program images: bincode as words, as text, as a listing, and as image files, plain or
  * packed with word-level LZ.  doc/bincode.txt describes them. */
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 #include "ctre.hpp"
 
 #include <algorithm>

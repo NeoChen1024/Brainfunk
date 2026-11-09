@@ -1,5 +1,5 @@
 [submodule "ctre"]
-	path = ctre
+	path = 3rdparty/ctre
 	url = https://github.com/hanickadot/compile-time-regular-expressions
 [submodule "3rdparty/awib"]
 	path = 3rdparty/awib

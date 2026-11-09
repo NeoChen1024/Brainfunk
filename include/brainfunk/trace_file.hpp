@@ -22,8 +22,8 @@
  *
  * Only the events in the header's range are in the chunks. */
 
-#include "libbrainfunk.hpp"
-#include "trace.hpp"
+#include "brainfunk/libbrainfunk.hpp"
+#include "brainfunk/trace.hpp"
 
 #include <nlohmann/json.hpp>
 

@@ -4,7 +4,7 @@
  * Neo_Chen                              *
  * ==================================== */
 
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <ncurses.h>
 

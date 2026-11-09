@@ -17,7 +17,7 @@ more, for `analyze` and `trace`. A trace file keeps its own range.
 
 ## Events
 
-`trace.hpp` holds the instrumented loop, `run_traced()`, apart from `Brainfunk::run()`, which stays
+`include/brainfunk/trace.hpp` holds the instrumented loop, `run_traced()`, apart from `Brainfunk::run()`, which stays
 as fast as it was; `-m analyze` without `-a` runs `stat`, the counts. The unit tests hold the two to the same output, tape and `base_ptr` on thousands
 of random programs at every level. Each instruction becomes one `TraceEvent`:
 
@@ -45,7 +45,7 @@ A sink is anything with `begin`, `event` and `end`; `Sinks<A, B>` hands each eve
 
 ## Trace files
 
-`trace_file.hpp` gives the layout. In short, the whole file is one zstd frame, so `zstd -dc` opens it,
+`include/brainfunk/trace_file.hpp` gives the layout. In short, the whole file is one zstd frame, so `zstd -dc` opens it,
 holding:
 
 - a JSON header: tape size, end-of-input behaviour, range, and where the program came from;

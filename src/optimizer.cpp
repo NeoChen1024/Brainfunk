@@ -1,6 +1,6 @@
 /* Bitcode optimization passes.  See doc/optimizer.md for what each one does and
  * why it is correct. */
-#include "libbrainfunk.hpp"
+#include "brainfunk/libbrainfunk.hpp"
 
 #include <map>
 #include <span>

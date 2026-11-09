@@ -1,4 +1,4 @@
-#include "coverage.hpp"
+#include "brainfunk/coverage.hpp"
 
 #include <string>
 

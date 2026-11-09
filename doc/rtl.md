@@ -24,7 +24,7 @@ rtl/board/               the YADAN Board: top, PLL, SDRAM pins; nothing else in 
 tb/                      Verilator cosimulation, SDRAM and flash models, loader and UART testbenches
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
-bfload.cpp               packs an image, and sends it to the board
+src/bfload.cpp           packs an image, and sends it to the board
 tools/render_diagrams.py renders the timing diagrams in doc/diagrams/, and checks the Mermaid ones
 ```
 

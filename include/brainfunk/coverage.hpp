@@ -12,8 +12,8 @@
  * it ran. One pass forward gives every count, and checks each branch's against its own. Runs of one
  * program add up, branch by branch. */
 
-#include "libbrainfunk.hpp"
-#include "trace.hpp"
+#include "brainfunk/libbrainfunk.hpp"
+#include "brainfunk/trace.hpp"
 
 #include <nlohmann/json.hpp>
 

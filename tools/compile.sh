@@ -2,7 +2,7 @@
 set -e
 CC="${CC:-cc}"
 CFLAGS="${CFLAGS:--O3 -pipe}"
-BRAINFUNK="${BRAINFUNK:-$(dirname "$0")/build/bin/brainfunk}"
+BRAINFUNK="${BRAINFUNK:-$(dirname "$0")/../build/bin/brainfunk}"
 SRC="$1"
 OUT="$2"
 
