@@ -3,8 +3,10 @@
 timings can go. Uses tools/sdram_memtest.sv.in, Memtest86+-style patterns over all 8 MiB, with every
 data bit toggling per word and bit-reversed line order as well. Needs TD_HOME and the board.
 
-    tools/sdram_sweep.py phase                 7.5-degree steps around the working point
+    tools/sdram_sweep.py phase                 steps of an eighth of a VCO period around the working point
     tools/sdram_sweep.py limits                tRCD, tRFC, recovery, CAS latency, refresh at 240 degrees
+    tools/sdram_sweep.py --mhz 192 phase       at another clock: a multiple of 24 MHz, the VCO kept at
+                                               1008 MHz or under, where 168 MHz has it
 
 A clean run has no errors at latency index 2, four cycles after READ. Re-measure after anything that
 moves the SDRAM's clock or pads.
@@ -60,11 +62,21 @@ def td(directory, script):
     subprocess.run([home / "bin" / "td.sh", "run.tcl"], cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, timeout=400)
 
 
-def build(directory, ident, degrees, trcd=4, trp=7, trfc=12, fade=0, cl=3, refresh_us=7):
+def pll(mhz):
+    """The feedback and output dividers for mhz from 24 MHz, and the degrees of one fine phase step."""
+    if mhz % 24:
+        sys.exit(f"{mhz} MHz is not a multiple of 24")
+    div = 1008 // mhz
+    return mhz // 24, div, 360 / (8 * div)
+
+
+def build(directory, ident, degrees, mhz=168, trcd=4, trp=7, trfc=12, fade=0, cl=3, refresh_us=7):
     directory.mkdir(parents=True, exist_ok=True)
-    steps = round(degrees / 7.5)
+    fb, div, step = pll(mhz)
+    steps = round(degrees / step)
     source = (ROOT / "tools" / "sdram_memtest.sv.in").read_text()
-    for key, value in {"ID": ident, "MHZ": 168, "FB": 7, "DIV1": 5, "DIV": 6, "CP": (5 + steps // 8) % 6, "FP": steps % 8,
+    for key, value in {"ID": ident, "MHZ": mhz, "FB": fb, "DIV1": div - 1, "DIV": div,
+                       "CP": (div - 1 + steps // 8) % div, "FP": steps % 8,
                        "TRCD": trcd, "TRP": trp, "TRFC": trfc, "FADE": fade, "CL": cl, "REFI": refresh_us}.items():
         source = source.replace(f"@{key}@", str(value))
     (directory / "t.sv").write_text(source)
@@ -103,7 +115,12 @@ def sweep(cases, seconds, work):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("what", choices=["phase", "limits"])
-    what = parser.parse_args().what
+    parser.add_argument("--mhz", type=int, default=168, help="the clock, a multiple of 24 MHz")
+    parser.add_argument("--start", type=float, default=150, help="phase: the first angle, in degrees")
+    parser.add_argument("--count", type=int, default=24, help="phase: how many angles")
+    args = parser.parse_args()
+    what, mhz = args.what, args.mhz
+    step = pll(mhz)[2]
     if "TD_HOME" not in os.environ:
         sys.exit("set TD_HOME")
     if PORT is None:
@@ -111,10 +128,11 @@ def main():
     os.setpriority(os.PRIO_PROCESS, 0, 19)
     with tempfile.TemporaryDirectory(dir=ROOT / "build") as work:
         if what == "phase":
-            cases = [(f"{150 + 7.5 * i:.1f} degrees", {"degrees": 150 + 7.5 * i}) for i in range(24)]
+            cases = [(f"{args.start + step * i:.1f} degrees", {"degrees": args.start + step * i, "mhz": mhz})
+                     for i in range(args.count)]
             sweep(cases, 12, Path(work))
         else:
-            base = {"degrees": 240}
+            base = {"degrees": 240, "mhz": mhz}
             cases = [("base", base),
                      ("tRCD 3", {**base, "trcd": 3}), ("tRCD 2", {**base, "trcd": 2}),
                      ("tRFC 10", {**base, "trfc": 10}), ("tRFC 8", {**base, "trfc": 8}), ("tRFC 6", {**base, "trfc": 6}),

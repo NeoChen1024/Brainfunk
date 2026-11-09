@@ -3,7 +3,8 @@ module brainfunk_soc #(
     parameter int IMEM_ADDR_WIDTH = 20,
     parameter int DMEM_ADDR_WIDTH = 16,
     parameter bit CLEAR_TAPE_ON_RESET = 1'b0,
-    parameter int SDRAM_BOOT_CYCLES   = 16
+    parameter int SDRAM_BOOT_CYCLES   = 16,
+    parameter int SDRAM_CAPTURE       = 4     // READ to the first word: CAS latency 3, plus 1 for the pins
 ) (
     input  logic       clk,
     input  logic       sdclk,
@@ -80,7 +81,7 @@ module brainfunk_soc #(
     logic [17:0] req_line;
     logic [31:0] rd_data, wr_data;
 
-    sdram_ctrl #(.BOOT_CYCLES(SDRAM_BOOT_CYCLES)) sdram (
+    sdram_ctrl #(.BOOT_CYCLES(SDRAM_BOOT_CYCLES), .CAPTURE(SDRAM_CAPTURE)) sdram (
         .clk(clk), .por(por), .init_done(sdram_ready),
         .req_valid(req_valid), .req_write(req_write), .req_line(req_line), .req_ready(req_ready),
         .rd_valid(rd_valid), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(wr_data),

@@ -86,6 +86,16 @@ def tools(tmp_path_factory, worker_id):
             stamp.touch()
 
 
+def build_cosim(directory, sources, *options):
+    """A cosimulator of its own from these RTL sources, with further Verilator options such as -G and -D."""
+    run("verilator", "--cc", "--exe", "--build", "-j", "2", "-O3", "--x-assign", "fast", "--x-initial", "fast",
+        "--top-module", "brainfunk_soc", "-DBRAINFUNK_RETIRE_PORT", *options, "--Mdir", directory / "obj",
+        "-CFLAGS", f"-std=c++20 -O1 -I{ROOT} -I{ROOT}/tests -I{ROOT}/3rdparty/json/single_include", *sources, ROOT / "tb" / "sdram_model.sv",
+        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp",
+        ROOT / "image.cpp", "-o", "cosim")
+    return directory / "obj" / "cosim"
+
+
 def assemble(source, level, out):
     """A hexadecimal program image from a Brainfuck file."""
     run(BRAINFUNK, f"-O{level}", "-m", "hex", "-f", source, "-o", out)

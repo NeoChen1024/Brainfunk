@@ -1,12 +1,10 @@
-// The core clock, from the board's 24 MHz: 24 * FB_DIV / REF_DIV MHz, and the same clock at the
-// phase that centres the SDRAM's data window, 240 degrees here; see doc/rtl.md. The VCO runs at
-// the output frequency times OUT_DIV, and a CPHASE step is one VCO period. Simulation passes the
-// input clock through.
+// The core clock, from the board's 24 MHz: CLOCK_MHZ, a multiple of 24, and the same clock SDRAM_DEGREES
+// later, which centres the SDRAM's data window; see doc/rtl.md. The VCO runs at the output frequency times
+// OUT_DIV, kept at 1008 MHz or under, where 168 MHz has it. A CPHASE step is one VCO period, 360 / OUT_DIV
+// degrees, and an FPHASE step an eighth of one. Simulation passes the input clock through.
 module yadan_pll #(
-    parameter int REF_DIV = 1,
-    parameter int FB_DIV  = 7,
-    parameter int OUT_DIV = 6,
-    parameter int SDRAM_CPHASE = 3    // 5 is in phase with clk_out; each step ahead is 60 degrees
+    parameter int CLOCK_MHZ     = 168,
+    parameter int SDRAM_DEGREES = 240
 ) (
     input  logic clk_in,
     output logic clk_out,
@@ -18,6 +16,9 @@ module yadan_pll #(
     assign sdclk   = clk_in;
     assign locked  = 1'b1;
 `else
+    localparam int FB_DIV  = CLOCK_MHZ / 24;
+    localparam int OUT_DIV = 1008 / CLOCK_MHZ;
+    localparam int STEPS   = (SDRAM_DEGREES * 8 * OUT_DIV + 180) / 360;   // fine steps after clk_out
     logic [4:0] clkc;
     logic       feedback;
 
@@ -37,7 +38,7 @@ module yadan_pll #(
         .KVCO(6),
         .LPF_CAPACITOR(3),
         .LPF_RESISTOR(2),
-        .REFCLK_DIV(REF_DIV),
+        .REFCLK_DIV(1),
         .FBCLK_DIV(FB_DIV),
         .CLKC0_ENABLE("ENABLE"),
         .CLKC0_DIV(OUT_DIV),
@@ -45,8 +46,8 @@ module yadan_pll #(
         .CLKC0_FPHASE(0),
         .CLKC1_ENABLE("ENABLE"),
         .CLKC1_DIV(OUT_DIV),
-        .CLKC1_CPHASE(SDRAM_CPHASE),
-        .CLKC1_FPHASE(0)
+        .CLKC1_CPHASE((OUT_DIV - 1 + STEPS / 8) % OUT_DIV),
+        .CLKC1_FPHASE(STEPS % 8)
     ) pll (
         .refclk(clk_in),
         .reset(1'b0),

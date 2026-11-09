@@ -7,7 +7,7 @@ import shutil
 
 import pytest
 
-from conftest import CORPUS, ROOT, assemble, run
+from conftest import CORPUS, ROOT, assemble, build_cosim, run
 from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, LOADER_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
 from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, MUL_CHAIN_IMAGE, MUL_SELF_IMAGES, program_cpi
 import test_loader
@@ -37,15 +37,6 @@ def caught(command):
         return run(*command, check=False, timeout=TIMEOUT).returncode != 0
     except Exception:  # a hang counts: the simulation never finishing is a failure too
         return True
-
-
-def build_cosim(directory, sources):
-    run("verilator", "--cc", "--exe", "--build", "-j", "2", "-O3", "--x-assign", "fast", "--x-initial", "fast",
-        "--top-module", "brainfunk_soc", "-DBRAINFUNK_RETIRE_PORT", "--Mdir", directory / "obj",
-        "-CFLAGS", f"-std=c++20 -O1 -I{ROOT} -I{ROOT}/tests -I{ROOT}/3rdparty/json/single_include", *sources, ROOT / "tb" / "sdram_model.sv",
-        ROOT / "tb" / "cosim.cpp", ROOT / "libbrainfunk.cpp", ROOT / "optimizer.cpp", ROOT / "llvm_codegen.cpp",
-        ROOT / "image.cpp", "-o", "cosim")
-    return directory / "obj" / "cosim"
 
 
 @pytest.mark.parametrize("name,file,text,replacement", PERFORMANCE_MUTANTS, ids=[mutant[0] for mutant in PERFORMANCE_MUTANTS])

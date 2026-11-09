@@ -12,8 +12,20 @@
 // Program I/O is 115200 8N1, through FIFOs. Input is blocking: there is no end of input on a
 // UART, so the core waits. LED_23 is on while running, off when halted, blinks on a trap, and
 // flashes quickly while there is no program or one is being loaded.
+`ifndef YADAN_MHZ
+`define YADAN_MHZ 168
+`endif
+`ifndef YADAN_SDRAM_DEGREES
+`define YADAN_SDRAM_DEGREES 240
+`endif
+`ifndef YADAN_SDRAM_CAPTURE
+`define YADAN_SDRAM_CAPTURE 4
+`endif
 module yadan_top #(
-    parameter int CLOCK_HZ          = 168_000_000,    // what yadan_pll makes
+    parameter int CLOCK_MHZ         = `YADAN_MHZ,     // what yadan_pll makes; synth/build-yadan.sh can set it
+    parameter int SDRAM_DEGREES     = `YADAN_SDRAM_DEGREES, // measured for the clock: see doc/rtl.md
+    parameter int SDRAM_CAPTURE     = `YADAN_SDRAM_CAPTURE, // cycles from READ to data, with that phase
+    parameter int CLOCK_HZ          = CLOCK_MHZ * 1_000_000,
     parameter int BAUD              = 115_200,
     parameter int LOAD_BAUD         = 2_000_000,
     parameter int STARTUP_CYCLES    = CLOCK_HZ / 5,
@@ -40,7 +52,8 @@ module yadan_top #(
     localparam int LOAD_BIT    = CLOCK_HZ / LOAD_BAUD;
 
     logic clk, sdclk, locked;
-    yadan_pll pll (.clk_in(clk_24mhz), .clk_out(clk), .sdclk(sdclk), .locked(locked));
+    yadan_pll #(.CLOCK_MHZ(CLOCK_MHZ), .SDRAM_DEGREES(SDRAM_DEGREES)) pll (
+        .clk_in(clk_24mhz), .clk_out(clk), .sdclk(sdclk), .locked(locked));
 
     logic por = 1'b1;
     always_ff @(posedge clk) por <= !locked;
@@ -389,7 +402,8 @@ module yadan_top #(
         .IMEM_ADDR_WIDTH(IMEM_ADDR_WIDTH),
         .DMEM_ADDR_WIDTH(DMEM_ADDR_WIDTH),
         .CLEAR_TAPE_ON_RESET(1'b1),
-        .SDRAM_BOOT_CYCLES(SDRAM_BOOT_CYCLES)
+        .SDRAM_BOOT_CYCLES(SDRAM_BOOT_CYCLES),
+        .SDRAM_CAPTURE(SDRAM_CAPTURE)
     ) soc (
         .clk(clk),
         .sdclk(sdclk),

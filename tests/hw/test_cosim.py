@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from conftest import BRAINFUNK, RESULTS, assemble, corpus_program, cosim_json, run, COSIM
+from conftest import BRAINFUNK, RESULTS, ROOT, assemble, build_cosim, corpus_program, cosim_json, run, COSIM
 
 CHUNK = 100
 
@@ -119,6 +119,19 @@ def test_mul_after_one_that_wrote_its_source(tools, tmp_path, layout):
     image = tmp_path / "mul.hex"
     image.write_text(MUL_SELF_IMAGES[layout])
     assert cosim_json(image)["halted"]
+
+
+# At 192 MHz the board's SDRAM data comes a cycle later, CAPTURE 5. The line's last word then came after
+# the next request had taken the read data over, and went to the wrong cache.
+SOC_RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_mem.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "brainfunk_soc.sv"]
+
+
+@pytest.mark.parametrize("mode,count", [("--random", 1000), ("--evict", 500)])
+def test_sdram_data_a_cycle_late(tools, tmp_path, mode, count):
+    cosim = build_cosim(tmp_path, [ROOT / "rtl" / name for name in SOC_RTL], "-GSDRAM_CAPTURE=5", "-DSDRAM_PIN_DELAY=1")
+    for stall in ([], ["--stall"]):
+        result = run(cosim, mode, count, "--seed", 300000, *stall, check=False)
+        assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
 
 
 def test_long_scan_crosses_the_cache(tools, tmp_path):

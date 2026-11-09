@@ -62,6 +62,14 @@ def read_output(count, limit, send=b"", pace=None):
     return got
 
 
+def build_mhz():
+    """The clock the bitstream was built for, from the defines synth/build-yadan.sh put first."""
+    for line in (BUILD / "yadan" / "yadan_all.sv").read_text().splitlines()[:4]:
+        if line.startswith("`define YADAN_MHZ "):
+            return int(line.split()[2])
+    return 168
+
+
 def expected_output(name, stdin=None, limit=None):
     command = [BRAINFUNK, "-O2", "-f", corpus_program(name)]
     return run(*command, input=stdin or "", check=False, timeout=limit, errors="surrogateescape").stdout.encode(errors="surrogateescape")
@@ -93,7 +101,9 @@ def test_mandel_takes_the_time_its_cycles_say(board, tmp_path):
     expected = expected_output("mandel.b")
     start = time.monotonic()
     assert read_output(len(expected), 60) == expected
-    assert 12 < time.monotonic() - start < 18
+    # 12.9 s at 168 MHz, and 11.3 s at 192 with its extra cycle on SDRAM reads.
+    scale = 168 / build_mhz()
+    assert 12 * scale < time.monotonic() - start < 18 * scale
 
 
 def test_lost_kingdom_plays(board, tmp_path):

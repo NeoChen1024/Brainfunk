@@ -247,6 +247,30 @@ write cannot miss, because a byte taken cannot be asked for again.
 The EG4S20NG88 embeds a 2M x 32 SDRAM. The controller moves whole lines, always with
 auto-precharge, at CAS latency 3 with tRCD 4, tRP 4, tRFC 12, and refresh every 7 us.
 
+The part is an Etron EM638325, four banks of 2048 rows by 256 columns, in its -5 speed grade, rated to
+200 MHz at CAS latency 3. Tang Dynasty has no timing for it: its simulation model is an empty shell.
+Nor has the current Anlogic datasheet, DS301 v2.7.8, which only names the part; DS301 v2.6 (March
+2020) had its AC parameters as Table 4-1 of section 4, and they are the -5 column of the Etron
+datasheet (Rev 1.4, October 2005, "Recommended A.C. Operating Conditions"):
+
+| Parameter | -5 | This controller at 168 MHz |
+|---|---|---|
+| tCK at CAS latency 3 | 5 ns min | 5.95 ns |
+| tRCD, activate to read or write | 18 ns | 4 cycles, 23.8 ns |
+| tRP, precharge to activate | 15 ns | 4 cycles, 23.8 ns |
+| tRC, activate to activate, and an auto refresh | 55 ns | 12 cycles, 71.4 ns |
+| tRAS, activate to precharge | 35 ns to 100 us | about 12 cycles |
+| tRRD, activate to activate in another bank | 10 ns | one bank at a time |
+| tWR, write recovery | 2 cycles | 2 cycles |
+| Refresh | 4096 in 64 ms, one per 15.6 us | one per 7 us |
+| tAC, clock to data out at CAS latency 3 | 4.5 ns max | |
+| tOH, data out hold | 2 ns | |
+| tIS, tIH, input set-up and hold | 1.5 ns, 1 ns | |
+
+So data from the part is valid for tCK - tAC + tOH, 3.45 ns at 168 MHz, of which the measured window
+below is about 1.36 ns once the FPGA's own paths have taken theirs. tRCD 3 is 17.9 ns at 168 MHz, just
+short of 18, which is why it running clean below is margin and not a setting.
+
 The part's clock is a separate PLL output. Measured at 168 MHz on one board at room temperature,
 with Memtest86+-style patterns plus every data bit toggling per word and bit-reversed line order,
 there were no errors over all 8 MiB with the SDRAM clock from 195 to 277.5 degrees after the core
@@ -254,6 +278,23 @@ clock, and errors at 187.5 and 285. `rtl/board/yadan_pll.sv` uses 240. On the sa
 cycles, CAS latency 2, and refresh every 240 us also ran clean, which is margin, not a target.
 
 The SDRAM needs about 100 ms after power-up. A 300 us wait lost data in the first pass.
+
+#### At 192 MHz
+
+5.21 ns is still within the -5 grade, and the controller's cycle counts all still meet its timing: tRCD
+and tRP 20.8 ns, tRC 62.5 ns, refresh every 6.1 us. The data window is what shrinks, to 2.71 ns from the
+part. With `tools/sdram_sweep.py --mhz 192 phase`, in steps of 9 degrees, two sweeps on one board:
+
+- Four cycles after READ, as at 168 MHz, only 216 degrees was ever clean, and on the second sweep it was
+  not: 16700 errors.
+- Five cycles after READ, 306 to 324 degrees and 360 to 369 were clean both times. Next to them, 288,
+  333 and 342 were clean in one sweep and not the other. Each angle is a bitstream of its own, placed
+  anew, which is a likely reason the edges move.
+
+So 192 MHz takes `YADAN_SDRAM_DEGREES=315` and `YADAN_SDRAM_CAPTURE=5`, a cycle more per line read.
+That cycle also has to be waited out: at `CAPTURE` 4 a read's last word arrives in the very cycle the
+next request may take the read data over, and at 5 it went to the wrong cache until `READ_RECOVER`
+grew with it. `test_sdram_data_a_cycle_late` simulates it, with `SDRAM_PIN_DELAY` in the model.
 
 ## Verification
 
@@ -326,6 +367,22 @@ the proofs are not vacuous. Formal mutants are checked against the proof.
 ## YADAN Board
 
 The board has an Anlogic EG4S20NG88. `rtl/board/yadan_pll.sv` makes 168 MHz from its 24 MHz clock.
+
+The clock is a build option. The yadan target takes `YADAN_MHZ`, a multiple of 24, with the SDRAM's
+phase and capture measured for it as `YADAN_SDRAM_DEGREES` and `YADAN_SDRAM_CAPTURE`:
+
+```shell
+cmake -B build -DYADAN_MHZ=192 -DYADAN_SDRAM_DEGREES=315 -DYADAN_SDRAM_CAPTURE=5
+```
+
+168 MHz is where timing closes, at the slow corner. 192 MHz does not: four builds had minimum periods
+from 5.74 to 6.16 ns, and the one on the board 5.74, so it runs on the part being 10% faster than that
+corner.
+On one board at room temperature, over JTAG, it passed the board tests and five rounds of six corpus
+programs compared byte for byte, and ran `mandel.b` in 11.32 s against 12.87 at 168, 1.137 times as
+fast against 1.143 for the clock alone. That is one board, one temperature: an overclock, with no
+margin known, and a failure would be wrong data rather than a stop. Comparisons between designs are
+made at timing that closes.
 
 ```shell
 export TD_HOME=/path/to/TD

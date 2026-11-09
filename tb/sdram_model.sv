@@ -3,6 +3,11 @@
 //
 // Timing limits are the conservative ones the controller is meant to meet. dq reads as junk
 // whenever the part is not driving it, and as junk for an unwritten or decayed word.
+// SDRAM_PIN_DELAY delays read data by whole cycles more, as the board's pads and SDRAM clock phase do
+// at clocks where the controller's CAPTURE is above 4.
+`ifndef SDRAM_PIN_DELAY
+`define SDRAM_PIN_DELAY 0
+`endif
 module sdram_phy (
     input  logic        clk,
     input  logic        sdclk,  // ignored: this model is cycle-accurate on clk
@@ -84,7 +89,7 @@ module sdram_phy (
                 burst_addr <= {open_row[ba], ba, addr[7:0]};
                 if (cmd == 3'b101) begin
                     read_left  <= 8;
-                    read_delay <= 1;   // driven before the third edge from here
+                    read_delay <= 1 + `SDRAM_PIN_DELAY;   // driven before the third edge from here, and the pins' delay
                 end else begin
                     if (!dq_oe) fail("write data not driven with WRITE");
                     mem[{open_row[ba], ba, addr[7:0]}] <= dq_out;

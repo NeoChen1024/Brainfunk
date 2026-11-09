@@ -47,8 +47,9 @@ module sdram_ctrl #(
     // CAS latency 3, sequential burst of 8.
     localparam logic [10:0] MODE = 11'b000_0011_0011;
 
-    // Cycles from READ or WRITE on the pins until the next ACT may follow.
-    localparam int READ_RECOVER  = 8 + TRP;
+    // Cycles from READ or WRITE on the pins until the next ACT may follow. A read also waits for its
+    // last word: the next request takes rd_valid over, and at CAPTURE 4 the word comes just in time.
+    localparam int READ_RECOVER  = 8 + TRP + (CAPTURE > 4 ? CAPTURE - 4 : 0);
     localparam int WRITE_RECOVER = 8 + TWR + TRP;
 
     typedef enum logic [2:0] {ST_BOOT, ST_INIT_PRE, ST_INIT_REF, ST_INIT_MRS, ST_IDLE, ST_ACT, ST_RW, ST_WAIT} state_t;
