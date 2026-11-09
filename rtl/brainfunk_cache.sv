@@ -133,6 +133,13 @@ endmodule
 // A retried instruction must find everything it needs in the cache at once, or two lines could
 // evict each other for ever. MUL is the only one that touches two cells, whose addresses are at
 // most about 2 KiB apart, so they never share an index in a cache of this size.
+//
+// F only needs to know which cells are zero, and a zero bit for every cell of the tape fits on chip:
+// the zero table, a line's 32 bits at a time. It holds the truth for the lines not in the cache, so
+// that F never misses: a line goes into it when the cache writes it back, a line evicted clean is
+// as it was when it came in, and a reset makes it all zeros, as the tape starts. dmem_ztable has the
+// read line's bits, with dmem_zero, and F takes them when dmem_hit is low. Nothing writes the table
+// while the core reads, because only a miss writes back.
 module dcache #(
     parameter int ADDR_WIDTH = 16,   // cells; at least 15, because the tag cannot be empty
     parameter bit CLEAR_TAPE = 1'b0  // a reset also zeroes the tape in SDRAM
@@ -145,6 +152,7 @@ module dcache #(
     output logic [7:0]            dmem_rdata,
     output logic                  dmem_hit,
     output logic [31:0]           dmem_zero,   // with dmem_rdata: which cells of its line are zero
+    output logic [31:0]           dmem_ztable, // and the same from the zero table, right when the line missed
     input  logic [31:0]           dmem_bank2,    // which bank the second port reads, one-hot, or none
     input  logic [ADDR_WIDTH-1:0] dmem_raddr2,
     output logic [7:0]            dmem_rdata2,
@@ -222,6 +230,25 @@ module dcache #(
         .wdata(dmem_we)
     );
 
+    // The zero table. A reset sweeps it, and a write-back writes the victim's bits, which are in
+    // dmem_zero by then: the read port has been on the victim's line since the miss.
+    logic [ADDR_WIDTH-6:0] ztable_waddr;
+    logic [31:0]           ztable_rdata, ztable_wdata;
+    logic                  ztable_we;
+    assign ztable_we    = state == ST_RESET || state == ST_WRITEBACK;
+    assign ztable_waddr = state == ST_RESET ? clear_line : {victim_tag, index_q};
+    assign ztable_wdata = state == ST_RESET ? '1 : dmem_zero;
+
+    ram_bank #(.WIDTH(32), .ADDR_WIDTH(ADDR_WIDTH - 5)) ztable (
+        .clk(clk),
+        .en(1'b1),
+        .raddr(raddr[ADDR_WIDTH-1:5]),
+        .rdata(ztable_rdata),
+        .we(ztable_we),
+        .waddr(ztable_waddr),
+        .wdata(ztable_wdata)
+    );
+
     // One block RAM per cell of a line, so that a read gets the whole line at once. The core writes
     // one, a fill writes the four of a word. F needs the width; see the core.
     logic         filling;
@@ -263,6 +290,7 @@ module dcache #(
         dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};
         dmem_rdata <= line_rdata[8*addr_2[4:0] +: 8];
         for (int i = 0; i < 32; i++) dmem_zero[i] <= line_rdata[8*i +: 8] == 8'd0;
+        dmem_ztable <= ztable_rdata;
     end
 
     // A line being written back is already in line_rdata, so picking its word can take a register.
@@ -302,10 +330,12 @@ module dcache #(
             end
 
             unique case (state)
+                // Every tag, and every line of the zero table, which is longer.
                 ST_RESET: begin
-                    index_q <= index_q + 9'd1;
-                    if (index_q == '1) state <= CLEAR_TAPE ? ST_CLEAR : ST_IDLE;
-                    if (index_q == '1 && !CLEAR_TAPE) dmem_busy <= 1'b0;
+                    index_q    <= index_q + 9'd1;
+                    clear_line <= clear_line + 1'b1;
+                    if (&clear_line) state <= CLEAR_TAPE ? ST_CLEAR : ST_IDLE;
+                    if (&clear_line && !CLEAR_TAPE) dmem_busy <= 1'b0;
                 end
 
                 ST_CLEAR: if (req_ready) begin

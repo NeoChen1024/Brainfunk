@@ -169,6 +169,7 @@ each within 0.1%.
 |---|---|---|
 | `i_lines`, `i_words` | 512, 8 | instruction cache lines, and words in a line |
 | `d_lines`, `d_cells` | 512, 32 | data cache lines, and cells in a line |
+| `zero_table` | 1 | 1: F reads a line not in the data cache from the zero table, so it never misses; 0: it misses like any read |
 | `read_latency`, `read_busy`, `write_busy` | 15, 17, 19 | SDRAM cycles, above |
 | `refresh_every`, `refresh_busy` | 1170, 14 | |
 | `fetch_lead`, `i_request`, `i_resume` | 5, 4, 12 | |

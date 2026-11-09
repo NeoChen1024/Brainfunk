@@ -112,8 +112,25 @@ at follows the read down the pipeline, built in three steps because it is a 32-w
 
 `dmem_zero` comes straight from the cache, so `F` has no forwarding, and waits while any older write
 would still reach the cache after its first read. It stays in `A` until it finishes, so nothing younger
-runs alongside it, and its younger reads can be discarded. A line that misses restarts `F` from that
-line, as any instruction restarts.
+runs alongside it, and its younger reads can be discarded.
+
+`F` never misses. All it needs of a cell is whether it is zero, and a bit for each cell of the tape is
+64 Kbit, eight 9K block RAMs: the data cache keeps them as a zero table, read with each line. For a
+line in the cache, `F` takes `dmem_zero` from the cache as before; for one that is not, the table's
+bits, which are right for every such line: a line goes into the table when the cache writes it back, a
+line evicted clean is as it came in, and a reset makes the table all zeros, as the tape starts. Nothing
+writes the table while `F` reads it, because only a miss writes back. So `F` goes a line a cycle however
+far it reaches, and brings nothing into the cache.
+
+Before, a line that missed restarted `F`, from fetch, and a scan past what the cache holds evicted its
+own first lines on the way, so it missed those again when it started over. In the cosimulator, the
+eterevsky family's `14.6.b`, which sweeps a growing stretch of tape back and forth, went from 2.27 G
+cycles to 136 M, 16.7 times as fast, and `BusyBeaver.b` from 33.1 M to 6.5 M, 5.1 times; `hanoi.b`,
+`long.b`, `mandel.b` and `LostKng.b` moved by a few cycles. The issue model, which had `F` go on from
+the line that missed, saw only 2.3 times for the first: it missed the restarts. Over its corpus it put
+the table at 10.5% fewer cycles (family-weighted geometric mean), all of it in the programs that sweep
+long stretches. Nothing else in the memory system came near: open rows, refresh, a victim buffer or
+zero-filling never-written lines were each worth under 1%, and a critical word first 2.7%.
 
 Finding the zero is the cheap part. Which cell it was, and so where `base_ptr` ends up, takes two more
 cycles after that, because a 32-way search and a subtraction cannot follow the zero test in one. `F`

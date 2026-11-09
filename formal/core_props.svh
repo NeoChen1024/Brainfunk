@@ -117,6 +117,9 @@ always_ff @(posedge clk) begin
     b3_line <= b2_line;
     if (a3_line && dmem_hit) assume (dmem_zero[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
     if (b3_line && dmem_hit) assume (dmem_zero[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
+    // A line not in the cache has its zero bits in the zero table.
+    if (a3_line && !dmem_hit) assume (dmem_ztable[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
+    if (b3_line && !dmem_hit) assume (dmem_ztable[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
 
     // Input reads its cell before taking a byte, so that its write cannot miss.
     if (in_taken) assume (dmem_hit);

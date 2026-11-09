@@ -747,6 +747,7 @@ struct MemoryConfig {
     bool     on = true;
     unsigned i_lines = 512, i_words = 8;     // instruction cache: lines, and words in a line
     unsigned d_lines = 512, d_cells = 32;    // data cache: lines, and cells in a line; written back
+    unsigned zero_table = 1;                 // 1: F takes a missing line's zero bits from a table, and never misses
     unsigned read_latency = 15;              // SDRAM: a line read, from the request to its last word
     unsigned read_busy = 17, write_busy = 19;   // and until the next request, after a read or a write
     unsigned refresh_every = 1170, refresh_busy = 14;
@@ -781,11 +782,11 @@ struct MemoryConfig {
     }
 
 private:
-    static constexpr const char* NAMES[] = {"i_lines", "i_words", "d_lines", "d_cells", "read_latency", "read_busy",
+    static constexpr const char* NAMES[] = {"i_lines", "i_words", "d_lines", "d_cells", "zero_table", "read_latency", "read_busy",
                                             "write_busy", "refresh_every", "refresh_busy", "fetch_lead", "i_request",
                                             "i_resume", "d_request", "d_resume"};
     static unsigned* field(MemoryConfig& m, std::string_view name) {
-        unsigned* const fields[] = {&m.i_lines, &m.i_words, &m.d_lines, &m.d_cells, &m.read_latency, &m.read_busy,
+        unsigned* const fields[] = {&m.i_lines, &m.i_words, &m.d_lines, &m.d_cells, &m.zero_table, &m.read_latency, &m.read_busy,
                                     &m.write_busy, &m.refresh_every, &m.refresh_busy, &m.fetch_lead, &m.i_request,
                                     &m.i_resume, &m.d_request, &m.d_resume};
         for (std::size_t i = 0; i < std::size(NAMES); ++i) if (name == NAMES[i]) return fields[i];
@@ -996,7 +997,9 @@ public:
         std::uint64_t scan_misses = 0;   // what F's reads wait for the data cache
         if (memory_) {
             at = memory_->fetch(e.pc, at);
-            if (op == Opcode::F) {
+            if (op == Opcode::F && c_.memory.zero_table) {
+                /* A line a cycle, from the cache or else the zero table: nothing to wait for. */
+            } else if (op == Opcode::F) {
                 /* A line a cycle; a miss restarts F from that line once it is in. */
                 const auto stride = static_cast<std::int64_t>(in.step());
                 std::uint64_t t = at, last = std::numeric_limits<std::uint64_t>::max();

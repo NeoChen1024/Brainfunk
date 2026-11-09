@@ -1,8 +1,7 @@
 """Deliberately broken designs, each of which the tests must catch: (name, file in rtl/, text, replacement).
 
 Left out because they do not change behaviour: writing back clean lines, or not clearing the dirty bit on a
-fill, which only cost time; and the dmem_hit checks on a misprediction or the end of F, because x_miss
-flushes those anyway. An illegal IO word taking an input byte is left out because only formal sees it, and
+fill, which only cost time; and the dmem_hit check on a misprediction, because x_miss flushes those anyway. An illegal IO word taking an input byte is left out because only formal sees it, and
 an illegal M moving base_ptr because nothing can tell after the trap.
 """
 MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m2_from_w_next;', "x_from_w     <= 1'b0;"),
@@ -172,10 +171,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   "(a_scan_back ? '1 : (ADDR_WIDTH-LINE_BITS)'(1))",
   "(ADDR_WIDTH-LINE_BITS)'(1)"),
- ('backward scan cell not mirrored',
-  'brainfunk_core.sv',
-  'scan_next_cell ^ {LINE_BITS{a_scan_back}}};',
-  'scan_next_cell};'),
  ('backward scan finds the far zero',
   'brainfunk_core.sv',
   'w_scan_zeros <= a_scan_back ? reversed(x_scan_zeros) : x_scan_zeros;',
@@ -188,10 +183,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   'scan_base    <= {s1_line, s1_cell} - a_offset;',
   'scan_base    <= {s1_line, s1_cell};'),
- ('scan restarts from where it began',
-  'brainfunk_core.sv',
-  'm1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;',
-  'm1_base          <= m0_base;'),
  ('long stride taken a line at a time',
   'brainfunk_core.sv',
   "d_stride_low != '0 && (d_instr[19:STRIDE_BITS] == '0 || &d_instr[19:STRIDE_BITS]);",
@@ -276,8 +267,8 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   "if (x_valid && !flush && x_is_out_read) out_pending <= 1'b1;"),
  ('core: branch misses unnoticed',
   'brainfunk_core.sv',
-  'a_is_scan || a_is_branch || a_is_in ||',
-  'a_is_scan || a_is_in ||'),
+  'a_is_mul || a_is_branch || a_is_in ||',
+  'a_is_mul || a_is_in ||'),
  ('core: set misses unnoticed',
   'brainfunk_core.sv',
   'm0_uses_cache    <= a_is_add || a_is_set ||',
@@ -380,6 +371,28 @@ FORMAL_ONLY_MUTANTS = [
   'if (!a_scan_more || a_issue) begin', 'begin'),
 ]
 
+# Where a scan would restart from, which it never does since F stopped missing. The logic stays because
+# the design closed timing with it and failed by 0.26 ns without it, and formal's invariants describe it.
+FORMAL_ONLY_MUTANTS += [
+ ('backward scan cell not mirrored', 'brainfunk_core.sv',
+  'scan_next_cell ^ {LINE_BITS{a_scan_back}}};', 'scan_next_cell};'),
+ ('scan restarts from where it began', 'brainfunk_core.sv',
+  'm1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;', 'm1_base          <= m0_base;'),
+]
+
+# F's zero table: the cache writes it, the core reads it on a miss.
+MUTANTS += [
+    ('D: zero table not written back', 'brainfunk_cache.sv',
+     'assign ztable_we    = state == ST_RESET || state == ST_WRITEBACK;', 'assign ztable_we    = state == ST_RESET;'),
+    ('D: zero table starts nonzero', 'brainfunk_cache.sv',
+     "assign ztable_wdata = state == ST_RESET ? '1 : dmem_zero;", "assign ztable_wdata = state == ST_RESET ? '0 : dmem_zero;"),
+    ('D: zero table written at the index alone', 'brainfunk_cache.sv',
+     'assign ztable_waddr = state == ST_RESET ? clear_line : {victim_tag, index_q};',
+     "assign ztable_waddr = state == ST_RESET ? clear_line : (ADDR_WIDTH-5)'(index_q);"),
+    ('core: scan ignores the zero table', 'brainfunk_core.sv',
+     'assign x_scan_zeros = (dmem_hit ? dmem_zero : dmem_ztable) & x_scan_mask;', 'assign x_scan_zeros = dmem_zero & x_scan_mask;'),
+]
+
 FORMAL_MUTANTS = [
     "fwd d1 off", "fwd d3 off", "fwd d4 off (collision)", "flush misses w", "no base restore", "branch sense",
     "scan retires every read", "scan test uses step field", "no multiply gap", "set reads memory", "illegal add writes",
@@ -388,7 +401,8 @@ FORMAL_MUTANTS = [
     "scan moves on without having read", "backward scan goes forward a line", "unit factor ignores its sign",
     "pair ignores the bank", "pair source fwd d1 off", "pair source fwd d3 off", "pair source fwd d4 off (collision)",
     "pair source misses ignored", "pair subtracts without the carry", "pair source at the destination",
-    "pair bank one off",
+    "pair bank one off", "core: scan ignores the zero table", "backward scan cell not mirrored",
+    "scan restarts from where it began",
 ]
 
 # Caught by the loader's testbench, or for the SoC, by the UART testbench.

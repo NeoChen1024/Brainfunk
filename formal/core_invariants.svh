@@ -56,7 +56,7 @@ endfunction
         if (s``_instr[31:28] == OP_MUL) assert (s``_is_mul_src != s``_is_mul_dst); \
         assert (s``_writes == ((s``_instr[31:28] == OP_A || s``_instr[31:28] == OP_S) && word_legal(s``_instr) || s``_is_mul_dst || (word_in(s``_instr) && s``_retire))); \
         assert (s``_retire == (word_legal(s``_instr) && !s``_is_mul_src && !(word_in(s``_instr) && !s``_writes) && !s``_is_out_read)); \
-        assert (s``_uses_cache == (word_legal(s``_instr) && s``_instr[31:28] != OP_M && s``_instr[31:28] != OP_H && !(word_out(s``_instr) && !s``_is_out_read))); \
+        assert (s``_uses_cache == (word_legal(s``_instr) && s``_instr[31:28] != OP_M && s``_instr[31:28] != OP_H && s``_instr[31:28] != OP_F && !(word_out(s``_instr) && !s``_is_out_read))); \
         if (word_in(s``_instr) && s``_writes) assert (s``_data == in_byte && in_taken); \
         else assert (s``_data == s``_instr[7:0]); \
         if (word_in(s``_instr) || word_out(s``_instr)) assert (s``_ea == addr_ea_of(s``_base, s``_instr)); \
@@ -185,7 +185,7 @@ logic [PC_WIDTH-1:0]   g_pc;
 always_ff @(posedge clk) begin
     if (rst || scan_done) begin
         g_active <= 1'b0;
-    end else if (x_valid && !flush && dmem_hit && x_is_scan && !(|x_scan_zeros)) begin
+    end else if (x_valid && !flush && x_is_scan && !(|x_scan_zeros)) begin   // hit or not: F never misses
         g_active <= 1'b1;
         g_cursor <= scan_next_of(x_ea, x_instr);
         g_word   <= x_instr;
@@ -278,7 +278,7 @@ always_ff @(posedge clk) if (!rst) begin
         if (x_instr[31:28] == OP_MUL) assert (x_is_mul_src != x_is_mul_dst);
         assert (x_writes == ((x_instr[31:28] == OP_A || x_instr[31:28] == OP_S) && word_legal(x_instr) || x_is_mul_dst || (word_in(x_instr) && x_retire)));
         assert (x_retire == (word_legal(x_instr) && !x_is_mul_src && !(word_in(x_instr) && !x_writes) && !x_is_out_read));
-        assert (x_uses_cache == (word_legal(x_instr) && x_instr[31:28] != OP_M && x_instr[31:28] != OP_H && !(word_out(x_instr) && !x_is_out_read)));
+        assert (x_uses_cache == (word_legal(x_instr) && x_instr[31:28] != OP_M && x_instr[31:28] != OP_H && x_instr[31:28] != OP_F && !(word_out(x_instr) && !x_is_out_read)));
         if (word_in(x_instr) && x_writes) assert (x_data == in_byte && in_taken);
         else assert (x_data == x_instr[7:0]);
         if (word_in(x_instr) || word_out(x_instr)) assert (x_ea == addr_ea_of(x_base, x_instr));

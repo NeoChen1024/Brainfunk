@@ -31,7 +31,9 @@
 // and then F works out where that left base_ptr, which nothing younger has needed yet.
 //
 // F has no forwarding: dmem_zero comes straight from the cache, so F waits until any write older than
-// it is no longer ahead of it. Nothing younger issues until F has finished.
+// it is no longer ahead of it. Nothing younger issues until F has finished. F never misses: a line not
+// in the cache has its zero bits in dmem_ztable, from the cache's zero table, so F reads the tape at a
+// line a cycle however far it goes, and brings nothing into the cache.
 //
 // The memories are caches; see brainfunk_cache.sv. dmem_rdata arrives three edges after dmem_raddr,
 // and imem_rdata three edges after imem_addr if imem_en holds, each with a hit flag.
@@ -92,6 +94,7 @@ module brainfunk_core #(
     input  logic [7:0]            dmem_rdata2,
     input  logic                  dmem_hit_both,   // with dmem_hit: and the second port's read hit, if there was one
     input  logic [(1 << LINE_BITS)-1:0] dmem_zero, // arrives with dmem_rdata: which cells of the line are zero
+    input  logic [(1 << LINE_BITS)-1:0] dmem_ztable, // the same, right when dmem_hit is low
     output logic                  dmem_miss,       // one cycle; the instruction restarts
     output logic [ADDR_WIDTH-1:0] dmem_miss_addr,
     input  logic                  dmem_busy,       // handling a miss: nothing may issue
@@ -525,8 +528,8 @@ module brainfunk_core #(
     assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit_both;
     assign x_wrong_way  = x_taken != x_predict_taken;
     assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
-    assign x_scan_zeros = dmem_zero & x_scan_mask;
-    assign x_scan_found = x_valid && !flush && dmem_hit && x_is_scan && |x_scan_zeros;
+    assign x_scan_zeros = (dmem_hit ? dmem_zero : dmem_ztable) & x_scan_mask;
+    assign x_scan_found = x_valid && !flush && x_is_scan && |x_scan_zeros;
 
     // A factor of 1 or -1 takes the source's value as it is: from the second port, or else straight
     // from X a cycle before. Subtracting it is adding its complement and a carry.
@@ -571,7 +574,7 @@ module brainfunk_core #(
         m0_base          <= base_ptr;
         m0_base_after    <= a_is_move ? moved : base_ptr;
         m0_writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
-        m0_uses_cache    <= a_is_add || a_is_set || a_is_mul || a_is_scan || a_is_branch || a_is_in ||
+        m0_uses_cache    <= a_is_add || a_is_set || a_is_mul || a_is_branch || a_is_in ||
                             (a_is_out && !a_last);
         m0_retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
         m0_no_read       <= a_is_set || (a_is_in && a_last);
