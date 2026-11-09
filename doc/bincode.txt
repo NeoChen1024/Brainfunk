@@ -99,7 +99,7 @@ Program images
 
 A program is a sequence of words, the first at pc 0.  It takes four forms, which convert into
 each other without loss; brainfunk -m bit, hex, bin and packed write them, and brainfunk -b,
-visualbrainfunk -b and bfload read any of them, told apart by content:
+visualbrainfunk -b and bfconsole read any of them, told apart by content:
 
   listing        text, a line per word: "pc:<TAB>MNEMONIC<TAB>operands", as in doc/bitcode.txt,
                  pc counting from 0.  An illegal word other than 0 lists as X with the word,
@@ -116,18 +116,25 @@ Image files have a header of 20 bytes, every value in it little endian:
 
   0   magic         4 bytes, "BFIM"
   4   version       1 byte, 1
-  5   flags         1 byte: bits 1:0 the compression, 0 none or 1 LZ; bits 7:2 reserved, 0
+  5   flags         1 byte: bits 1:0 the compression, 0 none or 1 LZ; bits 3:2 the end of input;
+                    bits 7:4 reserved, 0
   6   reserved      2 bytes, 0
   8   payload size  4 bytes, in bytes
   12  word count    4 bytes
   16  CRC-32        4 bytes, of bytes 4 to 15 and the payload (the common reflected polynomial)
   20  payload
 
+The end of input is what an input instruction stores once there is no input left: 0 says
+nothing, 1 stores 0, 2 stores 255, and 3 leaves the cell as it was, as brainfunk -e 0, 255 and
+keep.  brainfunk -e writes it into a bin or packed image, and brainfunk -b runs an image with
+it unless -e says otherwise; with nothing said, 0 is stored.  On the board an image that says
+nothing has no end of input, and its input waits; see doc/rtl.md.
+
 A reader refuses another version, a reserved bit set, and an unknown compression, so that a
 later version can use them.  The board's loader, rtl/loader.sv, also refuses a payload of
 16 MiB or more, 2^20 words or more, and a bincode image whose payload is not whole words; it
 refuses all of that as soon as it has the header.  It finds a wrong CRC only at the end, and a
-payload size larger than what follows leaves it waiting for the rest: over the UART, bfload
+payload size larger than what follows leaves it waiting for the rest: over the UART, bfconsole
 reports no answer, and a Break starts over.
 
 A packed image's payload is a run of tokens, and every multi-byte value is little endian:

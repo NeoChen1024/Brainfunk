@@ -36,14 +36,14 @@ at configure time, `mutation` and `board`; see [tests/CMakeLists.txt](tests/CMak
 A program also takes the form of a listing (`-m bit`), hexadecimal words (`-m hex`), a bincode
 image file (`-m bin`), or a packed image file, compressed with word-level LZ (`-m packed`). They
 convert into each other without loss, and `brainfunk -b` runs any of them; see
-[doc/bincode.txt](doc/bincode.txt). `bfload` sends a program to the YADAN board; see
-[doc/rtl.md](doc/rtl.md).
+[doc/bincode.txt](doc/bincode.txt). `bfconsole` loads a program onto the YADAN board and is a
+console for it; see [doc/rtl.md](doc/rtl.md).
 
 ```shell
 build/bin/brainfunk -O2 -m packed -f program.b -o program.bfi
 build/bin/brainfunk -m bit -b program.bfi
 build/bin/brainfunk -b program.bfi
-build/bin/bfload -t -f program.b
+build/bin/bfconsole -e 0 -f program.b
 ```
 
 # Optimization levels

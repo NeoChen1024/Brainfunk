@@ -104,6 +104,7 @@ module brainfunk_core #(
 
     input  logic                  io_in_valid,
     input  logic [7:0]            io_in_data,
+    input  logic                  io_in_keep,      // with io_in_valid: the end of input, which leaves the cell as it was
     output logic                  io_in_ready,
     output logic                  io_out_valid,
     output logic [7:0]            io_out_data,
@@ -243,6 +244,7 @@ module brainfunk_core #(
     logic [ADDR_WIDTH-1:0] a_mul_source;
     logic [ADDR_WIDTH-1:0] a_offset, a_offset_2;
     logic [7:0]            a_data;
+    logic                  a_in_keep;       // the input taken leaves the cell: added as 0, not set
     logic [PC_WIDTH-1:0]   a_pc, a_next_pc, a_alt_pc, a_fetched_next;
     logic [31:0]           a_instr;
     logic                  a_next_taken;
@@ -417,10 +419,11 @@ module brainfunk_core #(
                     a_phase <= 2'd1;
                 end
             end else if (a_phase == 2'd1 && drained && io_in_valid) begin
-                a_data  <= io_in_data;
-                a_go    <= 1'b1;
-                a_last  <= 1'b1;
-                a_phase <= 2'd2;
+                a_data    <= io_in_keep ? 8'd0 : io_in_data;
+                a_in_keep <= io_in_keep;
+                a_go      <= 1'b1;
+                a_last    <= 1'b1;
+                a_phase   <= 2'd2;
             end
         end else if (a_is_out) begin
             if (!dmem_busy) a_go <= 1'b0; // the read issues now, and sets out_pending from X
@@ -577,7 +580,7 @@ module brainfunk_core #(
         m0_uses_cache    <= a_is_add || a_is_set || a_is_mul || a_is_branch || a_is_in ||
                             (a_is_out && !a_last);
         m0_retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
-        m0_no_read       <= a_is_set || (a_is_in && a_last);
+        m0_no_read       <= a_is_set || (a_is_in && a_last && !a_in_keep);
         m0_is_branch     <= a_is_branch;
         m0_is_je         <= a_is_je;
         m0_predict_taken <= a_predict_taken;

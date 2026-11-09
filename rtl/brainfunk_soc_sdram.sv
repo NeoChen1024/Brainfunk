@@ -13,6 +13,7 @@ module brainfunk_soc_sdram #(
 
     input  logic       io_in_valid,
     input  logic [7:0] io_in_data,
+    input  logic       io_in_keep,
     output logic       io_in_ready,
     output logic       io_out_valid,
     output logic [7:0] io_out_data,

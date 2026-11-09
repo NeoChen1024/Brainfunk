@@ -370,19 +370,31 @@ inline constexpr std::size_t LZ_MAX_DISTANCE = 65535;
 /* CRC-32 with the common reflected polynomial, as in the image header. */
 [[nodiscard]] std::uint32_t crc32(std::span<const std::uint8_t> bytes) noexcept;
 
+/* A program as an image file holds it: the words, and what input stores at the end of input if
+ * the image says.  An image that does not say leaves it to whatever runs it; on the board, input
+ * then has no end. */
+struct Program {
+    std::vector<std::uint32_t> words;
+    std::optional<EofMode>     eof;
+};
+
 /* A whole image file: header, then the payload. */
 [[nodiscard]] std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words,
-                                                   Compression compression = Compression::LZ);
+                                                   Compression compression = Compression::LZ,
+                                                   std::optional<EofMode> eof = std::nullopt);
 
 /* Throws BrainfunkException unless the magic, version, reserved bits, sizes and
  * CRC are all right. */
+[[nodiscard]] Program unpack_program(std::span<const std::uint8_t> bytes);
 [[nodiscard]] std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes);
 
-/* Reads a program as words, whatever form it is in, told apart by content: an
- * image file, a listing, or one hexadecimal word a line. */
+/* Reads a program, whatever form it is in, told apart by content: an image file, a listing, or
+ * one hexadecimal word a line.  Only an image file can say what end of input stores. */
+[[nodiscard]] Program read_program(std::istream& in);
 [[nodiscard]] std::vector<std::uint32_t> read_image(std::istream& in);
 
 /* The same from a file; "-" is standard input. */
+[[nodiscard]] Program read_program_file(const std::string& filename);
 [[nodiscard]] std::vector<std::uint32_t> read_image_file(const std::string& filename);
 
 /* ================================================================

@@ -5,17 +5,24 @@
 // At power-up, once the memory is ready, the program is loaded from the flash. A long press of the
 // button loads it again; a short one restarts it from Code RAM, with the tape cleared, after
 // STARTUP_CYCLES, so that a host opening its port does not lose the first output.
-// A UART Break starts a command at LOAD_BAUD, whatever is going on: load into Code RAM and run,
-// program the flash and boot from it, or report the flash's ID.
 //
-// Program I/O is BAUD 8N1, through FIFOs. Input is blocking: there is no end of input on a UART, so
-// the core waits.
+// A UART Break says something by how long it is, since a Break from the host is the one thing on
+// the line that no byte can be. A command Break starts a command at LOAD_BAUD, whatever is going
+// on: load into Code RAM and run, program the flash and boot from it, or report the flash's ID. A
+// shorter one turns framing on, and the shortest ends the program's input.
+//
+// Program I/O is BAUD 8N1, through FIFOs. Input waits for a byte until the end of input, if the
+// image says what that stores; otherwise it has no end. Framing is for a host that knows it,
+// bfconsole: it escapes 0xFF in what goes out, so that FF and another byte can carry flow control
+// for the receive FIFO, and say when the program has stopped. See doc/rtl.md.
 module brainfunk_system #(
     parameter int CLOCK_HZ          = 168_000_000,
     parameter int BAUD              = 115_200,
     parameter int LOAD_BAUD         = 2_000_000,
     parameter int STARTUP_CYCLES    = CLOCK_HZ / 5,
-    parameter int BREAK_CYCLES      = CLOCK_HZ / 200, // 5 ms low
+    parameter int EOF_BREAK_CYCLES     = CLOCK_HZ / 1000, // 1 ms low: a Break, the end of input
+    parameter int FRAME_BREAK_CYCLES   = CLOCK_HZ / 100,  // 10 ms: framing on
+    parameter int COMMAND_BREAK_CYCLES = CLOCK_HZ / 10,   // 100 ms: a command
     parameter int LONG_PRESS_CYCLES = CLOCK_HZ / 200, // 5 ms
     parameter int BOUNCE_CYCLES     = CLOCK_HZ / 25,  // ignore the button for 40 ms after a press
     parameter int IMEM_ADDR_WIDTH   = 20,
@@ -58,21 +65,33 @@ module brainfunk_system #(
         rx_sync     <= {rx_sync[0], uart_rx};
     end
 
-    // ---- a UART Break: the line low for far longer than any byte ----
-    localparam int BREAK_BITS = $clog2(BREAK_CYCLES + 1);
+    // ---- a UART Break: the line low for longer than any byte ----
+    // A command is taken as soon as the line has been low that long; the others when it goes high,
+    // by how long it was. The receiver is held from the shortest on, so it starts clean after.
+    localparam int BREAK_BITS = $clog2(COMMAND_BREAK_CYCLES + 1);
     logic [BREAK_BITS-1:0] low_count = '0;
-    logic                  break_seen = 1'b0, in_break = 1'b0; // the receiver starts clean after it
+    logic                  in_break = 1'b0, past_frame = 1'b0, command_break = 1'b0;
+    logic                  break_seen = 1'b0, eof_break = 1'b0, frame_break = 1'b0;
 
     always_ff @(posedge clk) begin
-        break_seen <= 1'b0;
+        break_seen  <= 1'b0;
+        eof_break   <= 1'b0;
+        frame_break <= 1'b0;
         if (rx_sync[1]) begin
-            low_count <= '0;
-            in_break  <= 1'b0;
-        end else if (low_count == BREAK_BITS'(BREAK_CYCLES)) begin
-            break_seen <= !in_break;
-            in_break   <= 1'b1;
+            eof_break     <= in_break && !past_frame;
+            frame_break   <= past_frame && !command_break;
+            low_count     <= '0;
+            in_break      <= 1'b0;
+            past_frame    <= 1'b0;
+            command_break <= 1'b0;
         end else begin
-            low_count <= low_count + 1'b1;
+            if (!command_break) low_count <= low_count + 1'b1;
+            if (low_count == BREAK_BITS'(EOF_BREAK_CYCLES)) in_break <= 1'b1;
+            if (low_count == BREAK_BITS'(FRAME_BREAK_CYCLES)) past_frame <= 1'b1;
+            if (low_count == BREAK_BITS'(COMMAND_BREAK_CYCLES)) begin
+                break_seen    <= !command_break;
+                command_break <= 1'b1;
+            end
         end
     end
 
@@ -325,8 +344,9 @@ module brainfunk_system #(
                           |(state & ST_FLASH_LOAD) || |(state & ST_POWERUP) ? 14'(PROGRAM_BIT) : 14'(LOAD_BIT);
     end
 
-    logic       rx_valid, txf_valid, txf_in_valid, txf_in_ready, tx_ready, txf_empty;
+    logic       rx_valid, txf_valid, txf_in_valid, txf_in_ready, tx_ready, txf_empty, txf_ready, rxf_empty;
     logic [7:0] rx_data, txf_data, txf_in_data;
+    logic [9:0] rxf_used;
     logic       fifo_rst;
     assign fifo_rst = por || break_seen || restart || reload;
 
@@ -338,22 +358,111 @@ module brainfunk_system #(
     uart_fifo rx_fifo (
         .clk(clk), .rst(fifo_rst),
         .in_valid(rx_valid), .in_data(rx_data), .in_ready(),
-        .out_valid(rxf_valid), .out_data(rxf_data), .out_ready(rxf_ready), .overflowed(), .empty()
+        .out_valid(rxf_valid), .out_data(rxf_data), .out_ready(rxf_ready), .overflowed(), .empty(rxf_empty),
+        .used(rxf_used)
     );
 
     uart_fifo tx_fifo (
         .clk(clk), .rst(fifo_rst),
         .in_valid(txf_in_valid), .in_data(txf_in_data), .in_ready(txf_in_ready),
-        .out_valid(txf_valid), .out_data(txf_data), .out_ready(tx_ready), .overflowed(), .empty(txf_empty)
+        .out_valid(txf_valid), .out_data(txf_data), .out_ready(txf_ready), .overflowed(), .empty(txf_empty),
+        .used()
     );
+
+    // ---- the host's side of the program's I/O ----
+    // The image's end-of-input field: 0 none, so input waits for ever; else what input stores, 1 for 0,
+    // 2 for 255, 3 for the cell as it was. The end comes after every byte sent before it.
+    logic [1:0] loader_eof, image_eof = 2'd0;
+    logic       eof_seen = 1'b0, in_eof;
+    always_ff @(posedge clk) begin
+        if (load_done && !load_failed) image_eof <= loader_eof;
+        if (fifo_rst) eof_seen <= 1'b0;
+        else if (eof_break) eof_seen <= 1'b1;
+    end
+    assign in_eof = eof_seen && image_eof != 2'd0 && rxf_empty && !rxf_valid;
+
+    // Framing lasts until the program restarts or reloads: a host that opens the port restarts it,
+    // and must ask again. Only the program's I/O is framed; a command's answers are not.
+    logic framed = 1'b0, framed_ack = 1'b0, program_io = 1'b1;
+    logic framing, ack_due, flow_due, end_due, tx_go;
+    always_ff @(posedge clk) begin
+        program_io <= |(state & ST_RUN) || |(state & ST_STARTUP) || |(state & ST_WAIT_IMAGE) ||
+                      |(state & ST_FLASH_LOAD) || |(state & ST_POWERUP);
+        if (por || restart || reload) begin
+            framed     <= 1'b0;
+            framed_ack <= 1'b0;
+        end else if (frame_break) begin
+            framed     <= 1'b1;
+            framed_ack <= 1'b1;
+        end else if (tx_go && ack_due) begin
+            framed_ack <= 1'b0;
+        end
+    end
+    assign framing = framed && program_io;
+
+    // Flow control: stop the host at half full, and let it go again at a quarter. bfconsole sends
+    // a little at a time and checks between, so that what it has sent when it sees a stop fits in the rest.
+    logic want_stop = 1'b0, told_stop = 1'b0, end_sent = 1'b0;
+    always_ff @(posedge clk) begin
+        if (fifo_rst) want_stop <= 1'b0;
+        else if (rxf_used >= 10'd512) want_stop <= 1'b1;
+        else if (rxf_used <= 10'd256) want_stop <= 1'b0;
+    end
+
+    // What goes out after the byte going now: the second of an escape pair, and the flags after F.
+    logic [1:0] tail_count = '0;
+    logic [7:0] tail_0 = '0, tail_1 = '0;
+    logic [7:0] tx_byte;
+    logic       tx_send;
+    assign flow_due = framing && want_stop != told_stop;
+    assign ack_due  = framing && framed_ack && !flow_due;
+    assign end_due  = framing && !end_sent && (halted || trapped) && txf_empty && !txf_valid && !flow_due && !framed_ack;
+    always_comb begin
+        tx_send = 1'b1;
+        tx_byte = 8'hFF;
+        if (tail_count != 2'd0) tx_byte = tail_0;
+        else if (flow_due || ack_due) tx_byte = 8'hFF;
+        else if (txf_valid) tx_byte = txf_data;
+        else if (!end_due) tx_send = 1'b0;
+    end
+    assign tx_go     = tx_send && tx_ready;
+    assign txf_ready = tx_ready && tail_count == 2'd0 && !flow_due && !ack_due;
+
+    always_ff @(posedge clk) begin
+        if (rst) end_sent <= 1'b0;
+        if (por || !framing) begin
+            told_stop  <= 1'b0;
+            tail_count <= '0;
+        end else if (tx_go) begin
+            if (tail_count != 2'd0) begin
+                tail_count <= tail_count - 2'd1;
+                tail_0     <= tail_1;
+            end else if (flow_due) begin
+                told_stop  <= want_stop;
+                tail_count <= 2'd1;
+                tail_0     <= want_stop ? 8'h13 : 8'h11;
+            end else if (ack_due) begin
+                tail_count <= 2'd2;
+                tail_0     <= "F";
+                tail_1     <= {image_valid, 5'd0, image_eof};
+            end else if (txf_valid) begin
+                tail_count <= txf_data == 8'hFF ? 2'd1 : 2'd0;
+                tail_0     <= 8'hFF;
+            end else begin
+                end_sent   <= 1'b1;
+                tail_count <= 2'd1;
+                tail_0     <= trapped ? "T" : "H";
+            end
+        end
+    end
 
     uart_tx transmitter (
         .clk(clk), .rst(por), .cycles_per_bit(cycles_per_bit),
-        .valid(txf_valid), .data(txf_data), .ready(tx_ready), .tx(uart_tx)
+        .valid(tx_send), .data(tx_byte), .ready(tx_ready), .tx(uart_tx)
     );
 
     // An answer must be on the wire before the speed changes back.
-    assign tx_idle = ack_queued && txf_empty && !txf_valid && tx_ready;
+    assign tx_idle = ack_queued && txf_empty && !txf_valid && tx_ready && tail_count == 2'd0;
     always_ff @(posedge clk) begin
         if (ack_now) ack_queued <= 1'b1;
         else if (!(|(state & ST_ACK))) ack_queued <= 1'b0;
@@ -381,7 +490,7 @@ module brainfunk_system #(
 
     image_loader loader (
         .clk(clk), .rst(load_rst), .start(load_start_late), .strict(load_from_flash),
-        .busy(), .done(load_done), .failed(load_failed),
+        .busy(), .done(load_done), .failed(load_failed), .eof(loader_eof),
         .in_valid((load_from_flash && flash_out_valid) || (load_from_uart && rxf_valid)),
         .in_data(load_from_flash ? flash_out_data : rxf_data), .in_ready(load_in_ready),
         .req_valid(load_req_valid), .req_write(load_req_write), .req_line(load_req_line), .req_ready(load_req_ready),
@@ -395,8 +504,9 @@ module brainfunk_system #(
     ) soc (
         .clk(clk),
         .rst(rst),
-        .io_in_valid(rxf_valid && !rst),
-        .io_in_data(rxf_data),
+        .io_in_valid((rxf_valid || in_eof) && !rst),
+        .io_in_data(rxf_valid ? rxf_data : {8{image_eof == 2'd2}}),
+        .io_in_keep(!rxf_valid && image_eof == 2'd3),
         .io_in_ready(in_ready),
         .io_out_valid(out_valid),
         .io_out_data(out_data),

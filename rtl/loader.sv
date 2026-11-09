@@ -12,6 +12,7 @@ module image_loader (
     output logic        busy,
     output logic        done,       // one cycle, with failed if the image was bad
     output logic        failed,
+    output logic [1:0]  eof,        // the header's end-of-input field, for an image that loaded
 
     input  logic        in_valid,
     input  logic [7:0]  in_data,
@@ -196,7 +197,8 @@ module image_loader (
                         4'd0: header_bad <= byte_data != 8'd1;
                         4'd1: begin
                             raw <= !byte_data[0];
-                            if (byte_data[7:1] != 7'd0) header_bad <= 1'b1;
+                            eof <= byte_data[3:2];
+                            if (byte_data[7:4] != 4'd0 || byte_data[1]) header_bad <= 1'b1;
                         end
                         4'd2, 4'd3: if (byte_data != 8'd0) header_bad <= 1'b1;
                         4'd4, 4'd5, 4'd6: begin

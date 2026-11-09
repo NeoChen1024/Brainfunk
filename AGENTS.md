@@ -22,7 +22,7 @@ link to it from here; do not copy specs, defaults, timings or measurements into 
 ## Layout
 
 - `include/brainfunk/` holds the library's headers, included as `"brainfunk/..."`. `src/` holds the
-  library and the programs: `brainfunk`, `bfload`, `bf`, `bfstrip`, `visualbrainfunk`.
+  library and the programs: `brainfunk`, `bfconsole`, `bf`, `bfstrip`, `visualbrainfunk`.
 - `rtl/` is the core, caches, SoC and memory controller; `rtl/board/` is the only board-specific RTL.
   `tb/` has the cosimulator and models, `formal/` the properties, `synth/` the FPGA flow.
 - `tests/test-libbrainfunk.cpp` is Catch2; `tests/sw/` and `tests/hw/` are pytest.

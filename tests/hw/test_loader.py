@@ -1,4 +1,4 @@
-"""The image loader against the SDRAM model: what it writes must be the image bfload packed."""
+"""The image loader against the SDRAM model: what it writes must be the image brainfunk packed."""
 import random
 import struct
 import zlib
@@ -47,12 +47,12 @@ def with_header(data, at, value):
     return bytes(data)
 
 
-def pack(tmp_path, name, words, mode="packed", change=None):
+def pack(tmp_path, name, words, mode="packed", change=None, eof=None):
     """The image, its image file's bytes as a file for $readmemh, and the bytes; mode bin is not compressed."""
     hexfile = tmp_path / f"{name}.hex"
     hexfile.write_text("".join(f"{word:08x}\n" for word in words))
     packed = tmp_path / f"{name}.{mode}"
-    run(BRAINFUNK, "-m", mode, "-b", hexfile, "-o", packed)
+    run(BRAINFUNK, "-m", mode, "-b", hexfile, "-o", packed, *(["-e", eof] if eof else []))
     data = packed.read_bytes()
     if change is not None:
         data = with_header(data, *change)
@@ -60,9 +60,9 @@ def pack(tmp_path, name, words, mode="packed", change=None):
     return hexfile, tmp_path / f"{name}.bytes", data
 
 
-def load(tmp_path, words, gap=0, corrupt_at=-1, before=None, sources=SOURCES, mode="packed", change=None):
+def load(tmp_path, words, gap=0, corrupt_at=-1, before=None, sources=SOURCES, mode="packed", change=None, eof=None):
     """Loads words, after the image before if there is one."""
-    hexfile, bytesfile, data = pack(tmp_path, "image", words, mode, change)
+    hexfile, bytesfile, data = pack(tmp_path, "image", words, mode, change, eof)
     first = []
     if before is not None:
         _, pre_file, pre = pack(tmp_path, "before", before)
@@ -71,11 +71,20 @@ def load(tmp_path, words, gap=0, corrupt_at=-1, before=None, sources=SOURCES, mo
     run("verilator", "--binary", "--timing", "-j", "2", "--top-module", "loader_tb", "--Mdir", obj,
         f"-GIMAGE_BYTES={len(data)}", f'-GIMAGE_FILE="{bytesfile}"',
         f"-GWORDS={len(words)}", f'-GWORDS_FILE="{hexfile}"', f"-GGAP={gap}", f"-GCORRUPT_AT={corrupt_at}",
-        f"-GREFUSE={int(corrupt_at >= 0 or change is not None)}",
+        f"-GREFUSE={int(corrupt_at >= 0 or change is not None)}", f"-GEOF={EOF_FIELDS[eof]}",
         *first, *sources, "-o", "loader_tb")
     result = run(obj / "loader_tb", check=False, timeout=600)
     assert "loader_tb passed" in result.stdout, result.stdout[-2000:]
     return data, result.stdout
+
+
+# The header's end-of-input field for each brainfunk -e, and for none.
+EOF_FIELDS = {None: 0, "0": 1, "255": 2, "keep": 3}
+
+
+@pytest.mark.parametrize("eof", ["0", "255", "keep"])
+def test_loader_reports_the_end_of_input(tools, tmp_path, eof, sources=SOURCES):
+    load(tmp_path, stress_words()[:300], eof=eof, sources=sources)
 
 
 def copy_distances(data):
@@ -123,10 +132,11 @@ def test_loader_takes_an_image_that_is_not_compressed(tools, tmp_path, sources=S
 
 # Right CRC, but something this loader cannot take: another version, compression or reserved bit, a
 # payload size a plain image cannot have, more words than Code RAM.
-@pytest.mark.parametrize("at,value", [(4, 2), (5, 2), (5, 0x81), (6, 1), (7, 0x80), (8, 1), (14, 0x10), (15, 1)],
-                         ids=["version", "compression", "flag", "reserved", "reserved_high", "size", "words", "words_high"])
+@pytest.mark.parametrize("at,value", [(4, 2), (5, 2), (5, 0x11), (5, 0x81), (6, 1), (7, 0x80), (8, 1), (14, 0x10), (15, 1)],
+                         ids=["version", "compression", "flag", "flag_high", "reserved", "reserved_high", "size", "words", "words_high"])
 def test_loader_refuses_what_it_cannot_take(tools, tmp_path, at, value, sources=SOURCES):
-    mode = "bin" if at == 8 else "packed"
+    # A plain image, so that a compression taken as none loads, rather than failing on its payload.
+    mode = "bin" if (at, value) in ((8, 1), (5, 2)) else "packed"
     _, output = load(tmp_path, stress_words()[:300], sources=sources, mode=mode, change=(at, value))
     assert "refused" in output
 

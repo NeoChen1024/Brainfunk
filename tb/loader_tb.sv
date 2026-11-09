@@ -3,6 +3,7 @@
 // unpacked image. With REFUSE, the loader must say the image is bad: one CORRUPT_AT flips a byte of,
 // or one made wrong some other way.
 // With PRE_FILE, another image is loaded first, so nothing may carry over from one load to the next.
+// EOF is what the loader must report of the header's end-of-input field.
 `timescale 1ns/1ps
 module loader_tb #(
     parameter int IMAGE_BYTES = 1,
@@ -13,7 +14,8 @@ module loader_tb #(
     parameter int CORRUPT_AT  = -1,
     parameter bit REFUSE      = 1'b0,
     parameter int PRE_BYTES   = 1,
-    parameter     PRE_FILE    = ""
+    parameter     PRE_FILE    = "",
+    parameter int EOF         = 0
 );
     logic clk = 0;
     always #5 clk = ~clk;
@@ -23,6 +25,7 @@ module loader_tb #(
     logic [31:0] expected[0:WORDS - 1];
 
     logic        por = 1'b1, rst = 1'b1, start = 1'b0, done, failed, sdram_ready;
+    logic [1:0]  eof;
     logic        in_valid = 1'b0, in_ready;
     logic [7:0]  in_data;
     logic        req_valid, req_write, req_ready, rd_valid, wr_fetch;
@@ -30,7 +33,7 @@ module loader_tb #(
     logic [31:0] rd_data, wr_data;
 
     image_loader loader (
-        .clk(clk), .rst(rst), .start(start), .strict(1'b1), .busy(), .done(done), .failed(failed),
+        .clk(clk), .rst(rst), .start(start), .strict(1'b1), .busy(), .done(done), .failed(failed), .eof(eof),
         .in_valid(in_valid), .in_data(in_data), .in_ready(in_ready),
         .req_valid(req_valid), .req_write(req_write), .req_line(req_line), .req_ready(req_ready),
         .rd_valid(rd_valid), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(wr_data)
@@ -108,6 +111,7 @@ module loader_tb #(
         end
         while (!finished) @(negedge clk);
         if (failed) begin $display("FAIL: the loader refused the image"); $fatal; end
+        if (eof != 2'(EOF)) begin $display("FAIL: end of input %0d, wanted %0d", eof, EOF); $fatal; end
         for (int i = 0; i < WORDS; i++) begin
             if (phy.sdram_peek(i) != expected[i]) begin
                 $display("FAIL: word %0d is %08x, wanted %08x", i, phy.sdram_peek(i), expected[i]);

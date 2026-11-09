@@ -54,8 +54,9 @@ static void readcode(string& code, const std::string& filename) {
         << "            words, told apart by content; '-' is standard input. -O does not apply\n"
         << "  -t trace  a trace file instead: its program runs again on its input, over its range,\n"
         << "            and must go the way it went. -O, --skip and --limit do not apply\n"
-        << "  -e mode   what input stores at the end of input: 0 (default), 255, or keep, which\n"
-        << "            leaves the cell as it was; bfc and llvm build it in\n"
+        << "  -e mode   what input stores at the end of input: 0, 255, or keep, which leaves the cell\n"
+        << "            as it was. The default is what an image file says, else 0. bfc and llvm build\n"
+        << "            it in, and bin and packed record it in the image\n"
         << "  -O level  optimization level, 0 to " << OPT_MAX << " (default " << OPT_MAX << ")\n"
         << "  -o out    where the output of a mode that writes one goes (default standard output)\n"
         << "  -m mode   what to do (default run):\n"
@@ -68,7 +69,7 @@ static void readcode(string& code, const std::string& filename) {
         << "              bit     the program as a listing, one instruction a line\n"
         << "              hex     a bincode image as text, one hexadecimal word a line\n"
         << "              bin     a bincode image file\n"
-        << "              packed  a packed image file, compressed, as bfload sends to the board\n"
+        << "              packed  a packed image file, compressed, as bfconsole sends to the board\n"
         << "              bfc     C99\n"
         << "              llvm    portable textual LLVM IR\n"
         << "  -a list   analyses, comma separated, stat by default: " << [] {
@@ -104,7 +105,7 @@ int main(int argc, char** argv) {
     TraceRange range;
     bool ranged = false;
     string analyses = "stat", config_path;
-    EofMode eof = EofMode::Zero;
+    std::optional<EofMode> eof; // -e; otherwise what an image says, otherwise 0
 
     const auto count_of = [&](const char* text) -> std::uint64_t {
         std::size_t used = 0;
@@ -265,8 +266,11 @@ int main(int argc, char** argv) {
         if (mode == "bit" || mode == "hex" || mode == "bin" || mode == "packed") {
             std::vector<std::uint32_t> words;
             std::vector<Bitcode> program;
+            std::optional<EofMode> image_eof = eof;
             if (!image.empty()) {
-                words = read_image_file(image);
+                auto read = read_program_file(image);
+                words = std::move(read.words);
+                if (!image_eof) image_eof = read.eof;
                 if (mode == "bit") program = decode_bincode(words);
             } else {
                 Brainfunk bf(MEMSIZE);
@@ -280,7 +284,7 @@ int main(int argc, char** argv) {
             } else if (mode == "hex") {
                 write_hex(*output, words);
             } else {
-                const auto bytes = pack_image(words, mode == "packed" ? Compression::LZ : Compression::None);
+                const auto bytes = pack_image(words, mode == "packed" ? Compression::LZ : Compression::None, image_eof);
                 output->write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
             }
             output->flush();
@@ -289,15 +293,17 @@ int main(int argc, char** argv) {
         }
 
         Brainfunk bf(MEMSIZE);
-        bf.set_eof(eof);
         std::vector<std::uint32_t> words;
         if (!image.empty()) {
-            words = read_image_file(image);
+            auto read = read_program_file(image);
+            words = std::move(read.words);
+            if (!eof) eof = read.eof;
             bf.load_bincode(words);
         } else {
             bf.translate(code);
             bf.optimize(opt_level);
         }
+        bf.set_eof(eof.value_or(EofMode::Zero));
 
         if (mode == "run") {
             bf.run();

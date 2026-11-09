@@ -20,6 +20,9 @@ constexpr std::size_t MAX_LITERAL = 128, MIN_COPY = 2, MAX_COPY = 129;
 constexpr std::size_t MAX_CHAIN = 64;
 /* Bits 1:0 of the flags byte; the rest are reserved. */
 constexpr std::uint8_t COMPRESSION_MASK = 0x03;
+/* Flags bits 3:2: 0 says nothing about end of input, otherwise the EofMode plus one. */
+constexpr std::uint8_t EOF_MASK  = 0x0C;
+constexpr int          EOF_SHIFT = 2;
 
 void put_little(std::vector<std::uint8_t>& out, std::uint32_t value, int bytes) {
     for (int i = 0; i < bytes; ++i) out.push_back(static_cast<std::uint8_t>(value >> (8 * i)));
@@ -121,7 +124,8 @@ std::uint32_t crc32(std::span<const std::uint8_t> bytes) noexcept {
     return ~crc;
 }
 
-std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words, Compression compression) {
+std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words, Compression compression,
+                                     std::optional<EofMode> eof) {
     std::vector<std::uint8_t> payload;
     if (compression == Compression::LZ) {
         payload = lz_compress(words);
@@ -132,7 +136,8 @@ std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words, Compr
 
     std::vector<std::uint8_t> out(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end());
     out.push_back(IMAGE_VERSION);
-    out.push_back(static_cast<std::uint8_t>(compression));
+    const std::uint8_t eof_field = eof ? static_cast<std::uint8_t>(static_cast<std::uint8_t>(*eof) + 1u) : 0;
+    out.push_back(static_cast<std::uint8_t>(static_cast<std::uint8_t>(compression) | eof_field << EOF_SHIFT));
     put_little(out, 0, 2); // reserved
     put_little(out, static_cast<std::uint32_t>(payload.size()), 4);
     put_little(out, static_cast<std::uint32_t>(words.size()), 4);
@@ -145,6 +150,10 @@ std::vector<std::uint8_t> pack_image(std::span<const std::uint32_t> words, Compr
 }
 
 std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes) {
+    return unpack_program(bytes).words;
+}
+
+Program unpack_program(std::span<const std::uint8_t> bytes) {
     if (bytes.size() < 5 || !std::equal(IMAGE_MAGIC.begin(), IMAGE_MAGIC.end(), bytes.begin()))
         throw BrainfunkException("not an image file");
     if (bytes[4] != IMAGE_VERSION)
@@ -153,7 +162,7 @@ std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes) {
     if (bytes.size() < IMAGE_HEADER_BYTES) throw BrainfunkException("image file: the header is cut short");
     const std::uint8_t flags = bytes[5];
     const auto compression = flags & COMPRESSION_MASK;
-    if ((flags & ~COMPRESSION_MASK) != 0 || get_little(bytes, 6, 2) != 0)
+    if ((flags & ~(COMPRESSION_MASK | EOF_MASK)) != 0 || get_little(bytes, 6, 2) != 0)
         throw BrainfunkException("image file: reserved header bits are set");
     if (compression > static_cast<std::uint8_t>(Compression::LZ))
         throw BrainfunkException("image file: unknown compression " + std::to_string(compression));
@@ -177,7 +186,8 @@ std::vector<std::uint32_t> unpack_image(std::span<const std::uint8_t> bytes) {
     if (words.size() != word_count)
         throw BrainfunkException("image file: the header says " + std::to_string(word_count) + " words, the payload holds " +
                                  std::to_string(words.size()));
-    return words;
+    const auto eof_field = (flags & EOF_MASK) >> EOF_SHIFT;
+    return {std::move(words), eof_field == 0 ? std::nullopt : std::optional(static_cast<EofMode>(eof_field - 1))};
 }
 
 std::vector<std::uint32_t> encode_bincode(std::span<const Bitcode> code) {
@@ -254,15 +264,19 @@ void write_hex(std::ostream& os, std::span<const std::uint32_t> words) {
 }
 
 std::vector<std::uint32_t> read_image(std::istream& in) {
+    return read_program(in).words;
+}
+
+Program read_program(std::istream& in) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     if (text.starts_with(std::string_view(reinterpret_cast<const char*>(IMAGE_MAGIC.data()), IMAGE_MAGIC.size()))) {
         const auto* data = reinterpret_cast<const std::uint8_t*>(text.data());
-        return unpack_image(std::span(data, text.size()));
+        return unpack_program(std::span(data, text.size()));
     }
 
     /* A listing has a pc and a colon on every line, a hexadecimal image never. */
     const auto first = text.substr(0, text.find('\n'));
-    if (first.find(':') != std::string::npos) return encode_bincode(parse_listing(text));
+    if (first.find(':') != std::string::npos) return {encode_bincode(parse_listing(text)), std::nullopt};
 
     std::vector<std::uint32_t> words;
     for_each_line(text, [&](std::size_t number, std::string_view line) {
@@ -274,12 +288,16 @@ std::vector<std::uint32_t> read_image(std::istream& in) {
         words.push_back(value);
     });
     if (words.empty()) throw BrainfunkException("empty image");
-    return words;
+    return {std::move(words), std::nullopt};
 }
 
 std::vector<std::uint32_t> read_image_file(const std::string& filename) {
-    if (filename == "-") return read_image(std::cin);
+    return read_program_file(filename).words;
+}
+
+Program read_program_file(const std::string& filename) {
+    if (filename == "-") return read_program(std::cin);
     std::ifstream in(filename, std::ios::binary);
     if (!in.is_open()) throw BrainfunkException("cannot open " + filename);
-    return read_image(in);
+    return read_program(in);
 }

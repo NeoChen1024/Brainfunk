@@ -25,7 +25,7 @@ CORPUS = Path(os.environ.get("BF_CORPUS", ROOT / "test"))
 BUILD = Path(os.environ.get("BRAINFUNK_BUILD", ROOT / "build"))
 BIN = BUILD / "bin"
 BRAINFUNK = BIN / "brainfunk"
-BFLOAD = BIN / "bfload"
+BFCONSOLE = BIN / "bfconsole"
 COSIM = BIN / "cosim"
 RESULTS = BUILD / "hw-test" / "results"
 
@@ -72,7 +72,7 @@ def tools(tmp_path_factory, worker_id):
     """The programs and the cosimulator, built once however many workers there are. Under ctest
     they are built already, and several pytest runs at once must not build in one tree."""
     if os.environ.get("BRAINFUNK_CTEST"):
-        missing = [path for path in (BRAINFUNK, BFLOAD, COSIM) if not path.exists()]
+        missing = [path for path in (BRAINFUNK, BFCONSOLE, COSIM) if not path.exists()]
         if missing:
             pytest.fail(f"not built: {', '.join(map(str, missing))}")
         return
@@ -82,7 +82,7 @@ def tools(tmp_path_factory, worker_id):
     with FileLock(shared / "build.lock"):
         stamp = shared / "built"
         if not stamp.exists():
-            run("cmake", "--build", BUILD, "--target", "brainfunk", "bfload", "cosim")
+            run("cmake", "--build", BUILD, "--target", "brainfunk", "bfconsole", "cosim")
             stamp.touch()
 
 

@@ -85,8 +85,9 @@ module uart_rx #(
 endmodule
 
 // First-word-fall-through FIFO in block RAM. Nothing here needs more than a byte every few
-// cycles. A byte arriving when it is full is dropped, and overflowed stays set until reset:
-// the board has no flow control, because RTS drives its reset net.
+// cycles. A byte arriving when it is full is dropped, and overflowed stays set until reset. The
+// board has no hardware flow control, because RTS drives its reset net; used is for a host that
+// takes flow control in band.
 module uart_fifo #(
     parameter int ADDR_WIDTH = 10
 ) (
@@ -99,7 +100,8 @@ module uart_fifo #(
     output logic [7:0] out_data,
     input  logic       out_ready,
     output logic       overflowed,
-    output logic       empty
+    output logic       empty,
+    output logic [ADDR_WIDTH-1:0] used    // bytes in it, a cycle late
 );
     logic [ADDR_WIDTH-1:0] head, tail;
     logic [1:0]            reading;
@@ -109,6 +111,7 @@ module uart_fifo #(
     always_ff @(posedge clk) begin
         in_ready <= ADDR_WIDTH'(tail + 1'b1) != head;
         empty    <= head == tail && !in_valid;
+        used     <= tail - head;
     end
 
     ram_bank #(.WIDTH(8), .ADDR_WIDTH(ADDR_WIDTH)) ram (

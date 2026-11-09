@@ -527,6 +527,24 @@ TEST_CASE("image files", "[image]") {
                   (void)read_image(in);
               })),
               "malformed hex image is rejected");
+
+        for (const auto eof : {std::optional<EofMode>{}, std::optional(EofMode::Zero), std::optional(EofMode::MinusOne),
+                               std::optional(EofMode::Keep)}) {
+            const auto program = unpack_program(pack_image(words, Compression::LZ, eof));
+            EXPECT((program.words == words && program.eof == eof), "an image keeps what the end of input stores");
+        }
+        {
+            std::istringstream in("80000000\n90000000\n");
+            EXPECT(!read_program(in).eof, "a text image says nothing of the end of input");
+        }
+        auto flagged = pack_image(words, Compression::None, EofMode::Keep);
+        EXPECT(flagged[5] == 0x0C, "keep is end-of-input field 3, flags bits 3:2");
+        flagged[5] |= 0x10;
+        std::vector<std::uint8_t> covered(flagged.begin() + 4, flagged.begin() + 16);
+        covered.insert(covered.end(), flagged.begin() + IMAGE_HEADER_BYTES, flagged.end());
+        const auto crc = crc32(covered);
+        for (int i = 0; i < 4; ++i) flagged[16 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(crc >> (8 * i));
+        EXPECT((rejects([&] { (void)unpack_image(flagged); })), "an unknown flag is rejected, with the CRC right");
     }
 }
 

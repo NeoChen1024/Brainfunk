@@ -89,12 +89,13 @@ public:
     bool chaos = false;
 
     Result run(const std::vector<std::uint32_t>& image, const std::string& input, bool stall,
-               std::uint64_t retire_limit, std::uint32_t stall_seed) {
+               std::uint64_t retire_limit, std::uint32_t stall_seed, EofMode eof = EofMode::Zero) {
         if (image.size() > ROM_SIZE) throw Divergence{"program image larger than the RTL ROM"};
 
 
         Brainfunk iss(TAPE_SIZE);
         iss.load_bincode(image);
+        iss.set_eof(eof);
 
         std::istringstream iss_in(input);
         std::ostringstream iss_out;
@@ -106,6 +107,7 @@ public:
         top_.rst = 1;
         top_.io_in_valid = 0;
         top_.io_in_data = 0;
+        top_.io_in_keep = 0;
         top_.io_out_ready = 0;
         for (int i = 0; i < 4; ++i) tick();
         top_.rst = 0;
@@ -125,11 +127,15 @@ public:
         const std::uint64_t scan_cycle_limit = 8 * TAPE_SIZE + 64; // cache misses all the way
 
         for (;;) {
-            /* Inputs for this cycle.  End of input reads as a stream of zero bytes. */
+            /* Inputs for this cycle.  The end of input reads as the EOF mode says, for ever. */
             const bool in_ok = !stall || rng.chance(3);
+            const bool more = input_pos < input.size();
             top_.io_in_valid = in_ok;
-            top_.io_in_data = input_pos < input.size()
-                                  ? static_cast<std::uint8_t>(input[input_pos]) : std::uint8_t{0};
+            // With keep the data means nothing, so it is something a core that used it would show.
+            top_.io_in_data = more ? static_cast<std::uint8_t>(input[input_pos])
+                              : eof == EofMode::MinusOne ? std::uint8_t{255}
+                              : eof == EofMode::Keep     ? std::uint8_t{0x5A} : std::uint8_t{0};
+            top_.io_in_keep = !more && eof == EofMode::Keep;
             top_.io_out_ready = !stall || rng.chance(3);
             top_.clk = 0;
             top_.eval();
@@ -394,6 +400,7 @@ int main(int argc, char** argv) {
     bool stall = false, json = false, chaos = false;
     std::uint64_t limit = 0;
     std::uint32_t random_count = 0, evict_count = 0, seed = 1;
+    EofMode eof = EofMode::Zero;
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -404,6 +411,14 @@ int main(int argc, char** argv) {
         else if (arg == "--random") random_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--evict") evict_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--seed") seed = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        else if (arg == "--eof") {
+            const auto mode = parse_eof_mode(argv[++i]);
+            if (!mode) {
+                std::cerr << "cosim: not an EOF mode (0, 255 or keep): " << argv[i] << '\n';
+                return 2;
+            }
+            eof = *mode;
+        }
         else files.push_back(arg);
     }
 
@@ -441,13 +456,16 @@ int main(int argc, char** argv) {
                     try {
                         const auto image = encode_bincode(program.bitcode());
 
-                        const auto result = cosim.run(image, std::string(input), stall, 20000, program_seed);
+                        // Each EOF mode in turn, for the programs that read past their input.
+                        const auto program_eof = static_cast<EofMode>(program_seed % 3);
+                        const auto result = cosim.run(image, std::string(input), stall, 20000, program_seed, program_eof);
                         halted += result.halted;
                         truncated += result.truncated;
                         trapped += result.trapped;
                         retired += result.retired;
                     } catch (const Divergence& divergence) {
-                        std::cerr << "DIVERGED, seed " << program_seed << " -O" << level << ": " << code << '\n'
+                        std::cerr << "DIVERGED, seed " << program_seed << " -O" << level << " -e "
+                                  << eof_mode_name(static_cast<EofMode>(program_seed % 3)) << ": " << code << '\n'
                                   << divergence.what << '\n';
                         return 1;
                     }
@@ -458,7 +476,7 @@ int main(int argc, char** argv) {
         }
 
         if (files.empty()) {
-            std::cerr << "usage: cosim [--json] [--stall] [--chaos] [--limit N] image.hex [input-file]\n"
+            std::cerr << "usage: cosim [--json] [--stall] [--chaos] [--limit N] [--eof 0|255|keep] image.hex [input-file]\n"
                          "       cosim --random N [--seed S] [--stall]\n"
                          "       cosim --evict N [--seed S] [--stall]\n";
             return 2;
@@ -468,7 +486,7 @@ int main(int argc, char** argv) {
             std::ifstream file(files[1], std::ios::binary);
             input.assign(std::istreambuf_iterator<char>(file), {});
         }
-        const auto result = cosim.run(read_image_file(files[0]), input, stall, limit, seed);
+        const auto result = cosim.run(read_image_file(files[0]), input, stall, limit, seed, eof);
         if (json) print_json(result);
         else      print_result(result);
     } catch (const Divergence& divergence) {

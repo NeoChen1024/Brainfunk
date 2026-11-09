@@ -57,7 +57,7 @@ endfunction
         assert (s``_writes == ((s``_instr[31:28] == OP_A || s``_instr[31:28] == OP_S) && word_legal(s``_instr) || s``_is_mul_dst || (word_in(s``_instr) && s``_retire))); \
         assert (s``_retire == (word_legal(s``_instr) && !s``_is_mul_src && !(word_in(s``_instr) && !s``_writes) && !s``_is_out_read)); \
         assert (s``_uses_cache == (word_legal(s``_instr) && s``_instr[31:28] != OP_M && s``_instr[31:28] != OP_H && s``_instr[31:28] != OP_F && !(word_out(s``_instr) && !s``_is_out_read))); \
-        if (word_in(s``_instr) && s``_writes) assert (s``_data == in_byte && in_taken); \
+        if (word_in(s``_instr) && s``_writes) assert (s``_data == in_value && in_taken); \
         else assert (s``_data == s``_instr[7:0]); \
         if (word_in(s``_instr) || word_out(s``_instr)) assert (s``_ea == addr_ea_of(s``_base, s``_instr)); \
         if (s``_is_branch) begin \
@@ -279,7 +279,7 @@ always_ff @(posedge clk) if (!rst) begin
         assert (x_writes == ((x_instr[31:28] == OP_A || x_instr[31:28] == OP_S) && word_legal(x_instr) || x_is_mul_dst || (word_in(x_instr) && x_retire)));
         assert (x_retire == (word_legal(x_instr) && !x_is_mul_src && !(word_in(x_instr) && !x_writes) && !x_is_out_read));
         assert (x_uses_cache == (word_legal(x_instr) && x_instr[31:28] != OP_M && x_instr[31:28] != OP_H && x_instr[31:28] != OP_F && !(word_out(x_instr) && !x_is_out_read)));
-        if (word_in(x_instr) && x_writes) assert (x_data == in_byte && in_taken);
+        if (word_in(x_instr) && x_writes) assert (x_data == in_value && in_taken);
         else assert (x_data == x_instr[7:0]);
         if (word_in(x_instr) || word_out(x_instr)) assert (x_ea == addr_ea_of(x_base, x_instr));
         if (x_is_branch) begin
@@ -306,7 +306,7 @@ always_ff @(posedge clk) if (!rst) begin
         else if (w_instr[31:28] == OP_MUL || word_in(w_instr)) assert (w_retire == w_writes);
         else if (w_instr[31:28] == OP_F) assert (!w_retire);
         else if (!word_out(w_instr)) assert (w_retire);
-        if (word_in(w_instr) && w_writes) assert (in_taken && w_data == in_byte);
+        if (word_in(w_instr) && w_writes) assert (in_taken && (in_keep || w_data == in_byte)); // w_data is the result: the cell, with keep
         if (w_is_branch) assert (w_next_pc == branch_target(w_pc, w_instr) || w_next_pc == w_pc + PC_WIDTH'(1));
         else if (w_instr[31:28] == OP_H) assert (w_next_pc == w_pc);
         else assert (w_next_pc == w_pc + PC_WIDTH'(1));
@@ -346,7 +346,7 @@ always_ff @(posedge clk) if (!rst) begin
             case (a_phase)
                 2'd0: assert (a_go && !a_last && a_data == a_instr[7:0]);
                 2'd1: assert (!a_go && !a_last && a_data == a_instr[7:0]);
-                2'd2: assert (a_go && a_last && a_data == in_byte && in_taken);
+                2'd2: assert (a_go && a_last && a_data == in_value && a_in_keep == in_keep && in_taken);
                 default: assert (1'b0);
             endcase
         end
@@ -448,12 +448,12 @@ always_ff @(posedge clk) if (!rst) begin
         assert (m2_from_w == (!m2_from_w_next && w_valid && w_writes && w_ea == m2_ea));
         assert (m2_from_w1 == (!m2_from_w_next && !m2_from_w && h1_we && h1_ea == m2_ea));
         assert (m2_from_w2 == (!m2_from_w_next && !m2_from_w && !m2_from_w1 && h2_we && h2_ea == m2_ea));
-        assert (m2_no_read == (m2_instr[31:28] == OP_S && word_legal(m2_instr) || word_in(m2_instr) && m2_writes));
+        assert (m2_no_read == (m2_instr[31:28] == OP_S && word_legal(m2_instr) || word_in(m2_instr) && m2_writes && !in_keep));
     end
-    if (m1_valid) assert (m1_no_read == (m1_instr[31:28] == OP_S && word_legal(m1_instr) || word_in(m1_instr) && m1_writes));
-    if (m0_valid) assert (m0_no_read == (m0_instr[31:28] == OP_S && word_legal(m0_instr) || word_in(m0_instr) && m0_writes));
+    if (m1_valid) assert (m1_no_read == (m1_instr[31:28] == OP_S && word_legal(m1_instr) || word_in(m1_instr) && m1_writes && !in_keep));
+    if (m0_valid) assert (m0_no_read == (m0_instr[31:28] == OP_S && word_legal(m0_instr) || word_in(m0_instr) && m0_writes && !in_keep));
     if (x_valid && ok_w) begin
-        if (x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes) begin
+        if (x_instr[31:28] == OP_S && word_legal(x_instr) || word_in(x_instr) && x_writes && !in_keep) begin
             assert (!x_from_w && x_from_early && x_early == 8'd0);
         end else begin
             assert (x_from_w == (w_valid && w_writes && w_ea == x_ea));

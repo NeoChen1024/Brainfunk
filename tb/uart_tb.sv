@@ -16,7 +16,7 @@ module uart_tb #(
 
     logic [7:0] image[0:IMAGE_BYTES - 1];
 
-    yadan_top #(.CLOCK_HZ(8), .BAUD(1), .LOAD_BAUD(1), .STARTUP_CYCLES(32), .BREAK_CYCLES(200),
+    yadan_top #(.CLOCK_HZ(8), .BAUD(1), .LOAD_BAUD(1), .STARTUP_CYCLES(32), .EOF_BREAK_CYCLES(100), .FRAME_BREAK_CYCLES(200), .COMMAND_BREAK_CYCLES(400),
                 .LONG_PRESS_CYCLES(100), .BOUNCE_CYCLES(50), .SDRAM_BOOT_CYCLES(16)) dut (
         .clk_24mhz(clk), .reset_button_n(button_n), .uart_rx_pin(rx), .uart_tx_pin(tx), .led(led),
         .flash_cs_n(flash_cs_n), .flash_clk(flash_clk), .flash_mosi(flash_mosi), .flash_miso(flash_miso),
@@ -50,7 +50,7 @@ module uart_tb #(
 
     task automatic send_break;
         rx = 0;
-        repeat (400) @(posedge clk);
+        repeat (600) @(posedge clk);
         rx = 1;
         repeat (40) @(posedge clk);
     endtask

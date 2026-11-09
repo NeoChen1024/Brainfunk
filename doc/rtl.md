@@ -21,10 +21,10 @@ rtl/sdram_ctrl.sv        SDRAM controller, as a line memory
 rtl/sdram_memory.sv      the controller and the EG4S20's SDRAM pins
 rtl/brainfunk_soc_sdram.sv the SoC with that SDRAM, which the cosimulator runs
 rtl/board/               the YADAN Board: top, PLL, SDRAM pins; nothing else in rtl/ is particular to a board
-tb/                      Verilator cosimulation, SDRAM and flash models, loader and UART testbenches
+tb/                      Verilator cosimulation, SDRAM and flash models, loader, UART and console testbenches
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
-src/bfload.cpp           packs an image, and sends it to the board
+src/bfconsole.cpp        loads an image onto the board, and is a console for it
 tools/render_diagrams.py renders the timing diagrams in doc/diagrams/, and checks the Mermaid ones
 ```
 
@@ -425,7 +425,7 @@ Each range of random seeds and each program is a test of its own, so a failure c
 Everything runs at nice 19.
 
 ```shell
-ctest --preset hw                     # cosimulation, loader and UART testbenches, formal, 2.5 minutes
+ctest --preset hw                     # cosimulation, loader, UART and console testbenches, formal, 2.5 minutes
 cmake -B build -DBRAINFUNK_TEST_MUTATION=ON -DBRAINFUNK_TEST_BOARD=ON   # register those too
 pytest -n auto tests/hw               # the same through pytest alone
 pytest -n auto --full                 # also long.b and mandel.b, about 40 minutes
@@ -453,6 +453,12 @@ back, and `LostKng.b`, must end up in SDRAM word for word, packed or not; one im
 must not reuse what was read for the first; a corrupt one must be refused, and so must one with a
 right CRC and a header this loader cannot take. `tb/uart_tb.sv` covers the board top.
 
+**The console** is `tb/console_tb.sv`, the board top as `bfconsole` sees it, for each end of input:
+the answer to framing, `FF` and `13` in the output, an echo slow enough to fill the receive FIFO
+from a host that sends 150 bytes more after each stop, the end of input sent while the FIFO still
+holds the echo's input, the end of the program only after its output, a restart turning framing
+off, and a trap.
+
 **Formal** checks the core against abstract memories: two tape cells and one instruction word,
 at addresses the solver picks, behave like real memory with its latency, and every other read
 returns anything. The caches' signals are free too, so any access may miss and any stall can
@@ -460,7 +466,8 @@ happen. So the properties cover every cell and every pair of cells, and words th
 program contains. They state that whatever reaches `W` is on the program's path and is the word at
 that pc; the pc and `base_ptr` rules; results on architectural cell values, which covers
 forwarding; writes only at retire and at the effective address; sticky halt and trap, exactly on
-illegal words; one I/O byte per instruction; and no lost output. The caches and controller
+illegal words; one I/O byte per instruction, and an end of input that keeps the cell writing it back
+as it was; and no lost output. The caches and controller
 are not covered by formal, only by cosimulation.
 
 The proof is unbounded: k-induction over `formal/core_invariants.svh`, which says how every stage of
@@ -508,15 +515,25 @@ export TD_HOME=/path/to/TD
 cmake --build build --target yadan       # build/yadan/yadan.bit and reports
 cmake --build build --target yadan-load  # JTAG to SRAM; the configuration flash is not touched
 
-build/bin/bfload -f program.b            # compile, into Code RAM, and run it
-build/bin/bfload -m flash -f program.b   # into the user flash, and boot from it
-build/bin/bfload -t -f program.b         # either, then stay as a terminal for the program
-build/bin/bfload program.bfi             # an image instead, in any form brainfunk -b reads
-build/bin/bfload -m id                   # the user flash's JEDEC ID
-build/bin/brainfunk -O2 -m packed -f program.b -o program.bfi   # what bfload sends
+build/bin/bfconsole -f program.b             # compile, into Code RAM, run it, and talk to it
+build/bin/bfconsole -e 0 -f program.b        # the same, with an end of input that stores 0
+build/bin/bfconsole -m flash -f program.b    # into the user flash, boot from it, and talk to it
+build/bin/bfconsole program.bfi              # an image instead, in any form brainfunk -b reads
+build/bin/bfconsole                          # a console for what the board is running
+build/bin/bfconsole -n -f program.b          # load it, and return
+build/bin/bfconsole -e 0 -i input.txt -o output.txt -t 10000 -f program.b < /dev/null
+build/bin/bfconsole -m id                    # the user flash's JEDEC ID
+build/bin/brainfunk -O2 -e 0 -m packed -f program.b -o program.bfi   # what bfconsole sends
 ```
 
-`bfload` finds the board's serial port as the only one under `/dev/serial/by-id` from USB vendor
+`bfconsole` is a console in the manner of busybox microcom: at a terminal, `^X` exits and `^D` ends
+the input; `-X` sends both as they are. It echoes what is typed (`-L` does not), Enter sends LF, and
+the program's LF shows as CR LF. Output to a file or a pipe is byte for byte, and `-o` writes a copy.
+It exits when the program halts (0) or traps (3), at `^X` (0), or after `-t` milliseconds with
+nothing either way (4). It owns the port while it runs, so the settings it needs, raw, `HUPCL` and no
+flow control of the kernel's, are not left to another tool.
+
+`bfconsole` finds the board's serial port as the only one under `/dev/serial/by-id` from USB vendor
 `1a86`, the board's CH340; `-p` or `BOARD_PORT` picks one instead. The tests and
 `tools/sdram_sweep.py` find it the same way.
 
@@ -533,20 +550,51 @@ What happens when:
 | Power-up | Load Code RAM from the user flash, and run it; with a bad or empty flash, wait for a Break |
 | `K_51`, 5 ms or longer | The same |
 | Opening the serial port, if closing it dropped RTS | RTS pulses the same net for about 137 us: restart the program from Code RAM |
-| UART Break, 5 ms or longer | Whatever is going on, take a command at the loader's speed |
-| Any restart | Clear the tape and caches, then wait about 200 ms so the first output is not lost |
+| UART Break, 100 ms or longer | Whatever is going on, take a command at the loader's speed |
+| UART Break, 10 to 100 ms | Turn framing on, and answer with the image's flags |
+| UART Break, 1 to 10 ms | The end of input, after every byte sent before it |
+| Any restart | Clear the tape and caches, turn framing off, then wait about 200 ms so the first output is not lost |
 
 Closing the port only drops RTS with `HUPCL` set. minicom clears it, and that outlives the port being
 closed, so no terminal restarts the program afterwards. `stty -F <port> hupcl` before connecting puts
-it back; so does running `bfload`.
+it back; so does running `bfconsole`.
 
-Program I/O is 115200 8N1, through 1 KiB FIFOs. There is no flow control, because RTS drives the
-reset net, so input arriving faster than the program reads it is lost once the FIFO fills. Input
-is blocking: there is no end of input on a UART. The loader runs at 2 Mbaud. `LED_23` is on while
-running, off when halted, blinks on a trap, and flashes quickly while there is no program or one
-is being loaded.
+Program I/O is 115200 8N1, through 1 KiB FIFOs. The loader runs at 2 Mbaud. `LED_23` is on while
+running, off when halted, blinks on a trap, and flashes quickly while there is no program or one is
+being loaded.
 
-After a Break the host sends a command byte, and images are in the format in
+RTS drives the reset net, so there is no flow control in hardware, and the only signal from the host
+that no byte can be is a Break, which the board tells apart by length. Nothing from the board is out
+of band: a Break from it reads on the host as a plain 0, `PARMRK` or not. So what the board has to
+say besides the program's output goes in band, framed, once a host has asked for it:
+
+| From the board, framed | Means |
+|---|---|
+| `FF FF` | an `FF` byte of output |
+| `FF 13`, `FF 11` | stop sending, send again: the receive FIFO is half full, then down to a quarter |
+| `FF 46` and a byte | framing is on; bit 7 is set if there is a program, bits 1:0 are its end-of-input field |
+| `FF 48`, `FF 54` | the program has halted (`H`), or trapped (`T`), and all its output is out |
+
+Any other byte is output. A host without framing sees the board as it was, with no flow control
+and no end of input; framing lasts until the program restarts, which opening the port does, and
+through commands, whose answers are not framed. The input the host sends is never changed.
+
+The end of input is what the image says it stores, in its header (bincode.txt): 0, 255, or the cell
+as it was. An image that says nothing has none, and its input waits for ever, as before; a Break
+that short is then nothing.
+
+The CH340, measured on the board with a design that timed the line, at 24 MHz: a Break held with
+`TIOCSBRK` for 0.2 to 1 ms arrived as 2.000 ms each time, and from 2 to 50 ms as 1 ms more than
+asked, with no spread over 20 tries each; `tcsendbreak` gave 267 ms. So `bfconsole` asks for 1 ms,
+30 ms and 250 ms, each well inside its range. A single `write()` hands the driver up to 4160 bytes at
+once, which would all arrive after a stop, so the kernel's own XON/XOFF could not protect the FIFO.
+`bfconsole` sends 64 bytes at a time and waits for each to drain: what reached the board after its
+stop was then 128 bytes in that measurement, against the 512 left. `tcdrain()` returns once the
+driver has handed its bytes to the CH340, which may still hold some: a Break straight after cut about
+the last 50 short, on the board, so `bfconsole` waits 20 ms more before any Break. Without framing, a
+program reading at about a third of the line's speed echoed 4418 of 8192 bytes sent at once.
+
+After a command Break the host sends a command byte, and images are in the format in
 [bincode.txt](bincode.txt):
 
 | Command | Then | Answers |

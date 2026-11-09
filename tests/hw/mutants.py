@@ -3,6 +3,12 @@
 Left out because they do not change behaviour: writing back clean lines, or not clearing the dirty bit on a
 fill, which only cost time; and the dmem_hit check on a misprediction, because x_miss flushes those anyway. An illegal IO word taking an input byte is left out because only formal sees it, and
 an illegal M moving base_ptr because nothing can tell after the trap.
+
+The system's end of input waits for the receive FIFO to be empty, not only for it to offer nothing, and the
+end of the program for the transmit FIFO: each FIFO takes 3 cycles to offer a byte once it has one. Neither
+gap can be seen, since the core empties its pipeline before each input. In tb/console_tb.sv with the FIFO
+full, inputs were 8 cycles apart at the least (,,,, at -O0), and H retired 9 cycles or more after the last
+output went in. The checks stay, in case either changes, and their mutants are left out.
 """
 MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m2_from_w_next;', "x_from_w     <= 1'b0;"),
  ('fwd d2 off', 'brainfunk_core.sv', 'm2_from_w      <= !m1_hit[1] && m1_hit[2];', "m2_from_w      <= 1'b0;"),
@@ -58,7 +64,7 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   "                    a_go     <= a_mul_unit;\n                    a_last   <= a_mul_unit;\n",
   "                    a_go     <= 1'b1;\n                    a_last   <= 1'b1;\n"),
  ('mul skips dst offset', 'brainfunk_core.sv', '                    a_offset <= a_offset_2;\n', ''),
- ('input a_data lost', 'brainfunk_core.sv', '                a_data  <= io_in_data;\n', ''),
+ ('input a_data lost', 'brainfunk_core.sv', "                a_data    <= io_in_keep ? 8'd0 : io_in_data;\n", ''),
  ('output retires while pending',
   'brainfunk_core.sv',
   'else if (drained && !out_pending) begin',
@@ -304,8 +310,8 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
 
 MUTANTS += [
     ('flush misses w', 'brainfunk_core.sv', "w_valid   <= x_valid && !flush && !x_miss;", "w_valid   <= x_valid && !x_miss;"),
-    ('set reads memory', 'brainfunk_core.sv', "m0_no_read       <= a_is_set || (a_is_in && a_last);", "m0_no_read       <= a_is_in && a_last;"),
-    ('input reads memory', 'brainfunk_core.sv', "m0_no_read       <= a_is_set || (a_is_in && a_last);", "m0_no_read       <= a_is_set;"),
+    ('set reads memory', 'brainfunk_core.sv', "m0_no_read       <= a_is_set || (a_is_in && a_last && !a_in_keep);", "m0_no_read       <= a_is_in && a_last && !a_in_keep;"),
+    ('input reads memory', 'brainfunk_core.sv', "m0_no_read       <= a_is_set || (a_is_in && a_last && !a_in_keep);", "m0_no_read       <= a_is_set;"),
     ('input without drain', 'brainfunk_core.sv', "end else if (a_phase == 2'd1 && drained && io_in_valid) begin", "end else if (a_phase == 2'd1 && io_in_valid) begin"),
 ]
 
@@ -393,6 +399,15 @@ MUTANTS += [
      'assign x_scan_zeros = (dmem_hit ? dmem_zero : dmem_ztable) & x_scan_mask;', 'assign x_scan_zeros = dmem_zero & x_scan_mask;'),
 ]
 
+# The end of input that leaves the cell: added as 0, not set. Random programs read past their input in
+# every EOF mode.
+MUTANTS += [
+    ('core: keep sets the cell', 'brainfunk_core.sv',
+     'm0_no_read       <= a_is_set || (a_is_in && a_last && !a_in_keep);', 'm0_no_read       <= a_is_set || (a_is_in && a_last);'),
+    ('core: keep stores the byte', 'brainfunk_core.sv',
+     "a_data    <= io_in_keep ? 8'd0 : io_in_data;", 'a_data    <= io_in_data;'),
+]
+
 FORMAL_MUTANTS = [
     "fwd d1 off", "fwd d3 off", "fwd d4 off (collision)", "flush misses w", "no base restore", "branch sense",
     "scan retires every read", "scan test uses step field", "no multiply gap", "set reads memory", "illegal add writes",
@@ -402,7 +417,7 @@ FORMAL_MUTANTS = [
     "pair ignores the bank", "pair source fwd d1 off", "pair source fwd d3 off", "pair source fwd d4 off (collision)",
     "pair source misses ignored", "pair subtracts without the carry", "pair source at the destination",
     "pair bank one off", "core: scan ignores the zero table", "backward scan cell not mirrored",
-    "scan restarts from where it began",
+    "scan restarts from where it began", "core: keep sets the cell", "core: keep stores the byte",
 ]
 
 # Caught by the loader's testbench, or for the SoC, by the UART testbench.
@@ -419,4 +434,50 @@ LOADER_MUTANTS = [
     ('loader: always LZ', 'loader.sv', "raw <= !byte_data[0];", "raw <= 1'b0;"),
     ('loader: header not in the CRC', 'loader.sv', "(state == ST_HEADER && header_pos < 4'd12)", "1'b0"),
     ('soc: loader never reads', 'brainfunk_soc.sv', 'load_owns_read <= load_req_valid;', "load_owns_read <= 1'b0;"),
+    ('loader: end of input not read', 'loader.sv', 'eof <= byte_data[3:2];', "eof <= 2'd0;"),
+    ('loader: unknown flags taken', 'loader.sv',
+     "if (byte_data[7:4] != 4'd0 || byte_data[1]) header_bad <= 1'b1;", "if (byte_data[1]) header_bad <= 1'b1;"),
+    ('loader: unknown compression taken', 'loader.sv',
+     "if (byte_data[7:4] != 4'd0 || byte_data[1]) header_bad <= 1'b1;", "if (byte_data[7:4] != 4'd0) header_bad <= 1'b1;"),
+]
+
+# What bfconsole relies on, caught by the console testbench or the UART one: framing, flow control, the
+# end of input, and the end of the program.
+CONSOLE_MUTANTS = [
+    ('system: FF not doubled', 'brainfunk_system.sv',
+     "tail_count <= txf_data == 8'hFF ? 2'd1 : 2'd0;", "tail_count <= 2'd0;"),
+    ('system: never says stop', 'brainfunk_system.sv',
+     "else if (rxf_used >= 10'd512) want_stop <= 1'b1;", "else if (1'b0) want_stop <= 1'b1;"),
+    ('system: says stop too late', 'brainfunk_system.sv',
+     "else if (rxf_used >= 10'd512) want_stop <= 1'b1;", "else if (rxf_used >= 10'd1000) want_stop <= 1'b1;"),
+    ('system: never says go', 'brainfunk_system.sv',
+     "else if (rxf_used <= 10'd256) want_stop <= 1'b0;", "else if (1'b0) want_stop <= 1'b0;"),
+    ('system: framing survives a restart', 'brainfunk_system.sv',
+     'if (por || restart || reload) begin\n            framed     <= 1\'b0;', 'if (por || reload) begin\n            framed     <= 1\'b0;'),
+    ('system: framing not answered', 'brainfunk_system.sv', "framed_ack <= 1'b1;", "framed_ack <= 1'b0;"),
+    ('system: flags without the image', 'brainfunk_system.sv',
+     "tail_1     <= {image_valid, 5'd0, image_eof};", "tail_1     <= {1'b0, 5'd0, image_eof};"),
+    ('system: end of input ignored', 'brainfunk_system.sv',
+     "else if (eof_break) eof_seen <= 1'b1;", "else if (1'b0) eof_seen <= 1'b1;"),
+    ('system: end of input with no field', 'brainfunk_system.sv',
+     "assign in_eof = eof_seen && image_eof != 2'd0 && rxf_empty && !rxf_valid;",
+     "assign in_eof = eof_seen && rxf_empty && !rxf_valid;"),
+    ('system: 255 reads as 0', 'brainfunk_system.sv',
+     ".io_in_data(rxf_valid ? rxf_data : {8{image_eof == 2'd2}}),", ".io_in_data(rxf_valid ? rxf_data : 8'd0),"),
+    ('system: keep stores', 'brainfunk_system.sv', ".io_in_keep(!rxf_valid && image_eof == 2'd3),", ".io_in_keep(1'b0),"),
+    ('system: end of input kept over a restart', 'brainfunk_system.sv', 'if (fifo_rst) eof_seen <= 1\'b0;', 'if (por) eof_seen <= 1\'b0;'),
+    ('system: trap said as halt', 'brainfunk_system.sv', 'tail_0     <= trapped ? "T" : "H";', 'tail_0     <= "H";'),
+    ('system: framing Break taken as the end of input', 'brainfunk_system.sv',
+     'eof_break     <= in_break && !past_frame;', 'eof_break     <= in_break;'),
+    ('system: framing never on', 'brainfunk_system.sv',
+     'frame_break   <= past_frame && !command_break;', "frame_break   <= 1'b0;"),
+    ('system: framing at the end of input\'s length', 'brainfunk_system.sv',
+     "if (low_count == BREAK_BITS'(FRAME_BREAK_CYCLES)) past_frame <= 1'b1;",
+     "if (low_count == BREAK_BITS'(EOF_BREAK_CYCLES)) past_frame <= 1'b1;"),
+    ('system: commands at framing\'s length', 'brainfunk_system.sv',
+     "if (low_count == BREAK_BITS'(COMMAND_BREAK_CYCLES)) begin", "if (low_count == BREAK_BITS'(FRAME_BREAK_CYCLES)) begin"),
+    ('system: receiver runs through a short Break', 'brainfunk_system.sv',
+     '.clk(clk), .rst(por || in_break), .cycles_per_bit(cycles_per_bit), .rx(rx_sync[1]),',
+     '.clk(clk), .rst(por), .cycles_per_bit(cycles_per_bit), .rx(rx_sync[1]),'),
+    ('fifo: never full', 'uart.sv', 'used     <= tail - head;', "used     <= '0;"),
 ]

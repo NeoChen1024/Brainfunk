@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def board_port():
-    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfload finds it."""
+    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfconsole finds it."""
     if os.environ.get("BOARD_PORT"):
         return os.environ["BOARD_PORT"]
     found = glob.glob("/dev/serial/by-id/*1a86*")

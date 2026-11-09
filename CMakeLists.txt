@@ -51,8 +51,8 @@ target_link_libraries(libbrainfunk PUBLIC nlohmann_json::nlohmann_json PRIVATE b
 add_executable(brainfunk src/brainfunk.cpp)
 target_link_libraries(brainfunk PRIVATE libbrainfunk brainfunk_warnings)
 
-add_executable(bfload src/bfload.cpp)
-target_link_libraries(bfload PRIVATE libbrainfunk brainfunk_warnings)
+add_executable(bfconsole src/bfconsole.cpp)
+target_link_libraries(bfconsole PRIVATE libbrainfunk brainfunk_warnings)
 
 # The naive interpreter and the text tool stand alone.
 add_executable(bf src/bf.cpp)

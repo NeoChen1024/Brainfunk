@@ -8,8 +8,9 @@ import shutil
 import pytest
 
 from conftest import CORPUS, ROOT, assemble, build_cosim, run
-from mutants import FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, LOADER_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
+from mutants import CONSOLE_MUTANTS, FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, LOADER_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
 from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, MUL_CHAIN_IMAGE, MUL_SELF_IMAGES, program_cpi
+import test_console_tb
 import test_loader
 import test_uart_tb
 
@@ -111,6 +112,27 @@ prep -top brainfunk_core
     assert result.returncode in (2, 4), f"formal did not catch: {name} (sby exited {result.returncode})"
 
 
+@pytest.mark.parametrize("name,file,text,replacement", CONSOLE_MUTANTS, ids=[mutant[0] for mutant in CONSOLE_MUTANTS])
+def test_console_testbenches_catch(tools, tmp_path, name, file, text, replacement):
+    content = (ROOT / "rtl" / file).read_text()
+    assert content.count(text) == 1, f"mutant is stale: its text is in {file} {content.count(text)} times"
+    path = tmp_path / file
+    path.write_text(content.replace(text, replacement))
+    original = f"rtl/{file}"
+    checks = [(test_console_tb.SOURCES, lambda where, sources: test_console_tb.console_testbench(where, sources=sources)),
+              (test_uart_tb.SOURCES, lambda where, sources: test_uart_tb.uart_testbench(where, sources))]
+    for number, (originals, check) in enumerate(checks):
+        sources = [path if source == original else source for source in originals]
+        assert path in sources
+        where = tmp_path / str(number)
+        where.mkdir()
+        try:
+            check(where, sources)
+        except (Exception, pytest.fail.Exception):  # a failed assertion, pytest.fail, or a timeout
+            return
+    pytest.fail(f"nothing caught: {name}")
+
+
 @pytest.mark.parametrize("name,file,text,replacement", LOADER_MUTANTS, ids=[mutant[0] for mutant in LOADER_MUTANTS])
 def test_loader_testbenches_catch(tools, tmp_path, name, file, text, replacement):
     content = (ROOT / "rtl" / file).read_text()
@@ -126,10 +148,12 @@ def test_loader_testbenches_catch(tools, tmp_path, name, file, text, replacement
                   lambda where, sources: test_loader.test_loader_forgets_the_last_image(None, where, sources),
                   lambda where, sources: test_loader.test_loader_with_a_slow_source(None, where, sources),
                   lambda where, sources: test_loader.test_loader_takes_an_image_that_is_not_compressed(None, where, sources)]
+        checks += [lambda where, sources, eof=eof: test_loader.test_loader_reports_the_end_of_input(None, where, eof, sources)
+                   for eof in ["0", "keep"]]
         checks += [lambda where, sources, at=at: test_loader.test_loader_refuses_a_corrupt_image(None, where, at, sources)
                    for at in [4, 13]]
         checks += [lambda where, sources, change=change: test_loader.test_loader_refuses_what_it_cannot_take(None, where, *change, sources)
-                   for change in [(4, 2), (5, 0x81), (6, 1), (8, 1), (14, 0x10)]]
+                   for change in [(4, 2), (5, 2), (5, 0x11), (5, 0x81), (6, 1), (8, 1), (14, 0x10)]]
         sources = [path if source == original else source for source in test_loader.SOURCES]
     assert path in sources
     for number, check in enumerate(checks):

@@ -211,6 +211,9 @@ endfunction
 // ---- I/O bytes taken and not yet accounted for by a retire ----
 logic       in_taken = 1'b0, out_taken = 1'b0;
 logic [7:0] in_byte;
+logic       in_keep;   // the byte taken was the end of input that leaves the cell
+logic [7:0] in_value;  // what the input's write adds to nothing, or with keep, to the cell
+assign in_value = in_keep ? 8'd0 : in_byte;
 
 always_ff @(posedge clk) begin
     if (rst) begin
@@ -220,6 +223,7 @@ always_ff @(posedge clk) begin
         if (io_in_valid && io_in_ready) begin
             in_taken <= 1'b1;
             in_byte  <= io_in_data;
+            in_keep  <= io_in_keep;
         end else if (retire_valid && is_input) begin
             in_taken <= 1'b0;
         end
@@ -308,7 +312,8 @@ always_ff @(posedge clk) begin
             if (op == OP_F && scan_end == a) assert (cell_a == 8'd0);
             if (is_input) begin
                 assert (in_taken);
-                assert (dmem_wdata == in_byte);
+                if (!in_keep) assert (dmem_wdata == in_byte);
+                else if (addr_ea == a) assert (dmem_wdata == cell_a);
             end
             if (is_output) begin
                 assert (out_taken);
@@ -375,6 +380,7 @@ always_ff @(posedge clk) begin
         cover (retire_valid && op == OP_JN && retire_next_pc == target && target != sequential);
         cover (retire_valid && op == OP_JN && retire_next_pc == sequential && target != sequential);
         cover (retire_valid && is_input);
+        cover (retire_valid && is_input && in_keep);
         cover (retire_valid && is_output);
         cover (halted);
         cover (trapped);

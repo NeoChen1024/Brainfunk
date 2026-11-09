@@ -23,7 +23,9 @@ module yadan_top #(
     parameter int BAUD              = 115_200,
     parameter int LOAD_BAUD         = 2_000_000,
     parameter int STARTUP_CYCLES    = CLOCK_HZ / 5,
-    parameter int BREAK_CYCLES      = CLOCK_HZ / 200, // 5 ms low
+    parameter int EOF_BREAK_CYCLES     = CLOCK_HZ / 1000, // Breaks: see brainfunk_system
+    parameter int FRAME_BREAK_CYCLES   = CLOCK_HZ / 100,
+    parameter int COMMAND_BREAK_CYCLES = CLOCK_HZ / 10,
     parameter int LONG_PRESS_CYCLES = CLOCK_HZ / 200, // 5 ms: RTS is 137 us, a finger far longer
     parameter int BOUNCE_CYCLES     = CLOCK_HZ / 25,  // ignore the button for 40 ms after a press
     parameter int SDRAM_BOOT_CYCLES = CLOCK_HZ / 10,
@@ -56,7 +58,8 @@ module yadan_top #(
 
     brainfunk_system #(
         .CLOCK_HZ(CLOCK_HZ), .BAUD(BAUD), .LOAD_BAUD(LOAD_BAUD), .STARTUP_CYCLES(STARTUP_CYCLES),
-        .BREAK_CYCLES(BREAK_CYCLES), .LONG_PRESS_CYCLES(LONG_PRESS_CYCLES), .BOUNCE_CYCLES(BOUNCE_CYCLES),
+        .EOF_BREAK_CYCLES(EOF_BREAK_CYCLES), .FRAME_BREAK_CYCLES(FRAME_BREAK_CYCLES),
+        .COMMAND_BREAK_CYCLES(COMMAND_BREAK_CYCLES), .LONG_PRESS_CYCLES(LONG_PRESS_CYCLES), .BOUNCE_CYCLES(BOUNCE_CYCLES),
         .IMEM_ADDR_WIDTH(IMEM_ADDR_WIDTH), .DMEM_ADDR_WIDTH(DMEM_ADDR_WIDTH)
     ) system (
         .clk(clk), .por(por), .button_n(reset_button_n), .uart_rx(uart_rx_pin), .uart_tx(uart_tx_pin),

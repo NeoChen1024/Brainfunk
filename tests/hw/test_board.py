@@ -7,11 +7,12 @@ Not automatic: pressing K_51 to reload from the flash. Hold it for a moment afte
 """
 import glob
 import os
+import subprocess
 import time
 
 import pytest
 
-from conftest import BFLOAD, BRAINFUNK, BUILD, ROOT, assemble, assemble_text, corpus_program, run
+from conftest import BFCONSOLE, BRAINFUNK, BUILD, ROOT, assemble, assemble_text, corpus_program, run
 
 serial = pytest.importorskip("serial")
 
@@ -19,7 +20,7 @@ pytestmark = [pytest.mark.board, pytest.mark.xdist_group("board")]
 
 
 def board_port():
-    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfload finds it."""
+    """$BOARD_PORT, or else the one serial port from the board's CH340, USB vendor 1a86, as bfconsole finds it."""
     if os.environ.get("BOARD_PORT"):
         return os.environ["BOARD_PORT"]
     found = glob.glob("/dev/serial/by-id/*1a86*")
@@ -76,11 +77,17 @@ def expected_output(name, stdin=None, limit=None):
 
 
 def load_ram(image):
-    run(BFLOAD, "-p", PORT, image, timeout=120)
+    run(BFCONSOLE, "-n", "-p", PORT, image, timeout=120)
+
+
+def console(*args, input_file=None, output=None, limit=60):
+    """bfconsole on the board, with input from a file and nothing on standard input."""
+    command = [BFCONSOLE, "-p", PORT, *(["-i", input_file] if input_file else []), *(["-o", output] if output else []), *args]
+    return run(*command, check=False, timeout=limit, stdin=subprocess.DEVNULL, errors="surrogateescape")
 
 
 def test_flash_identifies_itself(board):
-    assert run(BFLOAD, "-m", "id", "-p", PORT, timeout=20).stdout.strip() == "c84015"
+    assert run(BFCONSOLE, "-m", "id", "-p", PORT, timeout=20).stdout.strip() == "c84015"
 
 
 def test_program_in_code_ram(board, tmp_path):
@@ -107,26 +114,69 @@ def test_mandel_takes_the_time_its_cycles_say(board, tmp_path):
 
 
 def test_lost_kingdom_plays(board, tmp_path):
-    load_ram(assemble(corpus_program("LostKng.b"), 2, tmp_path / "program.hex"))
-    commands = "N\nlook\nget matches\ninventory\n" + "n\ne\ns\nw\nu\nd\nlook\nscore\nhelp\n?\n" * 10
-    # There is no flow control, so input must not outrun the FIFO. The interpreter's run never
-    # ends at the end of input, so compare what the board printed with the start of it.
-    process = run("sh", "-c", f"timeout 10 {BRAINFUNK} -O2 -f {corpus_program('LostKng.b')} | head -c 200000",
-                  input=commands, check=False, errors="surrogateescape")
+    commands = tmp_path / "commands.txt"
+    commands.write_text("N\nlook\nget matches\ninventory\n" + "n\ne\ns\nw\nu\nd\nlook\nscore\nhelp\n?\n" * 10)
+    # Lost Kingdom never reads the end of input, so neither run ends: compare what the board printed,
+    # once it went quiet, with the start of the interpreter's.
+    process = run("sh", "-c", f"timeout 10 {BRAINFUNK} -O2 -f {corpus_program('LostKng.b')} < {commands} | head -c 200000",
+                  check=False, errors="surrogateescape")
     reference = process.stdout.encode(errors="surrogateescape")
-    got = read_output(len(reference), 30, send=commands.encode(), pace=8)
+    out = tmp_path / "out"
+    result = console("-t", "3000", assemble(corpus_program("LostKng.b"), 2, tmp_path / "program.hex"),
+                     input_file=commands, output=out)
+    assert result.returncode == 4, result.stderr
+    got = out.read_bytes()
     assert len(got) > 1000
     assert got == reference[:len(got)]
 
 
+# Each reads until the end of input, echoing, then halts. With keep, each byte goes to a cell not yet used.
+ECHO_TO_THE_END = {"0": ",[.,]", "255": ",+[-.,+]", "keep": ",[.>,]"}
+
+
+@pytest.mark.parametrize("eof", ECHO_TO_THE_END)
+def test_console_ends_the_input_and_sees_the_halt(board, tmp_path, eof):
+    data = tmp_path / "in"
+    data.write_bytes(bytes(range(1, 256)) * 4)  # every byte but 0, FF and the flow control bytes included
+    out = tmp_path / "out"
+    result = console("-e", eof, "-t", "10000", "-s", ECHO_TO_THE_END[eof], input_file=data, output=out)
+    assert result.returncode == 0, result.stderr
+    expected = subprocess.run([str(BRAINFUNK), "-e", eof, "-s", ECHO_TO_THE_END[eof]], input=data.read_bytes(),
+                              capture_output=True, check=True).stdout
+    assert out.read_bytes() == expected
+
+
+def test_console_flow_control_keeps_up_with_a_slow_reader(board, tmp_path):
+    # About 0.3 ms a byte, a third of the line's speed: without flow control the 1 KiB FIFO would
+    # overflow a few KiB in. [--] stays a loop at -O0.
+    slow = ",[>--[>--[--]<--]<.,]"
+    data = tmp_path / "in"
+    data.write_bytes(bytes(ord("a") + i % 26 for i in range(8192)))
+    out = tmp_path / "out"
+    result = console("-e", "0", "-O0", "-t", "10000", "-s", slow, input_file=data, output=out)
+    assert result.returncode == 0, result.stderr
+    assert out.read_bytes() == data.read_bytes()
+
+
+def test_console_reports_a_trap(board, tmp_path):
+    image = assemble_text("+.", 0, tmp_path / "program.hex")
+    words = image.read_text().split()
+    words[-1] = "e0000000"
+    image.write_text("\n".join(words) + "\n")
+    out = tmp_path / "out"
+    result = console("-t", "10000", image, output=out)
+    assert result.returncode == 3, result.stderr
+    assert out.read_bytes() == b"\x01"
+
+
 def test_corrupted_image_is_refused(board, tmp_path):
     packed = tmp_path / "program.bfi"
-    run(BFLOAD, "-m", "pack", "-o", packed, assemble_text("+.", 0, tmp_path / "program.hex"))
+    run(BRAINFUNK, "-m", "packed", "-b", assemble_text("+.", 0, tmp_path / "program.hex"), "-o", packed)
     data = bytearray(packed.read_bytes())
     data[-2] ^= 0xFF
     with serial.Serial(PORT, PROGRAM_BAUD, timeout=3, exclusive=True) as port:
         time.sleep(0.05)
-        port.send_break(0.05)
+        port.send_break(0.25)  # a command: 100 ms or longer
         time.sleep(0.02)
         port.baudrate = LOAD_BAUD
         port.reset_input_buffer()
@@ -139,7 +189,7 @@ def test_corrupted_image_is_refused(board, tmp_path):
 
 @pytest.mark.flash
 def test_flash_programs_and_boots(board, tmp_path):
-    run(BFLOAD, "-m", "flash", "-p", PORT, assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
+    run(BFCONSOLE, "-n", "-m", "flash", "-p", PORT, assemble(corpus_program("hanoi.b"), 2, tmp_path / "program.hex"), timeout=120)
     expected = expected_output("hanoi.b")
     assert read_output(len(expected), 30) == expected
 
