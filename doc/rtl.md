@@ -12,9 +12,15 @@ rtl/brainfunk_core.sv    the core
 rtl/brainfunk_predict.sv next-fetch and direction tables, which only guess
 rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines; the data cache reads whole lines
 rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
-rtl/sdram_ctrl.sv        SDRAM controller
-rtl/brainfunk_soc.sv     all of those together
-rtl/board/               YADAN Board top, PLL, SDRAM pins, UART and FIFOs, image loader, SPI flash
+rtl/brainfunk_soc.sv     all of those together, in front of a line memory
+rtl/uart.sv              UART and FIFOs
+rtl/loader.sv            image loader, into the line memory
+rtl/flash.sv             SPI flash: read, erase, program, ID
+rtl/brainfunk_system.sv  the SoC with its loader, commands, flash boot and I/O: what any board puts on its pins
+rtl/sdram_ctrl.sv        SDRAM controller, as a line memory
+rtl/sdram_memory.sv      the controller and the EG4S20's SDRAM pins
+rtl/brainfunk_soc_sdram.sv the SoC with that SDRAM, which the cosimulator runs
+rtl/board/               the YADAN Board: top, PLL, SDRAM pins; nothing else in rtl/ is particular to a board
 tb/                      Verilator cosimulation, SDRAM and flash models, loader and UART testbenches
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
@@ -224,7 +230,12 @@ over the corpus, mostly optimistic; see doc/analysis.md.
 
 ## Memory
 
-| SDRAM word address | Contents |
+`brainfunk_soc` reaches memory through a line memory port: one 8-word line at a time, read as 8
+words in order, written by fetching 8 words, with the next request not taken before a read's last
+word. Its comment has the details. `sdram_ctrl` is one; another board's memory, behind its own
+controller, would be another.
+
+| Line memory word address | Contents |
 |---|---|
 | `0x000000` | Code, one instruction per word |
 | `0x100000` | Tape, four cells per word, the lowest address in the low byte |

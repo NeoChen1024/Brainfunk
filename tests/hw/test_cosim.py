@@ -123,7 +123,7 @@ def test_mul_after_one_that_wrote_its_source(tools, tmp_path, layout):
 
 # At 192 MHz the board's SDRAM data comes a cycle later, CAPTURE 5. The line's last word then came after
 # the next request had taken the read data over, and went to the wrong cache.
-SOC_RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_mem.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "brainfunk_soc.sv"]
+SOC_RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_mem.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv"]
 
 
 @pytest.mark.parametrize("mode,count", [("--random", 1000), ("--evict", 500)])

@@ -1,14 +1,21 @@
-// Brainfunk core, its caches, and the SDRAM behind them.
+// Brainfunk core and its caches, in front of a line memory: whatever a board has, behind a controller
+// that moves 8-word lines one at a time. brainfunk_soc_sdram puts the EG4S20's SDRAM there.
+//
+// The memory's side of the port, which sdram_ctrl keeps to:
+//   - mem_ready rises once the memory can take requests, and stays high.
+//   - A request is taken in a cycle where mem_req_valid and mem_req_ready are both high.
+//   - read:  mem_rd_valid is then high 8 times, not necessarily in a row, with the line's words
+//            in order on mem_rd_data. The next request is not taken before the last of them: the
+//            word goes to whoever made the latest read request.
+//   - write: mem_wr_fetch is then high 8 times, and word k of the line is on mem_wr_data three
+//            cycles after the k-th of them.
+//   - mem_req_line is 18 bits: the top one picks the tape (1) or code (0), the rest the line in it.
 module brainfunk_soc #(
     parameter int IMEM_ADDR_WIDTH = 20,
     parameter int DMEM_ADDR_WIDTH = 16,
-    parameter bit CLEAR_TAPE_ON_RESET = 1'b0,
-    parameter int SDRAM_BOOT_CYCLES   = 16,
-    parameter int SDRAM_CAPTURE       = 4     // READ to the first word: CAS latency 3, plus 1 for the pins
+    parameter bit CLEAR_TAPE_ON_RESET = 1'b0
 ) (
     input  logic       clk,
-    input  logic       sdclk,
-    input  logic       por,   // restarts the SDRAM too
     input  logic       rst,
 
     input  logic       io_in_valid,
@@ -30,7 +37,17 @@ module brainfunk_soc #(
     output logic        load_wr_fetch,
     input  logic [31:0] load_wr_data,
     output logic [31:0] load_rd_data,
-    output logic        sdram_ready
+
+    // The line memory.
+    input  logic        mem_ready,
+    output logic        mem_req_valid,
+    output logic        mem_req_write,
+    output logic [17:0] mem_req_line,
+    input  logic        mem_req_ready,
+    input  logic        mem_rd_valid,
+    input  logic [31:0] mem_rd_data,
+    input  logic        mem_wr_fetch,
+    output logic [31:0] mem_wr_data
 `ifdef BRAINFUNK_RETIRE_PORT
     ,
     input  logic                       predict_chaos,
@@ -71,28 +88,18 @@ module brainfunk_soc #(
     assign dmem_wdata_o = dmem_wdata;
 `endif
 
-    // ---- SDRAM: code in the bottom half, tape in the top half ----
-    logic        sd_ras_n, sd_cas_n, sd_we_n, sd_dq_oe;
-    logic [10:0] sd_addr;
-    logic [1:0]  sd_ba;
-    logic [31:0] sd_dq_out, sd_dq_in;
-
+    // ---- the line memory: code in the bottom half, tape in the top half ----
     logic        req_valid, req_write, req_ready, rd_valid, wr_fetch;
     logic [17:0] req_line;
     logic [31:0] rd_data, wr_data;
-
-    sdram_ctrl #(.BOOT_CYCLES(SDRAM_BOOT_CYCLES), .CAPTURE(SDRAM_CAPTURE)) sdram (
-        .clk(clk), .por(por), .init_done(sdram_ready),
-        .req_valid(req_valid), .req_write(req_write), .req_line(req_line), .req_ready(req_ready),
-        .rd_valid(rd_valid), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(wr_data),
-        .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_addr(sd_addr), .sd_ba(sd_ba),
-        .sd_dq_out(sd_dq_out), .sd_dq_oe(sd_dq_oe), .sd_dq_in(sd_dq_in)
-    );
-
-    sdram_phy phy (
-        .clk(clk), .sdclk(sdclk), .ras_n(sd_ras_n), .cas_n(sd_cas_n), .we_n(sd_we_n),
-        .addr(sd_addr), .ba(sd_ba), .dq_out(sd_dq_out), .dq_oe(sd_dq_oe), .dq_in(sd_dq_in)
-    );
+    assign mem_req_valid = req_valid;
+    assign mem_req_write = req_write;
+    assign mem_req_line  = req_line;
+    assign req_ready     = mem_req_ready;
+    assign rd_valid      = mem_rd_valid;
+    assign rd_data       = mem_rd_data;
+    assign wr_fetch      = mem_wr_fetch;
+    assign mem_wr_data   = wr_data;
 
     // One line at a time. The data cache goes first, because it holds the whole core up, and
     // the owner of a request gets its read data.
@@ -100,7 +107,7 @@ module brainfunk_soc #(
     logic [17:0] i_req_line, d_req_line;
     logic        cache_rst, load_req_active, load_owns_read = 1'b0;
     logic [31:0] d_wr_data;
-    assign cache_rst = rst || !sdram_ready;
+    assign cache_rst = rst || !mem_ready;
 
     // Write data comes after the request, so the data path needs to remember whose it was.
     always_ff @(posedge clk) begin

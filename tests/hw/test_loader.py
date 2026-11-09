@@ -7,7 +7,7 @@ import pytest
 
 from conftest import BRAINFUNK, CORPUS, ROOT, assemble, run
 
-SOURCES = ["tb/loader_tb.sv", "rtl/board/loader.sv", "rtl/brainfunk_mem.sv", "rtl/sdram_ctrl.sv", "tb/sdram_model.sv"]
+SOURCES = ["tb/loader_tb.sv", "rtl/loader.sv", "rtl/brainfunk_mem.sv", "rtl/sdram_ctrl.sv", "tb/sdram_model.sv"]
 
 
 def stress_words():

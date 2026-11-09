@@ -12,11 +12,12 @@ target_link_libraries(cosim PRIVATE libbrainfunk)
 # Verilator's output is not ours to warn about, and LTO over it only costs build time.
 set_target_properties(cosim PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 verilate(cosim
-    TOP_MODULE brainfunk_soc
-    PREFIX Vbrainfunk_soc
+    TOP_MODULE brainfunk_soc_sdram
+    PREFIX Vbrainfunk_soc_sdram
     VERILATOR_ARGS -O3 --x-assign fast --x-initial fast -DBRAINFUNK_RETIRE_PORT
     SOURCES
         ${PROJECT_SOURCE_DIR}/rtl/brainfunk_core.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_predict.sv
         ${PROJECT_SOURCE_DIR}/rtl/brainfunk_mem.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_cache.sv
         ${PROJECT_SOURCE_DIR}/rtl/sdram_ctrl.sv ${PROJECT_SOURCE_DIR}/tb/sdram_model.sv
-        ${PROJECT_SOURCE_DIR}/rtl/brainfunk_soc.sv)
+        ${PROJECT_SOURCE_DIR}/rtl/sdram_memory.sv
+        ${PROJECT_SOURCE_DIR}/rtl/brainfunk_soc.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_soc_sdram.sv)

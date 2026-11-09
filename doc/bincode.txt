@@ -127,7 +127,7 @@ Image files have a header of 20 bytes, every value in it little endian:
   20  payload
 
 A reader refuses another version, a reserved bit set, and an unknown compression, so that a
-later version can use them.  The board's loader, rtl/board/loader.sv, also refuses a payload of
+later version can use them.  The board's loader, rtl/loader.sv, also refuses a payload of
 16 MiB or more, 2^20 words or more, and a bincode image whose payload is not whole words; it
 refuses all of that as soon as it has the header.  It finds a wrong CRC only at the end, and a
 payload size larger than what follows leaves it waiting for the rest: over the UART, bfload

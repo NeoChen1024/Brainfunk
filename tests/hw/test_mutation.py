@@ -15,7 +15,7 @@ import test_uart_tb
 
 pytestmark = pytest.mark.mutation
 
-RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "brainfunk_soc.sv", "brainfunk_mem.sv"]
+RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv", "brainfunk_mem.sv"]
 TIMEOUT = 90
 
 

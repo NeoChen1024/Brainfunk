@@ -19,7 +19,7 @@ mkdir -p "$work"
 { echo "\`define YADAN_MHZ ${YADAN_MHZ:-168}"; echo "\`define YADAN_SDRAM_DEGREES ${YADAN_SDRAM_DEGREES:-240}"
   echo "\`define YADAN_SDRAM_CAPTURE ${YADAN_SDRAM_CAPTURE:-4}"; } >"$work/yadan_all.sv"
 cat "$root"/rtl/brainfunk_core.sv "$root"/rtl/brainfunk_predict.sv "$root"/rtl/brainfunk_mem.sv "$root"/rtl/brainfunk_cache.sv "$root"/rtl/sdram_ctrl.sv \
-    "$root"/rtl/brainfunk_soc.sv "$root"/rtl/board/sdram_phy.sv "$root"/rtl/board/uart.sv "$root"/rtl/board/loader.sv "$root"/rtl/board/flash.sv \
+    "$root"/rtl/brainfunk_soc.sv "$root"/rtl/sdram_memory.sv "$root"/rtl/brainfunk_system.sv "$root"/rtl/board/sdram_phy.sv "$root"/rtl/uart.sv "$root"/rtl/loader.sv "$root"/rtl/flash.sv \
     "$root"/rtl/board/yadan_pll.sv "$root"/rtl/board/yadan_top.sv >>"$work/yadan_all.sv"
 cp "$root"/synth/yadan.adc "$root"/synth/yadan.sdc "$root"/synth/yadan.tcl "$work"/
 cd "$work"

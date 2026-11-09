@@ -6,8 +6,8 @@
 // --chaos makes the branch predictor guess at random, which must not change what a program does.
 //
 // Exit status is non-zero on the first divergence. --json prints the results as one JSON object.
-#include "Vbrainfunk_soc.h"
-#include "Vbrainfunk_soc__Dpi.h"
+#include "Vbrainfunk_soc_sdram.h"
+#include "Vbrainfunk_soc_sdram__Dpi.h"
 #include "libbrainfunk.hpp"
 #include "program_generator.hpp"
 #include "svdpi.h"
@@ -73,9 +73,9 @@ class Cosim {
 public:
     Cosim() : top_(&context_) {
         top_.eval(); // so that scopes exist
-        sdram_ = scope("phy");
-        tag_   = scope("dcache.tag");
-        for (int cell = 0; cell < 32; ++cell) cell_rams_[cell] = scope("dcache.g_byte[" + std::to_string(cell) + "].ram");
+        sdram_ = scope("sdram.phy");
+        tag_   = scope("soc.dcache.tag");
+        for (int cell = 0; cell < 32; ++cell) cell_rams_[cell] = scope("soc.dcache.g_byte[" + std::to_string(cell) + "].ram");
         svSetScope(sdram_);
         for (std::size_t word = 0; word < TAPE_SIZE / 4; ++word) sdram_poke(static_cast<int>(SDRAM_TAPE + word), 0);
 
@@ -209,13 +209,13 @@ public:
 
 private:
     VerilatedContext context_;
-    Vbrainfunk_soc   top_;
+    Vbrainfunk_soc_sdram top_;
     svScope sdram_ = nullptr, tag_ = nullptr;
     std::array<svScope, 32> cell_rams_{};
     std::vector<std::uint32_t> written_;
 
     static svScope scope(const std::string& path) {
-        const auto name = "TOP.brainfunk_soc." + path;
+        const auto name = "TOP.brainfunk_soc_sdram." + path;
         const svScope found = svGetScopeFromName(name.c_str());
         if (found == nullptr) throw Divergence{"no such scope: " + name};
         return found;
