@@ -115,7 +115,7 @@ and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual
 | `reads`, `writes` | 2, 2 | cell reads and writes a cycle |
 | `branches` | 1 | branches a cycle |
 | `raw` | 1 | a read in the same cycle as a write of its cell: 0 never; 1 when cheap: a branch's zero test, after `S`, a `MUL`'s source, an add after an add; 2 always |
-| `mul` | `pair-unit` | `split`: source, a cycle for the multiplier, destination, and a `MUL` after one with the same source takes it from a register; `pair-unit`: factors of 1 and -1 read both cells at once, unless they share a bank of different lines; `single`: every `MUL` does |
+| `mul` | `pair-unit` | `split`: source, a cycle for the multiplier, destination, and a `MUL` after one with the same source takes it from a register; `pair-unit`: factors of 1 and -1 read both cells at once, unless they share a bank; `single`: every `MUL` does |
 | `two_mul` | true | two `MUL` destinations in one cycle |
 | `share_source` | false | with `split`, a `MUL` right after one with the same source takes it from a register |
 | `fetch_line` | 0 | a group stays within an aligned run of this many words; 0 any two in a row |
@@ -125,7 +125,7 @@ and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual
 | `write_banks` | 0 | two writes in a group are to cells different modulo this; 0 any |
 | `early_second` | true | a branch second in its group may resolve early |
 | `early_store` | true | with `early_cells`, a store of values; false, only the zero bits |
-| `banks` | 16 | cells per line of banks: a `MUL`'s two cells, different and equal modulo this, are not read at once, as the core's tape keeps cells 16 apart in one RAM; 0 none |
+| `banks` | 16 | cells per line of banks: a `MUL`'s two cells, equal modulo this, are not read at once, as the core's tape keeps cells 16 apart in one RAM; 0 none |
 | `penalty` | 9 | cycles lost to a misprediction |
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
@@ -156,7 +156,7 @@ what instructions waited for each cache.
 The core keeps its tape on chip, which never misses, and its code in SDRAM behind a cache. Either can be
 either: `d_on_chip` 0 puts a data cache in front of the tape, as the core had before, and `i_on_chip` 1
 takes the code on chip too. The model does not count the core's restarts of a read that meets a write
-to the other cell of its RAM's row, which cost `mandel.b` about 0.4% (rtl.md).
+to the other cell of its RAM's row, which cost `mandel.b` about 0.1% (rtl.md).
 
 Caches are direct-mapped and share an SDRAM that moves a line at a time, as in the core. An instruction
 whose word misses waits for its line, which fetch asked for `fetch_lead` + `i_request` cycles after it
@@ -178,7 +178,7 @@ each within 0.1%.
 | `zero_table` | 1 | 1: F reads a line not in the data cache from the zero table, so it never misses; 0: it misses like any read |
 | `read_latency`, `read_busy`, `write_busy` | 15, 17, 19 | SDRAM cycles, above |
 | `refresh_every`, `refresh_busy` | 1170, 14 | |
-| `fetch_lead`, `i_request`, `i_resume` | 5, 4, 12 | |
+| `fetch_lead`, `i_request`, `i_resume` | 5, 3, 12 | |
 | `d_request`, `d_resume` | 7, 7 | |
 
 #### Predictors

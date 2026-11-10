@@ -124,7 +124,7 @@ always_ff @(posedge clk) begin
     if (a3_line) assume (dmem_zero[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
     if (b3_line) assume (dmem_zero[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
 
-    // Input reads its cell before taking a byte, so that its write cannot miss.
+    // Input takes its byte when nothing older is left to write, so no write meets the read of its cell.
     if (in_taken) assume (dmem_hit);
 end
 
@@ -177,8 +177,7 @@ end
 // A MUL that reads both cells at once: a factor of 1 or -1, and the cells not in one bank of two lines.
 function automatic logic mul_pair_of(input logic [31:0] instr);
     mul_pair_of = instr[31:28] == OP_MUL && (instr[7:0] == 8'd1 || instr[7:0] == 8'hFF) &&
-                  !(instr[20 +: BANK_BITS] == instr[8 +: BANK_BITS] &&
-                    ADDR_WIDTH'($signed(instr[27:20])) != ADDR_WIDTH'($signed(instr[19:8])));
+                  instr[20 +: BANK_BITS] != instr[8 +: BANK_BITS];
 endfunction
 
 logic is_input, is_output, writes;

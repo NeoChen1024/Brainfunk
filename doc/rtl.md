@@ -201,10 +201,13 @@ A factor of 1 or -1 is now one cycle: the destination reads on the first port an
 second, and `X` adds the two, or adds the complement and a carry. The data cache's 32 byte banks each
 took their own address, so the second port cost a copy of the tags and a multiplexer per bank; the
 core decodes which bank the second port wants as it leaves `A`, so that the multiplexer is all that
-comes before the block RAM. Two cells in the same bank of different lines cannot go together, and `D`
-tells that from the offsets alone, because both are `base_ptr` plus a constant: those go the old way.
-The tape's banks hold two cells each, 16 apart, so `D` now compares four bits of the offsets rather than
-five, and sends the cells 16 apart the old way too, though in the same line they could go together.
+comes before the block RAM. Two cells in the same bank do not go together, and `D` tells that from the
+offsets alone, because both are `base_ptr` plus a constant: those go the old way. The tape's banks hold
+two cells each, 16 apart, so `D` compares four bits of the offsets rather than five, and sends the cells
+16 apart the old way too, though in the same line they could go together. So could a cell multiplied
+into itself, which went together until telling it apart was all that still compared the whole offsets,
+on the way to `a_offset`. Nothing compiled does it: over the first 20 million instructions of the eleven
+programs in [The tape](#the-tape)'s comparison, cosimulated, not one cycle changed.
 The source has forwarding of its own, as wide as the first port's, and the memory gives one hit for both
 reads, so that `X`'s restart has no more to look at than before.
 
@@ -338,7 +341,11 @@ The cache and the tape keep the core's three-edge memory latency, so the pipelin
 for them. Each hit flag is registered, and arrives with the data.
 
 An instruction miss holds the front end while the line fills. If a redirect abandons the
-instruction that missed, fetching carries on, and the line is still filled.
+instruction that missed, the line is still filled, and the front end is held until it is. Fetching went
+on during such a fill once, which needed the old line's tag invalidated before the first word came, a
+cycle on every miss, abandoned or not. Without that cycle, in the cosimulator over the first 20 million
+instructions, `beemovie.bf` went from 83.0 M cycles to 80.0 M and `LostKng.b` from 228.8 M to 221.8 M,
+1.037 and 1.032 times as fast; nothing else of [The tape](#the-tape)'s eleven programs moved by 0.1%.
 
 A data read misses when a write to the other cell of its RAM's row came in the same cycle (below). The
 miss is found in `X`. The instruction has written nothing by then, so it flushes itself and everything
@@ -346,6 +353,11 @@ younger and restarts from fetch, the same as a misprediction back to itself. Whe
 nothing older is left to write, so it cannot miss twice. Nothing past `A` stalls, so forwarding did not
 change. Input reads its cell before taking a byte, and takes it only once nothing older is left to
 write, so that its write cannot miss, because a byte taken cannot be asked for again.
+
+Only a read whose value is used restarts. `S` uses nothing of what it reads, nor does input's first
+read, so a write that meets either is no miss: over the same instructions that took `mandel.b` from
+30.15 M cycles to 30.07 M, 0.24%, which leaves it 0.13% behind what it took with the data cache, and the
+others by 0.01% or less.
 
 ### The tape
 
@@ -399,8 +411,11 @@ own pushed the direction table into a BRAM32K, and that missed by 0.05 to 0.5 ns
 Lines of 16 cells in sixteen 4K x 8 RAMs would have had no shared rows either, but halved `F`'s speed,
 which the model put at 2% more cycles than the data cache, and half as fast in `BusyBeaver.b`'s family.
 
-As built: 4109 LUTs against 4728 with the data cache, 16 of 16 BRAM32K and 20 of 64 9K block RAMs, at
-168 MHz with 0.001 ns of slack at relaxation 0.8 (`synth/yadan.tcl`). With the BRAM32K's own output
+As built: 4155 LUTs against 4728 with the data cache, 16 of 16 BRAM32K and 20 of 64 9K block RAMs, at
+168 MHz with 0.001 ns of slack at relaxation 0.75 (`synth/yadan.tcl`). Few relaxations meet it, and
+which do moves with how the RTL names its registers, though the gates are the same: with a register to
+each field of `M0` to `X`, 2 of 20 did, and with a packed struct to each stage 1 of 44, the one that
+has the struct's wide fields first (`synth/yadan.tcl` has the slacks). With the BRAM32K's own output
 register as the second edge, the read went straight from the RAM to the multiplexers that take the
 line apart, and missed by 0.7 to 1.8 ns; a register in the fabric there instead can sit by them.
 

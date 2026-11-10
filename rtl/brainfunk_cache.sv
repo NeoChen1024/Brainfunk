@@ -5,12 +5,11 @@
 // data, and the hit is a registered comparison that arrives with the data.
 //
 // A write of a tag or data word during a read of the same place would read undefined data
-// (see brainfunk_mem.sv), so tags are only written while nothing is looking at them.
+// (see brainfunk_mem.sv), and a line half filled still has its old tag. So nothing reads while a line
+// fills: the fill holds the front end from its first cycle to its last, whether or not a redirect has
+// abandoned the instruction that missed.
 
 // ---- instruction cache ----
-//
-// A miss holds the front end. If a redirect abandons the instruction that missed, the line is
-// still filled, and fetching goes on meanwhile. Tag writes hold the front end for their cycle.
 module icache #(
     parameter int PC_WIDTH = 20
 ) (
@@ -35,10 +34,10 @@ module icache #(
 );
     localparam int TAG_WIDTH = PC_WIDTH - 12;
 
-    typedef enum logic [2:0] {ST_RESET, ST_IDLE, ST_INVALIDATE, ST_REQUEST, ST_FILL, ST_TAG, ST_DONE} state_t;
+    typedef enum logic [2:0] {ST_RESET, ST_IDLE, ST_REQUEST, ST_FILL, ST_TAG, ST_DONE} state_t;
     state_t state;
 
-    logic [8:0]          index_q;    // the line being invalidated or filled
+    logic [8:0]          index_q;    // the line being filled, or invalidated at reset
     logic [TAG_WIDTH-1:0] tag_q;
     logic [2:0]          word_q;
     logic                tag_we;
@@ -80,9 +79,9 @@ module icache #(
         end
     end
 
-    assign tag_we       = state == ST_RESET || state == ST_INVALIDATE || state == ST_TAG;
+    assign tag_we       = state == ST_RESET || state == ST_TAG;
     assign tag_valid_in = state == ST_TAG;
-    assign imem_hold    = state == ST_INVALIDATE || state == ST_TAG;
+    assign imem_hold    = state != ST_IDLE;
     assign imem_refetch = state == ST_DONE;
     assign ready        = state != ST_RESET;
     assign req_valid    = state == ST_REQUEST;
@@ -101,9 +100,8 @@ module icache #(
                 ST_IDLE: if (imem_miss) begin
                     index_q <= imem_miss_addr[11:3];
                     tag_q   <= imem_miss_addr[PC_WIDTH-1:12];
-                    state   <= ST_INVALIDATE;
+                    state   <= ST_REQUEST;
                 end
-                ST_INVALIDATE: state <= ST_REQUEST;
                 ST_REQUEST: if (req_ready) begin
                     word_q <= '0;
                     state  <= ST_FILL;

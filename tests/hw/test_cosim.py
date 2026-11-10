@@ -46,10 +46,11 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 # What the first 2 million instructions of each program may cost, which takes seconds to find out. The
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
 # the design changes. Some are close because of what they are there to catch: hanoi.b's, next-fetch false
-# hits left in the table (1.0535 as it is, about 1.056 with them); mandel.b's, unit MULs that stop reading
-# both cells at once, and the direction table's counters read as they are written (1.510 as it is, with the
-# tape's restarts, 1.590 with them).
-CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.52, "LostKng.b": 12.0, "fib.b": 1.30, "long.b": 1.365}
+# hits left in the table (1.0532 as it is, about 1.056 with them); mandel.b's, S restarting when a write
+# meets its row, though it uses nothing of what it reads (1.5055 as it is, with the tape's restarts, 1.510
+# with S's too), unit MULs that stop reading both cells at once, and the direction table's counters read
+# as they are written (1.590 with them).
+CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.508, "LostKng.b": 12.0, "fib.b": 1.30, "long.b": 1.365}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -91,8 +92,18 @@ MUL_SELF_WORDS = [0x20000005,   # [0] = 5
                   0x30000102,   # [1] += [0] * 2: 31, not 11
                   0x80000101,   # output [1]
                   0x90000000]
+# A factor of 1 or -1 with one cell as source and destination: the cells share a bank, being the same,
+# so the source is read first, and the destination adds to what it reads then.
+MUL_SELF_UNIT_WORDS = [0x20000005,   # [0] = 5
+                       0x30000001,   # [0] += [0]: 10
+                       0x20000107,   # [1] = 7
+                       0x301001ff,   # [1] -= [1]: 0
+                       0x30000001,   # [0] += [0]: 20
+                       0x80000001, 0x80000101,
+                       0x90000000]
 MUL_SELF_IMAGES = {
     "adjacent": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS),
+    "unit_factor": "".join(f"{word:08x}\n" for word in MUL_SELF_UNIT_WORDS),
     "across_a_line": "".join(f"{word:08x}\n" for word in MUL_SELF_WORDS[:2] + [0x20000200] * 5 + MUL_SELF_WORDS[2:]),
 }
 
@@ -135,11 +146,11 @@ def test_sdram_data_a_cycle_late(tools, tmp_path, mode, count):
         assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
 
 
-# A fetch that misses, abandoned by a redirect, still fills its line, and fetching goes on meanwhile. The
-# line it replaces must stop hitting as the fill starts, or what fetch reads there is half the new line.
+# A fetch that misses, abandoned by a redirect, still fills its line, and nothing is fetched meanwhile: the
+# line it replaces keeps its tag until the fill ends, and what fetch read there would be half the new line.
 # Word 0 and word 4096 share an index: the JN at 4096 is backward, so it is guessed taken, and fetch goes to
-# word 1, which misses and replaces 4096's line; the JN is not taken, and the loop at 4098 keeps fetching
-# that line while the fill writes it.
+# word 1, which misses and replaces 4096's line; the JN is not taken, and the loop at 4098 is in that line,
+# which the fill is writing when the redirect comes.
 def i_fill_image(loops=20):
     def field(value, bits):
         return value & ((1 << bits) - 1)
@@ -168,7 +179,7 @@ I_FILL_IMAGE = i_fill_image()
 
 
 @pytest.mark.parametrize("chaos", [False, True])
-def test_fetch_during_a_fill_it_abandoned(tools, tmp_path, chaos):
+def test_fill_abandoned_by_a_redirect(tools, tmp_path, chaos):
     image = tmp_path / "i_fill.hex"
     image.write_text(I_FILL_IMAGE)
     assert cosim_json(*(["--chaos"] if chaos else []), image)["halted"]
@@ -224,8 +235,8 @@ def test_stalls_on_a_real_program(tools, tmp_path):
 
 # How far the default machine of `brainfunk -m analyze -a issue`, memories included, may be from the core
 # over the same first instructions. At the last count it was 0.0% off on long.b, 0.1% short on hanoi.b,
-# 1.8% on fib.b and 2.2% on mandel.b, whose restarts of reads that meet a write the model leaves out, and
-# 2.6% over on LostKng.b, which waits on the instruction cache. A design change that the model does not
+# 1.8% on fib.b and 1.9% on mandel.b, whose restarts of reads that meet a write the model leaves out, and
+# 2.8% over on LostKng.b, which waits on the instruction cache. A design change that the model does not
 # follow shows up here.
 MODEL_TOLERANCE = {"hanoi.b": 0.005, "long.b": 0.005, "fib.b": 0.025, "mandel.b": 0.025, "LostKng.b": 0.035}
 

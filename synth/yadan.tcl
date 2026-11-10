@@ -17,7 +17,11 @@ legalize_phy_inst
 # sixteen BRAM32K in place of the data cache, it meets it at 0.8 (+0.001) and 0.95 (+0.001) and misses at
 # 0.75 (-0.232), 0.85 (-0.278), 0.9 (-0.252) and 1.0 (-0.217), in the tape's write data and the paths
 # from its rows. Higher place effort and opt_timing made place stop part way, with no message.
-set_param place relaxation 0.80
+# The same gates place differently by how the RTL names its registers. With M0 to X each one packed
+# struct, flags first, none of 36 values from 0.70 to 1.05 met it (-0.149 at best); with the struct's
+# wide fields first, 0.75 does (+0.001) and seven others miss by 0.18 to 0.46. With a register to a
+# field, as before the struct, 0.85 (+0.017) and 0.92 (+0.006) met it, of 20.
+set_param place relaxation 0.75
 # Finishes, then raises an error with an empty message on a design with the SDRAM in it.
 catch {place}
 route

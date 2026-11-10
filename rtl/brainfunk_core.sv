@@ -11,8 +11,8 @@
 // A factor of 1 or -1 needs no multiplier, and is one cycle: the destination reads on the first
 // port and the source on the second, and X adds or subtracts the two. The tape has a bank per two
 // cells of a line, cells i and i + half a line, each with an address of its own, so that works unless
-// the two cells are in the same bank and different lines. D can tell from the offsets alone when they
-// may be: those take the long way.
+// the two cells are in the same bank. D can tell from the offsets alone when they are: those take the
+// long way.
 //   M0..M2  the data memory read, which takes three edges
 //   X       result, zero test; resolves branches and the end of F
 //   W       writes the data memory, retires
@@ -39,12 +39,15 @@
 // arrives three edges after dmem_raddr, and imem_rdata three edges after imem_addr if imem_en holds,
 // each with a hit flag.
 //
-// An instruction fetch miss holds D until the cache has the line. A data read misses when a write to
-// the other cell of its bank's row came at the same time, which block RAM does not promise to read
-// through. The miss is found in X, and flushes the instruction with everything behind it, to start
-// again from fetch, when nothing older is left to write. It has made no writes by then, because
-// writes come after the last read of the same instruction; input reads its cell first for that
-// reason, because a byte taken cannot be asked for again.
+// An instruction fetch miss holds the front end until the cache has the line, and so does the rest of
+// a fill whose instruction a redirect has abandoned. A data read misses when a write to the other cell
+// of its bank's row came at the same time, which block RAM does not promise to read through. The miss
+// is found in X, and flushes the instruction with everything behind it, to start again from fetch,
+// when nothing older is left to write. It has made no writes by then, because writes come after the
+// last read of the same instruction; input reads its cell first for that reason, because a byte taken
+// cannot be asked for again. Only a read whose value is used, and that a write could meet, restarts:
+// S uses nothing of what it reads, nor does input's first read, and input's write comes when nothing
+// older is left to write.
 //
 // Prediction, in brainfunk_predict.sv, is two guesses, neither of them trusted:
 //   - next_taken says where to fetch after a word, before that word has been seen. D finds out what
@@ -71,7 +74,7 @@ module brainfunk_core #(
     input  logic                  imem_hit,        // arrives with imem_rdata
     output logic                  imem_miss,       // D holds a word that was not in the cache
     output logic [PC_WIDTH-1:0]   imem_miss_addr,
-    input  logic                  imem_hold,       // the cache is writing a tag: do not read
+    input  logic                  imem_hold,       // the cache is filling a line: do not read
     input  logic                  imem_refetch,    // a fill finished: look up what missed again
 
     output logic                  pred_front_en,
@@ -92,7 +95,7 @@ module brainfunk_core #(
     input  logic [7:0]            dmem_rdata,
     input  logic                  dmem_hit,        // arrives with dmem_rdata
     // The second read port: a MUL's source, for a factor of 1 or -1. dmem_bank2 is which cell of the line
-    // it reads, one-hot, or none; never one in dmem_raddr's bank and another line.
+    // it reads, one-hot, or none; never one in dmem_raddr's bank.
     output logic [(1 << LINE_BITS)-1:0] dmem_bank2,
     output logic [ADDR_WIDTH-1:0] dmem_raddr2,
     input  logic [7:0]            dmem_rdata2,
@@ -322,21 +325,53 @@ module brainfunk_core #(
     logic a_ready;
     assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_done;
 
-    // A MUL with both cells read at once: a factor of 1 or -1, and the cells not in the same bank of
-    // different lines. Their distance is the distance of the offsets: cells whose offsets agree in the
-    // bank bits share a bank, in the same line or not, which takes the base to know, so those wait.
+    // A MUL with both cells read at once: a factor of 1 or -1, and the cells not in the same bank. Their
+    // distance is the distance of the offsets, so cells whose offsets agree in the bank bits share a bank,
+    // and those wait. A cell multiplied into itself is among them: it could go, but nothing compiled does
+    // it, and telling it apart takes a comparison of the whole offsets on the way to a_offset.
     logic d_mul_unit, d_mul_pair;
     assign d_mul_unit    = d_instr[7:0] == 8'd1 || d_instr[7:0] == 8'hFF;
-    assign d_mul_pair    = d_is_mul && d_mul_unit && !(d_short[BANK_BITS-1:0] == d_addr[BANK_BITS-1:0] &&
-                                                       d_short[ADDR_WIDTH-1:0] != d_addr[ADDR_WIDTH-1:0]);
+    assign d_mul_pair    = d_is_mul && d_mul_unit && d_short[BANK_BITS-1:0] != d_addr[BANK_BITS-1:0];
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
     logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
 
+    // What an instruction carries from M0 to X as A issued it, a uop to a stage. pc, instr and base_after
+    // are only for the retire port.
+    // The wide fields come first for the YADAN Board's placement and nothing else: see synth/yadan.tcl.
+    typedef struct packed {
+        logic [7:0]            data;
+        logic [ADDR_WIDTH-1:0] base_after;
+        logic [PC_WIDTH-1:0]   pc;
+        logic [PC_WIDTH-1:0]   next_pc;
+        logic [PC_WIDTH-1:0]   alt_pc;
+        logic [31:0]           instr;
+        logic [3:0]            slot;
+        logic [1:0]            counter;
+        logic                  writes;
+        logic                  reads;         // a read whose value is used: a miss restarts it
+        logic                  retire;
+        logic                  is_branch;
+        logic                  is_je;
+        logic                  predict_taken;
+        logic                  next_taken;
+        logic                  target_wrong;
+        logic                  is_scan;
+        logic                  is_out_read;
+        logic                  is_mul_src;
+        logic                  is_mul_dst;
+        logic                  is_halt;
+        logic                  is_trap;
+        logic                  mul_unit;
+        logic                  mul_negate;
+        logic                  pair;
+    } uop_t;
+    uop_t m0, m1, m2, x;
+
     // Writes that would reach the tape after a read issued in the next cycle.
-    logic m0_writes, m1_writes, m2_writes, older_writes, a_writes;
-    assign older_writes = (m0_valid && m0_writes) || (m1_valid && m1_writes) || (m2_valid && m2_writes);
+    logic older_writes, a_writes;
+    assign older_writes = (m0_valid && m0.writes) || (m1_valid && m1.writes) || (m2_valid && m2.writes);
     assign a_writes     = a_valid && (a_is_add || a_is_set || a_is_mul || a_is_in);
     assign drained = !(m0_valid || m1_valid || m2_valid || x_valid || w_valid || redirect);
 
@@ -450,62 +485,24 @@ module brainfunk_core #(
     end
 
     // ---- M0: compares against everything that has not written yet ----
-    // Each stage's fields, as one uop. pc, instr and base_after are only for the retire port.
-    logic                  m0_uses_cache, m1_uses_cache, m2_uses_cache, x_uses_cache;
-    logic                  m0_retire, m0_no_read, m0_is_branch, m0_is_je, m0_predict_taken;
-    logic                  m0_is_scan, m0_is_out_read, m0_is_mul_src, m0_is_mul_dst, m0_is_halt, m0_is_trap;
-    logic [7:0]            m0_data;
-    logic [ADDR_WIDTH-1:0] m0_base, m0_base_after;
-    logic [PC_WIDTH-1:0]   m0_pc, m0_next_pc, m0_alt_pc;
-    logic [31:0]           m0_instr;
-    logic                  m0_next_taken, m0_target_wrong, m0_mul_unit, m0_mul_negate, m0_pair;
-    logic [ADDR_WIDTH-1:0] m0_ea2;
-    logic [(1 << LINE_BITS)-1:0] m0_bank2;
-    logic [3:0]            m0_slot;
-    logic [1:0]            m0_counter;
-
-    logic                  m1_retire, m1_no_read, m1_is_branch, m1_is_je, m1_predict_taken;
-    logic                  m1_is_scan, m1_is_out_read, m1_is_mul_src, m1_is_mul_dst, m1_is_halt, m1_is_trap;
-    logic [7:0]            m1_data;
-    logic [ADDR_WIDTH-1:0] m1_ea, m1_base, m1_base_after;
-    logic [PC_WIDTH-1:0]   m1_pc, m1_next_pc, m1_alt_pc;
-    logic [31:0]           m1_instr;
-    logic                  m1_next_taken, m1_target_wrong, m1_mul_unit, m1_mul_negate, m1_pair;
-    logic [ADDR_WIDTH-1:0] m1_ea2;
-    logic [4:1]            m1_hit2;
-    logic [3:0]            m1_slot;
-    logic [1:0]            m1_counter;
-    logic [4:1]            m1_hit;
-
-    logic                  m2_retire, m2_no_read, m2_is_branch, m2_is_je, m2_predict_taken;
-    logic                  m2_is_scan, m2_is_out_read, m2_is_mul_src, m2_is_mul_dst, m2_is_halt, m2_is_trap;
-    logic [7:0]            m2_data;
-    logic [ADDR_WIDTH-1:0] m2_ea, m2_base, m2_base_after;
-    logic [PC_WIDTH-1:0]   m2_pc, m2_next_pc, m2_alt_pc;
-    logic [31:0]           m2_instr;
-    logic                  m2_next_taken, m2_target_wrong, m2_mul_unit, m2_mul_negate;
-    logic [3:0]            m2_slot;
-    logic [1:0]            m2_counter;
-    logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
-    logic                  m2_pair, m2_s_from_w, m2_s_from_w1, m2_s_from_w2, m2_s_from_w_next;
-    logic [ADDR_WIDTH-1:0] m2_ea2;
-
-    logic                  x_writes, x_retire, x_is_branch, x_is_je, x_predict_taken;
-    logic                  x_is_scan, x_is_out_read, x_is_mul_src, x_is_mul_dst, x_is_halt, x_is_trap;
-    logic [7:0]            x_data;
-    logic [ADDR_WIDTH-1:0] x_ea, x_base, x_base_after;
-    logic [PC_WIDTH-1:0]   x_pc, x_next_pc, x_alt_pc;
-    logic [31:0]           x_instr;
-    logic                  x_next_taken, x_target_wrong, x_mul_unit, x_mul_negate;
-    logic [3:0]            x_slot;
-    logic [1:0]            x_counter;
-    logic                  x_from_w, x_from_early;
-    logic [7:0]            x_early;
-    logic                  x_pair, x_s_from_w, x_s_from_early;
-    logic [7:0]            x_s_early;
+    // What each stage has besides its uop: what changes on the way, or is not needed all the way.
+    logic                  m0_no_read, m1_no_read, m2_no_read;
+    logic [ADDR_WIDTH-1:0] m0_base, m1_base, m2_base, x_base;
+    logic [ADDR_WIDTH-1:0] m1_ea, m2_ea, x_ea;
+    logic [ADDR_WIDTH-1:0] m0_ea2, m1_ea2, m2_ea2;
     /* verilator lint_off UNUSEDSIGNAL */
     logic [ADDR_WIDTH-1:0] x_ea2;   // only the formal invariants look at it
     /* verilator lint_on UNUSEDSIGNAL */
+    logic [(1 << LINE_BITS)-1:0] m0_bank2;
+
+    // Which older instructions write the cell a read is of, and from that where X takes its value.
+    logic [4:1]            m1_hit, m1_hit2;
+    logic                  m2_from_w, m2_from_w1, m2_from_w2, m2_from_w_next;
+    logic                  m2_s_from_w, m2_s_from_w1, m2_s_from_w2, m2_s_from_w_next;
+    logic                  x_from_w, x_from_early;
+    logic [7:0]            x_early;
+    logic                  x_s_from_w, x_s_from_early;
+    logic [7:0]            x_s_early;
 
     logic                  w_writes, w_retire, w_is_halt, w_is_trap;
     logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after;
@@ -530,20 +527,20 @@ module brainfunk_core #(
     assign x_value  = x_from_w ? w_data : x_from_early ? x_early : dmem_rdata;
     assign x_source = x_s_from_w ? w_data : x_s_from_early ? x_s_early : dmem_rdata2;
     assign x_zero  = x_value == 8'd0;
-    assign x_taken = x_zero == x_is_je;
+    assign x_taken = x_zero == x.is_je;
 
     // A miss restarts the instruction, which is the same as a misprediction back to itself.
-    assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit_both;
-    assign x_wrong_way  = x_taken != x_predict_taken;
-    assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
+    assign x_miss       = x_valid && !flush && x.reads && !dmem_hit_both;
+    assign x_wrong_way  = x_taken != x.predict_taken;
+    assign x_mispredict = x_valid && !flush && dmem_hit && x.is_branch && (x_wrong_way || x.target_wrong);
     assign x_scan_zeros = dmem_zero & x_scan_mask;
-    assign x_scan_found = x_valid && !flush && x_is_scan && |x_scan_zeros;
+    assign x_scan_found = x_valid && !flush && x.is_scan && |x_scan_zeros;
 
     // A factor of 1 or -1 takes the source's value as it is: from the second port, or else straight
     // from X a cycle before. Subtracting it is adding its complement and a carry.
-    assign x_addend  = !x_is_mul_dst ? x_data : !x_mul_unit ? product : x_mul_negate ? -mul_operand : mul_operand;
-    assign x_operand = !x_pair ? x_addend : x_mul_negate ? ~x_source : x_source;
-    assign x_sum     = x_value + x_operand + 8'(x_pair && x_mul_negate);
+    assign x_addend  = !x.is_mul_dst ? x.data : !x.mul_unit ? product : x.mul_negate ? -mul_operand : mul_operand;
+    assign x_operand = !x.pair ? x_addend : x.mul_negate ? ~x_source : x_source;
+    assign x_sum     = x_value + x_operand + 8'(x.pair && x.mul_negate);
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -563,7 +560,7 @@ module brainfunk_core #(
             m2_valid  <= m1_valid && !flush;
             x_valid   <= m2_valid && !flush;
             w_valid   <= x_valid && !flush && !x_miss;
-            dmem_we   <= x_valid && !flush && !x_miss && x_writes;
+            dmem_we   <= x_valid && !flush && !x_miss && x.writes;
             redirect  <= x_mispredict || x_miss;
             scan_stop <= x_scan_found;
             scan_found_1 <= scan_stop;
@@ -578,80 +575,55 @@ module brainfunk_core #(
         end
         m0_scan_mask     <= STRIDE_MASK[a_scan_stride];
         m0_base          <= base_ptr;
-        m0_base_after    <= a_is_move ? moved : base_ptr;
-        m0_writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
-        m0_uses_cache    <= a_is_add || a_is_set || a_is_mul || a_is_branch || a_is_in ||
-                            (a_is_out && !a_last);
-        m0_retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
         m0_no_read       <= a_is_set || (a_is_in && a_last && !a_in_keep);
-        m0_is_branch     <= a_is_branch;
-        m0_is_je         <= a_is_je;
-        m0_predict_taken <= a_predict_taken;
-        m0_is_scan       <= a_is_scan;
-        m0_is_out_read   <= a_is_out && !a_last;
-        m0_is_mul_src    <= a_is_mul && !a_last;
-        m0_is_mul_dst    <= a_flag_mul_dst;
-        m0_is_halt       <= a_is_halt;
-        m0_is_trap       <= !a_legal;
-        m0_data          <= a_data;
-        m0_pc            <= a_pc;
-        m0_next_pc       <= a_next_pc;
-        m0_alt_pc        <= a_alt_pc;
-        m0_instr         <= a_instr;
-        m0_next_taken    <= a_next_taken;
-        m0_mul_unit      <= a_mul_unit;
-        m0_mul_negate    <= a_mul_negate;
-        m0_pair          <= a_is_mul && a_mul_pair;
         m0_ea2           <= ea2;
         // as m0_valid, which the tape would otherwise have to decode on its way to the block RAM
         m0_bank2         <= (!rst && a_issue && !flush && a_is_mul && a_mul_pair) ? (1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;
-        m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
-        m0_slot           <= a_slot;
-        m0_counter       <= a_counter;
+        m0.base_after    <= a_is_move ? moved : base_ptr;
+        m0.writes        <= a_is_add || a_is_set || a_flag_mul_dst || (a_is_in && a_last);
+        m0.reads         <= a_is_add || a_is_mul || a_is_branch || (a_is_out && !a_last);
+        m0.retire        <= a_legal && (!a_multi || a_last || a_is_scan || a_is_halt);
+        m0.is_branch     <= a_is_branch;
+        m0.is_je         <= a_is_je;
+        m0.predict_taken <= a_predict_taken;
+        m0.is_scan       <= a_is_scan;
+        m0.is_out_read   <= a_is_out && !a_last;
+        m0.is_mul_src    <= a_is_mul && !a_last;
+        m0.is_mul_dst    <= a_flag_mul_dst;
+        m0.is_halt       <= a_is_halt;
+        m0.is_trap       <= !a_legal;
+        m0.data          <= a_data;
+        m0.pc            <= a_pc;
+        m0.next_pc       <= a_next_pc;
+        m0.alt_pc        <= a_alt_pc;
+        m0.instr         <= a_instr;
+        m0.next_taken    <= a_next_taken;
+        m0.mul_unit      <= a_mul_unit;
+        m0.mul_negate    <= a_mul_negate;
+        m0.pair          <= a_is_mul && a_mul_pair;
+        m0.target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
+        m0.slot          <= a_slot;
+        m0.counter       <= a_counter;
 
         // M0 to M1: which older instructions write this cell, nearest first.
         // m1 is one ahead, m2 two, x three, w four; the older the instruction, the later its
         // result reaches a register this one can use.
-        m1_hit[1] <= m1_valid && m1_writes && m0_ea == m1_ea;
-        m1_hit[2] <= m2_valid && m2_writes && m0_ea == m2_ea;
-        m1_hit[3] <= x_valid && x_writes && m0_ea == x_ea;
+        m1_hit[1] <= m1_valid && m1.writes && m0_ea == m1_ea;
+        m1_hit[2] <= m2_valid && m2.writes && m0_ea == m2_ea;
+        m1_hit[3] <= x_valid && x.writes && m0_ea == x_ea;
         m1_hit[4] <= w_valid && w_writes && m0_ea == w_ea;
-        m1_hit2[1] <= m1_valid && m1_writes && m0_ea2 == m1_ea;
-        m1_hit2[2] <= m2_valid && m2_writes && m0_ea2 == m2_ea;
-        m1_hit2[3] <= x_valid && x_writes && m0_ea2 == x_ea;
+        m1_hit2[1] <= m1_valid && m1.writes && m0_ea2 == m1_ea;
+        m1_hit2[2] <= m2_valid && m2.writes && m0_ea2 == m2_ea;
+        m1_hit2[3] <= x_valid && x.writes && m0_ea2 == x_ea;
         m1_hit2[4] <= w_valid && w_writes && m0_ea2 == w_ea;
 
+        m1               <= m0;
         m1_ea            <= m0_ea;
-        m1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;
+        m1_base          <= m0.is_scan ? m0_ea - a_offset : m0_base;
+        m1_no_read       <= m0_no_read;
+        m1_ea2           <= m0_ea2;
         m1_scan_cell     <= m0_scan_cell;
         m1_scan_mask     <= m0_scan_mask << (8 * (m0_scan_cell >> 3));
-        m1_base_after    <= m0_base_after;
-        m1_writes        <= m0_writes;
-        m1_uses_cache    <= m0_uses_cache;
-        m1_retire        <= m0_retire;
-        m1_no_read       <= m0_no_read;
-        m1_is_branch     <= m0_is_branch;
-        m1_is_je         <= m0_is_je;
-        m1_predict_taken <= m0_predict_taken;
-        m1_is_scan       <= m0_is_scan;
-        m1_is_out_read   <= m0_is_out_read;
-        m1_is_mul_src    <= m0_is_mul_src;
-        m1_is_mul_dst    <= m0_is_mul_dst;
-        m1_is_halt       <= m0_is_halt;
-        m1_is_trap       <= m0_is_trap;
-        m1_data          <= m0_data;
-        m1_pc            <= m0_pc;
-        m1_next_pc       <= m0_next_pc;
-        m1_alt_pc        <= m0_alt_pc;
-        m1_instr         <= m0_instr;
-        m1_next_taken    <= m0_next_taken;
-        m1_mul_unit      <= m0_mul_unit;
-        m1_mul_negate    <= m0_mul_negate;
-        m1_pair          <= m0_pair;
-        m1_ea2           <= m0_ea2;
-        m1_target_wrong  <= m0_target_wrong;
-        m1_slot           <= m0_slot;
-        m1_counter       <= m0_counter;
 
         // M1 to M2: only the nearest writer counts.
         m2_from_w_next <= m1_hit[1];
@@ -663,37 +635,13 @@ module brainfunk_core #(
         m2_s_from_w1     <= !m1_hit2[1] && !m1_hit2[2] && m1_hit2[3];
         m2_s_from_w2     <= !m1_hit2[1] && !m1_hit2[2] && !m1_hit2[3] && m1_hit2[4];
 
+        m2               <= m1;
         m2_ea            <= m1_ea;
+        m2_base          <= m1_base;
+        m2_no_read       <= m1_no_read;
+        m2_ea2           <= m1_ea2;
         m2_scan_cell     <= m1_scan_cell;
         m2_scan_mask     <= m1_scan_mask << (2 * ((m1_scan_cell >> 1) & LINE_BITS'(3)));
-        m2_base          <= m1_base;
-        m2_base_after    <= m1_base_after;
-        m2_writes        <= m1_writes;
-        m2_uses_cache    <= m1_uses_cache;
-        m2_retire        <= m1_retire;
-        m2_no_read       <= m1_no_read;
-        m2_is_branch     <= m1_is_branch;
-        m2_is_je         <= m1_is_je;
-        m2_predict_taken <= m1_predict_taken;
-        m2_is_scan       <= m1_is_scan;
-        m2_is_out_read   <= m1_is_out_read;
-        m2_is_mul_src    <= m1_is_mul_src;
-        m2_is_mul_dst    <= m1_is_mul_dst;
-        m2_is_halt       <= m1_is_halt;
-        m2_is_trap       <= m1_is_trap;
-        m2_data          <= m1_data;
-        m2_pc            <= m1_pc;
-        m2_next_pc       <= m1_next_pc;
-        m2_alt_pc        <= m1_alt_pc;
-        m2_instr         <= m1_instr;
-        m2_next_taken    <= m1_next_taken;
-        m2_mul_unit      <= m1_mul_unit;
-        m2_mul_negate    <= m1_mul_negate;
-        m2_pair          <= m1_pair;
-        m2_ea2           <= m1_ea2;
-        m2_target_wrong  <= m1_target_wrong;
-        m2_slot           <= m1_slot;
-        m2_counter       <= m1_counter;
 
         // M2 to X. Results that are already in registers are picked up here; only the
         // instruction right ahead has to be taken at X itself. A cell that is written
@@ -706,62 +654,38 @@ module brainfunk_core #(
         x_s_from_early <= m2_s_from_w || m2_s_from_w1 || m2_s_from_w2;
         x_s_early      <= m2_s_from_w ? w_data : m2_s_from_w1 ? w1_data : w2_data;
 
+        x               <= m2;
         x_ea            <= m2_ea;
-        x_scan_mask     <= a_scan_back ? reversed(m2_scan_mask << m2_scan_cell[0]) : m2_scan_mask << m2_scan_cell[0];
         x_base          <= m2_base;
-        x_base_after    <= m2_base_after;
-        x_writes        <= m2_writes;
-        x_uses_cache    <= m2_uses_cache;
-        x_retire        <= m2_retire;
-        x_is_branch     <= m2_is_branch;
-        x_is_je         <= m2_is_je;
-        x_predict_taken <= m2_predict_taken;
-        x_is_scan       <= m2_is_scan;
-        x_is_out_read   <= m2_is_out_read;
-        x_is_mul_src    <= m2_is_mul_src;
-        x_is_mul_dst    <= m2_is_mul_dst;
-        x_is_halt       <= m2_is_halt;
-        x_is_trap       <= m2_is_trap;
-        x_data          <= m2_data;
-        x_pc            <= m2_pc;
-        x_next_pc       <= m2_next_pc;
-        x_alt_pc        <= m2_alt_pc;
-        x_instr         <= m2_instr;
-        x_next_taken    <= m2_next_taken;
-        x_mul_unit      <= m2_mul_unit;
-        x_mul_negate    <= m2_mul_negate;
-        x_pair          <= m2_pair;
         x_ea2           <= m2_ea2;
-        x_target_wrong  <= m2_target_wrong;
-        x_slot           <= m2_slot;
-        x_counter       <= m2_counter;
+        x_scan_mask     <= a_scan_back ? reversed(m2_scan_mask << m2_scan_cell[0]) : m2_scan_mask << m2_scan_cell[0];
 
         // Multiplier: operand at the end of X, product a cycle later with the factor of the destination
         // then in M2, used by that destination's X.
-        if (x_valid && x_is_mul_src) mul_operand <= x_value;
+        if (x_valid && x.is_mul_src) mul_operand <= x_value;
 `ifdef FORMAL_ABSTRACT_MUL
-        product <= mul_operand ^ m2_data;
+        product <= mul_operand ^ m2.data;
 `else
-        product <= 8'(mul_operand * m2_data);
+        product <= 8'(mul_operand * m2.data);
 `endif
 
         // X to W. F does not retire from here: it retires when it has its result, two cycles after.
-        w_writes     <= x_writes;
-        w_retire     <= !x_is_scan && x_retire;
-        w_is_halt    <= x_is_halt;
-        w_is_trap    <= x_is_trap;
+        w_writes     <= x.writes;
+        w_retire     <= !x.is_scan && x.retire;
+        w_is_halt    <= x.is_halt;
+        w_is_trap    <= x.is_trap;
         w_ea         <= x_ea;
         w_base       <= x_base;
-        w_base_after <= x_base_after;
-        w_pc         <= x_pc;
-        w_next_pc    <= (x_is_branch && x_wrong_way) ? x_alt_pc : x_next_pc;
-        w_alt_pc     <= x_miss ? x_pc : (x_is_branch && x_wrong_way) ? x_alt_pc : x_next_pc;
-        w_instr      <= x_instr;
-        w_is_branch  <= x_is_branch;
+        w_base_after <= x.base_after;
+        w_pc         <= x.pc;
+        w_next_pc    <= (x.is_branch && x_wrong_way) ? x.alt_pc : x.next_pc;
+        w_alt_pc     <= x_miss ? x.pc : (x.is_branch && x_wrong_way) ? x.alt_pc : x.next_pc;
+        w_instr      <= x.instr;
+        w_is_branch  <= x.is_branch;
         w_taken      <= x_taken;
-        w_wrong_guess <= x_mispredict && x_next_taken;
-        w_slot        <= x_slot;
-        w_counter    <= x_counter;
+        w_wrong_guess <= x_mispredict && x.next_taken;
+        w_slot        <= x.slot;
+        w_counter    <= x.counter;
         w_data       <= x_sum;
         w_scan_zeros <= a_scan_back ? reversed(x_scan_zeros) : x_scan_zeros;
         s1_cell      <= lowest_cell(w_scan_zeros) ^ {LINE_BITS{a_scan_back}};
@@ -775,12 +699,12 @@ module brainfunk_core #(
             halted      <= 1'b0;
             trapped     <= 1'b0;
         end else begin
-            if (x_valid && !flush && dmem_hit && x_is_out_read) out_pending <= 1'b1;
+            if (x_valid && !flush && dmem_hit && x.is_out_read) out_pending <= 1'b1;
             else if (out_pending && io_out_ready)   out_pending <= 1'b0;
             if (w_valid && w_is_halt) halted <= 1'b1;
             if (w_valid && w_is_trap) trapped <= 1'b1;
         end
-        if (x_valid && x_is_out_read) io_out_data <= x_value;
+        if (x_valid && x.is_out_read) io_out_data <= x_value;
     end
 
     assign io_out_valid = out_pending;

@@ -754,7 +754,7 @@ struct MemoryConfig {
     unsigned read_busy = 17, write_busy = 19;   // and until the next request, after a read or a write
     unsigned refresh_every = 1170, refresh_busy = 14;
     unsigned fetch_lead = 5;                 // a word's fetch to its issue
-    unsigned i_request = 4, i_resume = 12;   // a fetch that misses to the request; the last word to the issue
+    unsigned i_request = 3, i_resume = 12;   // a fetch that misses to the request; the last word to the issue
     unsigned d_request = 7, d_resume = 7;    // an issue that misses to the request; the last word to the issue again
 
     static MemoryConfig from(const json& j) {
@@ -813,7 +813,7 @@ struct MachineConfig {
     unsigned        write_banks = 0;      // two writes in a group are to cells different modulo this; 0 any
     bool            early_second = true;  // a branch second in its group may resolve early
     bool            early_store = true;   // with early_cells, a store of values; else only the zero bits
-    unsigned        banks = 16;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
+    unsigned        banks = 16;         // cells in a line of banks: a MUL's two cells in one bank are not read at once; 0 none
     unsigned        penalty = 9, steer = 3;
     unsigned        scan_base = 8, line_cells = 32, stride_limit = 16, io = 7;
     /* Branches resolved before X: once the cell's value is known, a misprediction costs early_penalty
@@ -1028,7 +1028,7 @@ public:
         if (mul) {
             const bool unit = in.data() == 1 || in.data() == 255;
             const addr_t src = e.read[0].cell, dst = e.read[1].cell;
-            const bool conflict = c_.banks && src != dst && (src % c_.banks) == (dst % c_.banks);
+            const bool conflict = c_.banks && (src % c_.banks) == (dst % c_.banks);
             pair = c_.mul == MulMode::Single || (c_.mul == MulMode::PairUnit && unit && !conflict);
             chained = !pair && c_.share_source && prev_split_mul_ && in.src_offset() == prev_src_offset_;
             prev_split_mul_ = !pair && src != dst && op == Opcode::MUL;
