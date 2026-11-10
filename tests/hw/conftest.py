@@ -43,7 +43,7 @@ def pytest_configure(config):
     if not os.environ.get("PYTEST_XDIST_WORKER"):
         RESULTS.mkdir(parents=True, exist_ok=True)
         for old in RESULTS.glob("*.json"):
-            old.unlink()
+            old.unlink(missing_ok=True)  # another session, started with this one, may have taken it
 
 
 def pytest_collection_modifyitems(config, items):

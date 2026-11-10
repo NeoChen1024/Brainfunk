@@ -49,6 +49,11 @@ def board(tools):
 def read_output(count, limit, send=b"", pace=None):
     """Opens the port, which restarts the program, and reads what it prints."""
     with serial.Serial(PORT, PROGRAM_BAUD, timeout=0.05, exclusive=True) as port:
+        # The kernel starts receiving before it raises RTS, so a program that was printing gets about a
+        # millisecond of its old run in first, 13 or 14 bytes. The restarted one prints nothing for
+        # 200 ms (STARTUP_CYCLES), so what has come by now is all of the old run's.
+        time.sleep(0.05)
+        port.reset_input_buffer()
         got = b""
         sent = 0
         start = time.monotonic()
