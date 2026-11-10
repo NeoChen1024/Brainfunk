@@ -421,12 +421,25 @@ should use:
   covers the 7 series). The Xilinx `RAMB18E1` simulation model, run under Icarus with one clock, a 2K x 18
   port reading a row while the other wrote one of its bytes, did the same. So two cells to a row would
   need no restart there either, in `READ_FIRST`.
-- Vivado's synthesis guide gives byte-write block RAM as portable RTL to infer, so a RAM of a cell
-  each should need no board version; that is untried, since Vivado has not run on this design.
+- Vivado infers `rtl/tape_ram.sv` as it is, byte writes and all, one RAMB36 each, so the tape needs no
+  board version there.
 
 What carries over is the rest: the whole line read for `F`, the second read port taking any RAM the
-first does not need, and the clearing after reset. Whether the BRAM's own output register or one in
-the fabric makes the second edge is for that part's timing to decide.
+first does not need, and the clearing after reset.
+
+Vivado 2025.2.1 placed and routed `brainfunk_soc` as it is here, out of context: the core, instruction
+cache, tape and predictor, without the loader, UART, flash or a memory controller, and with its ports
+unconstrained, one seed per clock asked for. It took 1343 LUTs, 1083 flip-flops, 20 RAMB36 and 2 RAMB18,
+and no DSP slice: the 8-bit multiply went to LUTs. It closed timing at these clocks:
+
+| Speed grade | Closed | Did not | The block RAM's limit |
+|---|---|---|---|
+| -1 | 330 MHz, 0.023 ns of slack | 360 MHz, -0.135 ns | 400 MHz (2.495 ns minimum period) |
+| -2 | 400 MHz, 0.024 ns | 450 MHz, -0.104 ns | 477 MHz (2.095 ns) |
+
+That is 2.0 and 2.4 times the EG4S20's 168 MHz. At 330 MHz on -1 the worst path ran from the instruction
+cache's read register to `a_offset` in the core, four LUTs deep and 83% routing. The ADP-XC7K160's DDR3,
+behind its own controller and on its own clock, is not in these numbers.
 
 ### SDRAM
 
