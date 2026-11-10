@@ -13,6 +13,8 @@ runs that instruction set on an FPGA.
 - [LLVM IR backend](doc/llvm-ir.md): the emitted module and its runtime ABI.
 - [Traces and analyses](doc/analysis.md): trace files, analyses, and the issue model.
 - [RTL](doc/rtl.md): the core, the memory system, verification, and the boards.
+- [Performance](doc/performance.md): cycles per instruction of the core, the interpreter and native
+  code on the same programs, and how each is measured.
 - [Programs](programs/README.md): the corpus, where each program comes from, and its license.
 - [Tests](tests/CMakeLists.txt): ctest labels, and the options that register more tests.
 

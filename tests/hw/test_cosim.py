@@ -1,5 +1,7 @@
 """The core in lock step with the interpreter, in the Verilator cosimulator."""
 import json
+import os
+import sys
 
 import pytest
 
@@ -226,6 +228,17 @@ def test_corpus_program(tools, tmp_path, name, level):
     result = cosim_json(image)
     assert result["halted"]
     (RESULTS / f"{name}-O{level}.json").write_text(json.dumps(result))
+
+
+def test_cpi_compare_takes_the_cosimulators_cycles(tools, tmp_path):
+    """tools/cpi_compare.py's cycles for the core are those of the cosimulator, on the image it made itself."""
+    program = "programs/brainfuck.org/squares.b"
+    results = tmp_path / "cpi.json"
+    run(sys.executable, ROOT / "tools" / "cpi_compare.py", "run", "--no-host", "-o", results, program,
+        env={**os.environ, "BRAINFUNK": str(BRAINFUNK), "COSIM": str(COSIM)})
+    row, = json.loads(results.read_text())["cases"]
+    direct = cosim_json(assemble(ROOT / program, 2, tmp_path / "program.hex"))
+    assert (row["core"]["cycles"], row["instructions"]) == (direct["cycles"], direct["retired"])
 
 
 def test_stalls_on_a_real_program(tools, tmp_path):

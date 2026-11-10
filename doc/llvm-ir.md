@@ -104,3 +104,6 @@ CLANG=clang CFLAGS='-O3 -target aarch64-linux-gnu --sysroot=/path/to/sysroot' \
 
 Clang warns when it assigns a concrete target to target-neutral IR; the pipeline suppresses
 that expected `-Woverride-module` diagnostic.
+
+[performance.md](performance.md) has what the compiled code costs for each instruction of the
+program, against the interpreter and the core.

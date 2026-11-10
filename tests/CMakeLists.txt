@@ -96,6 +96,8 @@ else()
         LABELS corpus
         ENVIRONMENT "BRAINFUNK=${PROJECT_BINARY_DIR}/bin/brainfunk")
     set_tests_properties(corpus.inputs PROPERTIES PROCESSORS 8 TIMEOUT 1800)
+    # tools/cpi_compare.py takes its programs and their inputs from the corpus tool.
+    brainfunk_pytest(sw.cpi LABEL sw FILES tests/sw/test_cpi_compare.py)
 endif()
 
 if(NOT TARGET cosim)

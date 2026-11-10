@@ -129,6 +129,8 @@ In `mandel.b`, 42% of the cycles are charged to `MUL` and 11% to `F`. The charge
 misprediction before an instruction, which is why `MUL` averages 3.6 cycles. See [Multiplying](#multiplying)
 for what came after this table. These programs fit
 the instruction cache, which costs them almost nothing. `LostKng.b` does not, and its CPI is about 11.
+[performance.md](performance.md) sets the core's cycles per instruction beside the interpreter's and
+native code's on a desktop processor, each at its clock.
 
 ### Scanning
 

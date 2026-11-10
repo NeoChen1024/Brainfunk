@@ -55,24 +55,31 @@ def select_cases(limit: int) -> tuple[list[corpus.Case], dict[str, int]]:
             skipped["not built"] += 1
         else:
             programs.append(program)
+    cases, skipped["needs input"] = cases_of(programs, limit)
+    return cases, skipped
+
+
+def cases_of(programs: list[corpus.Program], limit: int) -> tuple[list[corpus.Case], int]:
+    """The programs' cases as above, and how many programs need an input that nobody has written."""
     by_program: dict[str, list[corpus.Case]] = {}
     for case in corpus.load_cases(programs)[0]:
         named = by_program.setdefault(case.program.rel, [])
         if all(c.name != case.name for c in named):
             named.append(case)
     cases = []
+    needs_input = 0
     for program in programs:
         mine = by_program.get(program.rel)
         if not mine:
             if program.meta.get("halts") == "with-input":
-                skipped["needs input"] += 1
+                needs_input += 1
                 continue
             mine = [corpus.Case(program, "none", corpus.program_eofs(program)[0], {"text": ""},
                                 program.path.parent, program.manifest.parent / corpus.LOCK)]
         for case in mine:
             case.limit = min(case.limit or limit, limit)
             cases.append(case)
-    return cases, skipped
+    return cases, needs_input
 
 
 def run_case(case: corpus.Case, config: Path | None) -> dict:
