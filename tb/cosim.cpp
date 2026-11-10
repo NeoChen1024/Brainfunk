@@ -2,7 +2,7 @@
 //
 //   cosim [--stall] [--limit N] image.hex [input-file]   run one program image
 //   cosim --random N [--seed S] [--stall]                run N random programs at -O0..-O2
-//   cosim --evict N [--seed S] [--stall]                 run N random images built to force evictions
+//   cosim --clash N [--seed S] [--stall]                 run N random images built to make reads meet writes
 // --chaos makes the branch predictor guess at random, which must not change what a program does.
 //
 // Exit status is non-zero on the first divergence. --json prints the results as one JSON object.
@@ -29,7 +29,6 @@ namespace {
 
 constexpr std::size_t TAPE_SIZE = std::size_t{1} << 16;
 constexpr std::size_t ROM_SIZE  = std::size_t{1} << 20;
-constexpr std::uint32_t SDRAM_TAPE = std::uint32_t{1} << 20; // word address of the tape in SDRAM
 
 struct Divergence {
     std::string what;
@@ -74,10 +73,7 @@ public:
     Cosim() : top_(&context_) {
         top_.eval(); // so that scopes exist
         sdram_ = scope("sdram.phy");
-        tag_   = scope("soc.dcache.tag");
-        for (int cell = 0; cell < 32; ++cell) cell_rams_[cell] = scope("soc.dcache.g_byte[" + std::to_string(cell) + "].ram");
-        svSetScope(sdram_);
-        for (std::size_t word = 0; word < TAPE_SIZE / 4; ++word) sdram_poke(static_cast<int>(SDRAM_TAPE + word), 0);
+        for (int bank = 0; bank < 16; ++bank) tape_rams_[bank] = scope("soc.tape.g_ram[" + std::to_string(bank) + "].ram");
 
         top_.por = 1;
         top_.predict_chaos = chaos;
@@ -112,19 +108,17 @@ public:
         for (int i = 0; i < 4; ++i) tick();
         top_.rst = 0;
 
-        // The caches invalidate themselves, and the controller finishes what it was doing.
+        // The cache invalidates itself, the tape clears, and the controller finishes what it was doing.
         while (!top_.core_ready) tick();
 
-        // A previous program leaves its tape behind, and the rest of its image past the end
-        // of this one, where speculative fetch may go.
+        // A previous program leaves the rest of its image past the end of this one, where speculative
+        // fetch may go.
         svSetScope(sdram_);
         for (std::size_t i = 0; i < image.size(); ++i) sdram_poke(static_cast<int>(i), static_cast<int>(image[i]));
-        for (const auto cell : written_) sdram_poke(static_cast<int>(SDRAM_TAPE + cell / 4), 0);
-        written_.clear();
 
         Result result;
         std::uint64_t cycles_since_retire = 0;
-        const std::uint64_t scan_cycle_limit = 8 * TAPE_SIZE + 64; // cache misses all the way
+        const std::uint64_t scan_cycle_limit = TAPE_SIZE + 64; // a cell a cycle all the way round
 
         for (;;) {
             /* Inputs for this cycle.  The end of input reads as the EOF mode says, for ever. */
@@ -170,7 +164,6 @@ public:
             const std::uint32_t retire_base_ptr = top_.retire_base_ptr;
 
             if (wrote && !retire) throw Divergence{"write outside a retiring cycle"};
-            if (wrote) written_.push_back(write_addr);
 
             tick_high();
             ++result.cycles;
@@ -216,9 +209,8 @@ public:
 private:
     VerilatedContext context_;
     Vbrainfunk_soc_sdram top_;
-    svScope sdram_ = nullptr, tag_ = nullptr;
-    std::array<svScope, 32> cell_rams_{};
-    std::vector<std::uint32_t> written_;
+    svScope sdram_ = nullptr;
+    std::array<svScope, 16> tape_rams_{};
 
     static svScope scope(const std::string& path) {
         const auto name = "TOP.brainfunk_soc_sdram." + path;
@@ -227,24 +219,16 @@ private:
         return found;
     }
 
-    /* A cell as the program sees it: the data cache first, then SDRAM. */
+    /* A cell of the tape: bank cell % 16, row cell / 32, the high byte for the second half of a line. */
     std::uint8_t peek_tape(std::size_t cell) {
-        const auto index = static_cast<int>((cell >> 5) & 511);
-        const auto tag = static_cast<long long>(cell >> 14);
-        svSetScope(tag_);
-        if (ram_peek(index) == (4 | tag)) { // valid, tag
-            svSetScope(cell_rams_[cell & 31]);
-            return static_cast<std::uint8_t>(ram_peek(index));
-        }
-        svSetScope(sdram_);
-        const auto word = static_cast<std::uint32_t>(sdram_peek(static_cast<int>(SDRAM_TAPE + cell / 4)));
-        return static_cast<std::uint8_t>(word >> (8 * (cell & 3)));
+        svSetScope(tape_rams_[cell & 15]);
+        const auto word = static_cast<std::uint32_t>(tape_peek(static_cast<int>(cell >> 5)));
+        return static_cast<std::uint8_t>(word >> (8 * ((cell >> 4) & 1)));
     }
 
     void tick() {
         top_.clk = 0;
         top_.eval();
-        if (top_.dmem_we_o) written_.push_back(top_.dmem_addr_o);
         tick_high();
     }
 
@@ -289,16 +273,18 @@ private:
     }
 };
 
-/* Words for a program that moves between cells a whole number of data cache sizes apart, so that
-   lines keep evicting each other, including dirty ones, and reads what it wrote back again. */
-std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
+/* Words for a program that keeps a few rows of a few banks of the tape busy: cells 16 apart share a
+   bank's row, so a write to one and a read of the other a few instructions later meet, and the read
+   has to start again. MULs take cells 16 and 32 apart too, which share a bank and must not be read
+   at once, and moves of 16 cells keep the base going between the halves of lines. */
+std::vector<std::uint32_t> clash_image(std::uint32_t seed) {
     std::uint32_t state = seed * 2654435761u + 12345u;
     const auto next = [&state](std::uint32_t range) {
         state = state * 1664525u + 1013904223u;
         return (state >> 8) % range;
     };
     const auto field = [](int value, unsigned bits) { return static_cast<std::uint32_t>(value) & ((std::uint32_t{1} << bits) - 1); };
-    const auto cell = [&next] { return static_cast<int>(next(129)) - 64; };
+    const auto cell = [&next] { return static_cast<int>(next(4)) + 16 * static_cast<int>(next(2)) + 32 * (static_cast<int>(next(3)) - 1); };
 
     std::vector<std::uint32_t> words;
     const auto plain = [&](unsigned choice) {
@@ -307,10 +293,10 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
         case 0: words.push_back(0x10000000u | field(cell(), 12) << 8 | data); break;
         case 1: words.push_back(0x20000000u | field(cell(), 12) << 8 | data); break;
         case 2: {
-            // Factors of 1 and -1 read both cells at once, unless they share a bank of the cache in
-            // different lines, which a distance of 32 makes them.
+            // Factors of 1 and -1 read both cells at once, unless they may share a bank in different
+            // lines, which a distance of 16 or 32 makes them.
             const int dst = cell();
-            const int src = next(4) == 0 ? dst + (next(2) ? 32 : -32) : cell();
+            const int src = next(3) == 0 ? dst + (next(2) ? 1 : -1) * (next(2) ? 32 : 16) : cell();
             const auto factor = next(4) == 0 ? data : next(2) ? 1u : 255u;
             words.push_back(0x30000000u | field(src, 8) << 20 | field(dst, 12) << 8 | factor);
             break;
@@ -324,24 +310,24 @@ std::vector<std::uint32_t> eviction_image(std::uint32_t seed) {
     for (std::uint32_t i = 0; i < length; ++i) {
         const auto choice = next(16);
         if (choice < 5) {
-            // Same index, another tag, and a little way along.
-            const int lines = static_cast<int>(next(7)) - 3;
-            words.push_back(0x50000000u | field(lines * 16384 + static_cast<int>(next(65)) - 32, 20));
+            // To the other half of the line, or along a line or two, and a little way.
+            const int halves = static_cast<int>(next(5)) - 2;
+            words.push_back(0x50000000u | field(halves * 16 + static_cast<int>(next(3)) - 1, 20));
         } else if (choice == 5) {
-            // A counted loop, with an eviction inside it.
+            // A counted loop, which goes over to the other half of the line and back inside it.
             const int counter = cell();
             words.push_back(0x20000000u | field(counter, 12) << 8 | (2 + next(3)));
             const auto start = words.size();
             const auto body = 1 + next(6);
             for (std::uint32_t k = 0; k < body; ++k) plain(next(4));
-            words.push_back(0x50000000u | 16384u);
-            words.push_back(0x50000000u | field(-16384, 20));
+            words.push_back(0x50000000u | 16u);
+            words.push_back(0x50000000u | field(-16, 20));
             words.push_back(0x10000000u | field(counter, 12) << 8 | 0xFFu);
             const int back = static_cast<int>(start) - static_cast<int>(words.size()) - 1;
             words.push_back(0x70000000u | field(counter, 8) << 20 | field(back, 20));
         } else if (choice == 6) {
-            // A scan that crosses far-apart cells.
-            words.push_back(0x40000000u | field(cell(), 8) << 20 | field((next(2) ? 16384 : -16384) + static_cast<int>(next(9)) - 4, 20));
+            // A scan with a stride about half a line, either way.
+            words.push_back(0x40000000u | field(cell(), 8) << 20 | field((next(2) ? 16 : -16) + static_cast<int>(next(9)) - 4, 20));
         } else {
             plain(next(5));
         }
@@ -399,7 +385,7 @@ int main(int argc, char** argv) {
 
     bool stall = false, json = false, chaos = false;
     std::uint64_t limit = 0;
-    std::uint32_t random_count = 0, evict_count = 0, seed = 1;
+    std::uint32_t random_count = 0, clash_count = 0, seed = 1;
     EofMode eof = EofMode::Zero;
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
@@ -409,7 +395,7 @@ int main(int argc, char** argv) {
         else if (arg == "--json") json = true;
         else if (arg == "--limit") limit = std::stoull(argv[++i]);
         else if (arg == "--random") random_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
-        else if (arg == "--evict") evict_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        else if (arg == "--clash") clash_count = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--seed") seed = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         else if (arg == "--eof") {
             const auto mode = parse_eof_mode(argv[++i]);
@@ -425,21 +411,21 @@ int main(int argc, char** argv) {
     try {
         Cosim cosim;
         cosim.chaos = chaos;
-        if (evict_count != 0) {
+        if (clash_count != 0) {
             std::uint64_t halted = 0, truncated = 0, trapped = 0, retired = 0;
-            for (std::uint32_t n = 0; n < evict_count; ++n) {
+            for (std::uint32_t n = 0; n < clash_count; ++n) {
                 try {
-                    const auto result = cosim.run(eviction_image(seed + n), "Az\xff\x01?", stall, 60000, seed + n);
+                    const auto result = cosim.run(clash_image(seed + n), "Az\xff\x01?", stall, 60000, seed + n);
                     halted += result.halted;
                     truncated += result.truncated;
                     trapped += result.trapped;
                     retired += result.retired;
                 } catch (const Divergence& divergence) {
-                    std::cerr << "DIVERGED, eviction image seed " << seed + n << ": " << divergence.what << '\n';
+                    std::cerr << "DIVERGED, clash image seed " << seed + n << ": " << divergence.what << '\n';
                     return 1;
                 }
             }
-            print_batch(json, "eviction images", evict_count, halted, truncated, trapped, retired);
+            print_batch(json, "clash images", clash_count, halted, truncated, trapped, retired);
             return 0;
         }
         if (random_count != 0) {
@@ -478,7 +464,7 @@ int main(int argc, char** argv) {
         if (files.empty()) {
             std::cerr << "usage: cosim [--json] [--stall] [--chaos] [--limit N] [--eof 0|255|keep] image.hex [input-file]\n"
                          "       cosim --random N [--seed S] [--stall]\n"
-                         "       cosim --evict N [--seed S] [--stall]\n";
+                         "       cosim --clash N [--seed S] [--stall]\n";
             return 2;
         }
         std::string input;

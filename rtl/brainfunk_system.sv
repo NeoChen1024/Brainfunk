@@ -499,8 +499,7 @@ module brainfunk_system #(
 
     brainfunk_soc #(
         .IMEM_ADDR_WIDTH(IMEM_ADDR_WIDTH),
-        .DMEM_ADDR_WIDTH(DMEM_ADDR_WIDTH),
-        .CLEAR_TAPE_ON_RESET(1'b1)
+        .DMEM_ADDR_WIDTH(DMEM_ADDR_WIDTH)
     ) soc (
         .clk(clk),
         .rst(rst),

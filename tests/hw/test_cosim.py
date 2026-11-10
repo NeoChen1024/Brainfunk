@@ -28,14 +28,15 @@ def test_random_programs(tools, seed, count, stall):
     assert result["retired"] > 0
 
 
-@pytest.mark.parametrize("seed,count,stall", batches("--evict", 1000))
-def test_eviction_images(tools, seed, count, stall):
-    """No program in the corpus evicts a dirty line, so these are all that test write-back."""
-    result = cosim_json("--evict", count, "--seed", seed, *(["--stall"] if stall else []))
+@pytest.mark.parametrize("seed,count,stall", batches("--clash", 1000))
+def test_clash_images(tools, seed, count, stall):
+    """Reads that meet a write to the other cell of their bank's row, and MULs whose cells share a bank, are
+    rare in the corpus: these images are what test them."""
+    result = cosim_json("--clash", count, "--seed", seed, *(["--stall"] if stall else []))
     assert result["retired"] > 0
 
 
-@pytest.mark.parametrize("mode,seed", [("--random", 1), ("--random", 200000), ("--evict", 1), ("--evict", 200000)])
+@pytest.mark.parametrize("mode,seed", [("--random", 1), ("--random", 200000), ("--clash", 1), ("--clash", 200000)])
 def test_predictor_is_only_a_guess(tools, mode, seed):
     """Guessing at random reaches what a working predictor seldom does: wrong targets, branches that are not."""
     result = cosim_json(mode, CHUNK, "--seed", seed, "--chaos")
@@ -46,9 +47,9 @@ def test_predictor_is_only_a_guess(tools, mode, seed):
 # simulation is cycle-exact, so a limit close to the real figure is not flaky, only a thing to revisit when
 # the design changes. Some are close because of what they are there to catch: hanoi.b's, next-fetch false
 # hits left in the table (1.0535 as it is, about 1.056 with them); mandel.b's, unit MULs that stop reading
-# both cells at once, and the direction table's counters read as they are written (1.503 as it is, 1.590
-# with them).
-CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.51, "LostKng.b": 12.0, "fib.b": 1.30, "long.b": 1.365}
+# both cells at once, and the direction table's counters read as they are written (1.510 as it is, with the
+# tape's restarts, 1.590 with them).
+CPI_LIMITS = {"hanoi.b": 1.055, "mandel.b": 1.52, "LostKng.b": 12.0, "fib.b": 1.30, "long.b": 1.365}
 CPI_PROGRAM_LENGTH = 2000000
 
 
@@ -65,8 +66,7 @@ def test_prediction_keeps_cpi_down(tools, tmp_path, name):
     assert program_cpi(COSIM, name, tmp_path) < CPI_LIMITS[name]
 
 
-# F over more tape than the cache holds, in both directions. A miss has to restart it from the line that
-# missed: from where it began, it would evict that line getting back there, and never finish.
+# F over 20000 cells in both directions, across hundreds of lines, after writes that it has to wait for.
 LONG_SCAN_CELLS = 20000
 LONG_SCAN_IMAGE = "".join(f"{word:08x}\n" for word in [
     0x50000000 | LONG_SCAN_CELLS,               # the far end,
@@ -122,11 +122,12 @@ def test_mul_after_one_that_wrote_its_source(tools, tmp_path, layout):
 
 
 # At 192 MHz the board's SDRAM data comes a cycle later, CAPTURE 5. The line's last word then came after
-# the next request had taken the read data over, and went to the wrong cache.
-SOC_RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_mem.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv"]
+# the next request had taken the read data over, and went to the wrong owner (when the data cache shared
+# the SDRAM with the instruction cache; now the loader does).
+SOC_RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_mem.sv", "brainfunk_cache.sv", "brainfunk_tape.sv", "tape_ram.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv"]
 
 
-@pytest.mark.parametrize("mode,count", [("--random", 1000), ("--evict", 500)])
+@pytest.mark.parametrize("mode,count", [("--random", 1000), ("--clash", 500)])
 def test_sdram_data_a_cycle_late(tools, tmp_path, mode, count):
     cosim = build_cosim(tmp_path, [ROOT / "rtl" / name for name in SOC_RTL], "-GSDRAM_CAPTURE=5", "-DSDRAM_PIN_DELAY=1")
     for stall in ([], ["--stall"]):
@@ -134,7 +135,46 @@ def test_sdram_data_a_cycle_late(tools, tmp_path, mode, count):
         assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
 
 
-def test_long_scan_crosses_the_cache(tools, tmp_path):
+# A fetch that misses, abandoned by a redirect, still fills its line, and fetching goes on meanwhile. The
+# line it replaces must stop hitting as the fill starts, or what fetch reads there is half the new line.
+# Word 0 and word 4096 share an index: the JN at 4096 is backward, so it is guessed taken, and fetch goes to
+# word 1, which misses and replaces 4096's line; the JN is not taken, and the loop at 4098 keeps fetching
+# that line while the fill writes it.
+def i_fill_image(loops=20):
+    def field(value, bits):
+        return value & ((1 << bits) - 1)
+
+    def data(op, cell, value):
+        return op << 28 | field(cell, 12) << 8 | value & 0xFF
+
+    def branch(op, cell, target, pc):
+        return op << 28 | field(cell, 8) << 20 | field(target - pc - 1, 20)
+
+    words = [0x90000000] * 4107
+    words[0] = data(2, 2, 40)                     # [2] = 40 rounds
+    words[1] = branch(6, 1, 4096, 1)              # JE [1] to 4096: [1] stays 0
+    words[4096] = branch(7, 1, 1, 4096)           # JN [1] back to 1: never taken
+    words[4097] = data(2, 4, loops)
+    words[4098] = data(1, 4, 0xFF)
+    words[4099] = branch(7, 4, 4098, 4099)        # [4] down to 0, in 4096's line
+    for pc in range(4100, 4104):
+        words[pc] = data(1, 3, 1)
+    words[4104] = data(1, 2, 0xFF)
+    words[4105] = branch(7, 2, 1, 4105)
+    return "".join(f"{word:08x}\n" for word in words)
+
+
+I_FILL_IMAGE = i_fill_image()
+
+
+@pytest.mark.parametrize("chaos", [False, True])
+def test_fetch_during_a_fill_it_abandoned(tools, tmp_path, chaos):
+    image = tmp_path / "i_fill.hex"
+    image.write_text(I_FILL_IMAGE)
+    assert cosim_json(*(["--chaos"] if chaos else []), image)["halted"]
+
+
+def test_long_scan(tools, tmp_path):
     image = tmp_path / "long_scan.hex"
     image.write_text(LONG_SCAN_IMAGE)
     assert cosim_json(image)["halted"]
@@ -182,10 +222,11 @@ def test_stalls_on_a_real_program(tools, tmp_path):
     assert cosim_json("--stall", image)["halted"]
 
 
-# How far the default machine of `brainfunk -m analyze -a issue`, caches and SDRAM included, may be from
-# the core over the same first instructions. At the last count it was 0.0% off on long.b, 0.1% short on
-# hanoi.b, 1.6% on mandel.b and 1.8% on fib.b, and 2.7% over on LostKng.b, which waits on the instruction
-# cache. A design change that the model does not follow shows up here.
+# How far the default machine of `brainfunk -m analyze -a issue`, memories included, may be from the core
+# over the same first instructions. At the last count it was 0.0% off on long.b, 0.1% short on hanoi.b,
+# 1.8% on fib.b and 2.2% on mandel.b, whose restarts of reads that meet a write the model leaves out, and
+# 2.6% over on LostKng.b, which waits on the instruction cache. A design change that the model does not
+# follow shows up here.
 MODEL_TOLERANCE = {"hanoi.b": 0.005, "long.b": 0.005, "fib.b": 0.025, "mandel.b": 0.025, "LostKng.b": 0.035}
 
 

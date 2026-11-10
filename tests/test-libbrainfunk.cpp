@@ -818,7 +818,9 @@ TEST_CASE("the issue model's caches miss, write back and share the SDRAM", "[ana
     const auto memory = [](const nlohmann::json& report, std::size_t machine, const char* field) {
         return report.at("analyses").at("issue").at("machines").at(machine).at("memory").at(field).get<std::uint64_t>();
     };
-    const nlohmann::json both = {{"issue", {{"machines", {{{"name", "core"}}, {{"name", "ideal"}, {"memory", false}}}}}}};
+    /* The core keeps its tape on chip; these are about a data cache, as it had before. */
+    const nlohmann::json cached = {{"d_on_chip", 0}};
+    const nlohmann::json both = {{"issue", {{"machines", {{{"name", "core"}, {"memory", cached}}, {{"name", "ideal"}, {"memory", false}}}}}}};
 
     /* Cells 0 and 16384 share a line of the data cache: each add misses, and from the second on
      * writes back the line the one before wrote. Eight words are one line of the instruction cache. */
@@ -840,6 +842,17 @@ TEST_CASE("the issue model's caches miss, write back and share the SDRAM", "[ana
     CHECK(memory(line, 0, "d_misses") == 1);
     CHECK(memory(line, 0, "i_misses") == 2);
 
+    /* As the core is, the tape never misses; with the code on chip too, nothing does, and the machine
+     * takes what one with no memory system takes. */
+    const nlohmann::json on_chip = {{"issue", {{"machines", {{{"name", "core"}},
+                                                           {{"name", "all on chip"}, {"memory", {{"i_on_chip", 1}}}},
+                                                           {{"name", "ideal"}, {"memory", false}}}}}}};
+    const auto chip = analyze({add(0), up, add(0), down, add(0), up, add(0), HALT}, "issue", on_chip);
+    CHECK(memory(chip, 0, "d_misses") == 0);
+    CHECK(memory(chip, 0, "i_misses") == 1);
+    CHECK(memory(chip, 1, "i_misses") == 0);
+    CHECK(cycles_of(chip, 1) == cycles_of(chip, 2));
+
     /* F back over 20000 cells it has written, more than the data cache holds: with the zero table it
      * never misses, without it every line it reaches that has gone from the cache does. */
     {
@@ -847,8 +860,8 @@ TEST_CASE("the issue model's caches miss, write back and share the SDRAM", "[ana
         std::string source;
         for (int i = 0; i < 20000; ++i) source += "+>";
         bf.translate(source + "<[<]");
-        const nlohmann::json config = {{"issue", {{"machines", {{{"name", "table"}},
-                                                               {{"name", "no table"}, {"memory", {{"zero_table", 0}}}}}}}}};
+        const nlohmann::json config = {{"issue", {{"machines", {{{"name", "table"}, {"memory", cached}},
+                                                               {{"name", "no table"}, {"memory", {{"d_on_chip", 0}, {"zero_table", 0}}}}}}}}};
         AnalysisSet set("issue", config);
         std::istringstream in;
         std::ostringstream out;

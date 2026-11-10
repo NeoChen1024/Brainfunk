@@ -1,7 +1,7 @@
 """Tests are only worth what they can catch: each broken design here must fail them.
 
-A surviving mutant means a gap in the tests, not a passing grade. This is how it came out that nothing
-exercised write-back. Enabled by --mutation.
+A surviving mutant means a gap in the tests, not a passing grade. This is how it came out, once, that
+nothing exercised the data cache's write-back. Enabled by --mutation.
 """
 import shutil
 
@@ -9,14 +9,14 @@ import pytest
 
 from conftest import CORPUS, ROOT, assemble, build_cosim, run
 from mutants import CONSOLE_MUTANTS, FORMAL_MUTANTS, FORMAL_ONLY_MUTANTS, LOADER_MUTANTS, MUTANTS, PERFORMANCE_MUTANTS
-from test_cosim import CPI_LIMITS, LONG_SCAN_IMAGE, MUL_CHAIN_IMAGE, MUL_SELF_IMAGES, program_cpi
+from test_cosim import CPI_LIMITS, I_FILL_IMAGE, LONG_SCAN_IMAGE, MUL_CHAIN_IMAGE, MUL_SELF_IMAGES, program_cpi
 import test_console_tb
 import test_loader
 import test_uart_tb
 
 pytestmark = pytest.mark.mutation
 
-RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_cache.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv", "brainfunk_mem.sv"]
+RTL = ["brainfunk_core.sv", "brainfunk_predict.sv", "brainfunk_cache.sv", "brainfunk_tape.sv", "tape_ram.sv", "sdram_ctrl.sv", "sdram_memory.sv", "brainfunk_soc.sv", "brainfunk_soc_sdram.sv", "brainfunk_mem.sv"]
 TIMEOUT = 90
 
 
@@ -52,9 +52,9 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
     sources = mutated(tmp_path, file, text, replacement)
     cosim = build_cosim(tmp_path, sources)
 
-    commands = [[cosim, "--evict", 200, "--seed", 1], [cosim, "--evict", 200, "--seed", 5000, "--stall"],
+    commands = [[cosim, "--clash", 200, "--seed", 1], [cosim, "--clash", 200, "--seed", 5000, "--stall"],
                 [cosim, "--random", 600, "--seed", 1, "--stall"], [cosim, "--random", 100, "--seed", 1, "--chaos"],
-                [cosim, "--evict", 100, "--seed", 1, "--chaos"]]
+                [cosim, "--clash", 100, "--seed", 1, "--chaos"]]
     for word in ("10100000", "80000002", "90000001", "e0000000"):
         trap = tmp_path / f"trap_{word}.hex"
         trap.write_text(f"10000005\n{word}\n90000000\n")
@@ -75,6 +75,10 @@ def test_cosimulation_catches(tools, tmp_path, name, file, text, replacement):
     long_scan = tmp_path / "long_scan.hex"
     long_scan.write_text(LONG_SCAN_IMAGE)
     if caught([cosim, long_scan]):
+        return
+    i_fill = tmp_path / "i_fill.hex"
+    i_fill.write_text(I_FILL_IMAGE)
+    if caught([cosim, i_fill]):
         return
     pytest.fail(f"nothing caught: {name}")
 

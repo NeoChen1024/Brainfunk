@@ -6,8 +6,10 @@
 // "the cell at a" holds for every cell, and one about "dst at a, source at b" for every pair.
 // A read colliding with a write of the same cell returns anything too, as block RAM may.
 //
-// The caches' signals are free as well, so any hit may be a miss, and any stall can happen. Only
-// a read that hits has to return real data.
+// The memories' signals are free as well, so any hit may be a miss, and any stall can happen. Only
+// a read that hits has to return real data. The tape keeps two cells in each row of a bank, and a
+// write to either makes the row's read undefined: F's zero bits for a cell are real only if no write
+// met its bank's row, and F has no hit flag to fall back on, so the core must never let one.
 //
 // The reference state is what the retire port implies, instruction by instruction.
 //
@@ -59,6 +61,10 @@ always_ff @(posedge clk) begin
 end
 
 // ---- data memory: two tracked cells, three edges of latency, on both read ports ----
+// Two cells share a bank's row: the same line, and the same low BANK_BITS.
+function automatic logic same_row(input logic [ADDR_WIDTH-1:0] x, input logic [ADDR_WIDTH-1:0] y);
+    same_row = x[ADDR_WIDTH-1:LINE_BITS] == y[ADDR_WIDTH-1:LINE_BITS] && x[BANK_BITS-1:0] == y[BANK_BITS-1:0];
+endfunction
 (* anyconst *) logic [ADDR_WIDTH-1:0] a, b;
 (* anyconst *) logic [7:0]            a_init, b_init;
 logic [7:0] cell_a, cell_b;
@@ -109,17 +115,14 @@ always_ff @(posedge clk) begin
     if (re2_3 && as3_hit && dmem_hit_both) assume (dmem_rdata2 == a3_value);
     if (re2_3 && bs3_hit && dmem_hit_both) assume (dmem_rdata2 == b3_value);
 
-    a1_line <= !rst && dmem_raddr[ADDR_WIDTH-1:LINE_BITS] == a[ADDR_WIDTH-1:LINE_BITS] && !(dmem_we && dmem_waddr == a);
+    a1_line <= !rst && dmem_raddr[ADDR_WIDTH-1:LINE_BITS] == a[ADDR_WIDTH-1:LINE_BITS] && !(dmem_we && same_row(dmem_waddr, a));
     a2_line <= a1_line;
     a3_line <= a2_line;
-    b1_line <= !rst && dmem_raddr[ADDR_WIDTH-1:LINE_BITS] == b[ADDR_WIDTH-1:LINE_BITS] && !(dmem_we && dmem_waddr == b);
+    b1_line <= !rst && dmem_raddr[ADDR_WIDTH-1:LINE_BITS] == b[ADDR_WIDTH-1:LINE_BITS] && !(dmem_we && same_row(dmem_waddr, b));
     b2_line <= b1_line;
     b3_line <= b2_line;
-    if (a3_line && dmem_hit) assume (dmem_zero[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
-    if (b3_line && dmem_hit) assume (dmem_zero[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
-    // A line not in the cache has its zero bits in the zero table.
-    if (a3_line && !dmem_hit) assume (dmem_ztable[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
-    if (b3_line && !dmem_hit) assume (dmem_ztable[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
+    if (a3_line) assume (dmem_zero[a[LINE_BITS-1:0]] == (a3_value == 8'd0));
+    if (b3_line) assume (dmem_zero[b[LINE_BITS-1:0]] == (b3_value == 8'd0));
 
     // Input reads its cell before taking a byte, so that its write cannot miss.
     if (in_taken) assume (dmem_hit);
@@ -174,7 +177,7 @@ end
 // A MUL that reads both cells at once: a factor of 1 or -1, and the cells not in one bank of two lines.
 function automatic logic mul_pair_of(input logic [31:0] instr);
     mul_pair_of = instr[31:28] == OP_MUL && (instr[7:0] == 8'd1 || instr[7:0] == 8'hFF) &&
-                  !(instr[20 +: LINE_BITS] == instr[8 +: LINE_BITS] &&
+                  !(instr[20 +: BANK_BITS] == instr[8 +: BANK_BITS] &&
                     ADDR_WIDTH'($signed(instr[27:20])) != ADDR_WIDTH'($signed(instr[19:8])));
 endfunction
 
@@ -259,10 +262,11 @@ always_ff @(posedge clk) begin
         if ($past(retire_valid) && $past(op) == OP_H) assert (halted);
         if (halted && !$past(halted)) assert ($past(retire_valid) && $past(op) == OP_H);
 
-        // The cache can serve two reads at once only from different banks, or the same cell.
+        // The tape can serve two reads at once only from different banks, or from one row of one.
         if (|dmem_bank2) begin
             assert (dmem_bank2 == (1 << LINE_BITS)'(1) << dmem_raddr2[LINE_BITS-1:0]);
-            assert (dmem_raddr2[LINE_BITS-1:0] != dmem_raddr[LINE_BITS-1:0] || dmem_raddr2 == dmem_raddr);
+            assert (dmem_raddr2[BANK_BITS-1:0] != dmem_raddr[BANK_BITS-1:0] ||
+                    dmem_raddr2[ADDR_WIDTH-1:LINE_BITS] == dmem_raddr[ADDR_WIDTH-1:LINE_BITS]);
         end
 
         // A write is the retiring instruction's, at its effective address.
@@ -384,8 +388,8 @@ always_ff @(posedge clk) begin
         cover (retire_valid && is_output);
         cover (halted);
         cover (trapped);
-        cover (dmem_miss);
-        cover (retired >= 8'd1 && dmem_miss && $past(retire_valid));
+        cover (x_miss);
+        cover (retired >= 8'd1 && x_miss && retire_valid);
 
         // Forwarding: two neighbouring instructions on the tracked cell.
         cover (retired >= 8'd2 && retire_valid && op == OP_A && addr_ea == a && $past(retire_valid) &&

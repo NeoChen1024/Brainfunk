@@ -18,6 +18,7 @@ verilate(cosim
     SOURCES
         ${PROJECT_SOURCE_DIR}/rtl/brainfunk_core.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_predict.sv
         ${PROJECT_SOURCE_DIR}/rtl/brainfunk_mem.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_cache.sv
+        ${PROJECT_SOURCE_DIR}/rtl/brainfunk_tape.sv ${PROJECT_SOURCE_DIR}/rtl/tape_ram.sv
         ${PROJECT_SOURCE_DIR}/rtl/sdram_ctrl.sv ${PROJECT_SOURCE_DIR}/tb/sdram_model.sv
         ${PROJECT_SOURCE_DIR}/rtl/sdram_memory.sv
         ${PROJECT_SOURCE_DIR}/rtl/brainfunk_soc.sv ${PROJECT_SOURCE_DIR}/rtl/brainfunk_soc_sdram.sv)

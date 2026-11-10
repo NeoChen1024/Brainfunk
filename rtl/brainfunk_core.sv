@@ -9,9 +9,10 @@
 // MUL is a read of its source and a read and write of its destination, three cycles apart so that
 // the multiplier has a cycle between X and X. The source's value waits in mul_operand.
 // A factor of 1 or -1 needs no multiplier, and is one cycle: the destination reads on the first
-// port and the source on the second, and X adds or subtracts the two. The cache has a bank per
-// cell of a line, each with an address of its own, so that works unless the two cells are in the
-// same bank and different lines, which D can tell from the offsets alone: those take the long way.
+// port and the source on the second, and X adds or subtracts the two. The tape has a bank per two
+// cells of a line, cells i and i + half a line, each with an address of its own, so that works unless
+// the two cells are in the same bank and different lines. D can tell from the offsets alone when they
+// may be: those take the long way.
 //   M0..M2  the data memory read, which takes three edges
 //   X       result, zero test; resolves branches and the end of F
 //   W       writes the data memory, retires
@@ -30,18 +31,20 @@
 // base_ptr stepping, through the same path. The read that finds a zero stops the reads behind it,
 // and then F works out where that left base_ptr, which nothing younger has needed yet.
 //
-// F has no forwarding: dmem_zero comes straight from the cache, so F waits until any write older than
-// it is no longer ahead of it. Nothing younger issues until F has finished. F never misses: a line not
-// in the cache has its zero bits in dmem_ztable, from the cache's zero table, so F reads the tape at a
-// line a cycle however far it goes, and brings nothing into the cache.
+// F has no forwarding: dmem_zero comes straight from the tape, so F waits until any write older than
+// it is no longer ahead of it. Nothing younger issues until F has finished. So no write meets its
+// reads, and F never misses: it reads the tape at a line a cycle however far it goes.
 //
-// The memories are caches; see brainfunk_cache.sv. dmem_rdata arrives three edges after dmem_raddr,
-// and imem_rdata three edges after imem_addr if imem_en holds, each with a hit flag.
+// The code memory is a cache (brainfunk_cache.sv), the tape is on chip (brainfunk_tape.sv). dmem_rdata
+// arrives three edges after dmem_raddr, and imem_rdata three edges after imem_addr if imem_en holds,
+// each with a hit flag.
 //
-// An instruction fetch miss holds D until the cache has the line. A data miss is found in X, and
-// flushes the instruction with everything behind it, to start again from fetch. It has made no
-// writes by then, because writes come after the last read of the same instruction; input reads
-// its cell first for that reason, because a byte taken cannot be asked for again.
+// An instruction fetch miss holds D until the cache has the line. A data read misses when a write to
+// the other cell of its bank's row came at the same time, which block RAM does not promise to read
+// through. The miss is found in X, and flushes the instruction with everything behind it, to start
+// again from fetch, when nothing older is left to write. It has made no writes by then, because
+// writes come after the last read of the same instruction; input reads its cell first for that
+// reason, because a byte taken cannot be asked for again.
 //
 // Prediction, in brainfunk_predict.sv, is two guesses, neither of them trusted:
 //   - next_taken says where to fetch after a word, before that word has been seen. D finds out what
@@ -55,7 +58,8 @@
 module brainfunk_core #(
     parameter int PC_WIDTH    = 20,
     parameter int ADDR_WIDTH  = 16,
-    parameter int LINE_BITS   = 5,  // cells in a line, as in the cache
+    parameter int LINE_BITS   = 5,  // cells in a line, as in the tape
+    parameter int BANK_BITS   = LINE_BITS - 1, // two cells share a bank when these low bits of theirs agree
     parameter int STRIDE_BITS = 4   // F takes a line at a time with a stride below 1 << STRIDE_BITS
 ) (
     input  logic                  clk,
@@ -87,17 +91,14 @@ module brainfunk_core #(
     output logic [ADDR_WIDTH-1:0] dmem_raddr,
     input  logic [7:0]            dmem_rdata,
     input  logic                  dmem_hit,        // arrives with dmem_rdata
-    // The second read port: a MUL's source, for a factor of 1 or -1. dmem_bank2 is which bank of the line
-    // it reads, one-hot, or none; never dmem_raddr's in another line.
+    // The second read port: a MUL's source, for a factor of 1 or -1. dmem_bank2 is which cell of the line
+    // it reads, one-hot, or none; never one in dmem_raddr's bank and another line.
     output logic [(1 << LINE_BITS)-1:0] dmem_bank2,
     output logic [ADDR_WIDTH-1:0] dmem_raddr2,
     input  logic [7:0]            dmem_rdata2,
     input  logic                  dmem_hit_both,   // with dmem_hit: and the second port's read hit, if there was one
     input  logic [(1 << LINE_BITS)-1:0] dmem_zero, // arrives with dmem_rdata: which cells of the line are zero
-    input  logic [(1 << LINE_BITS)-1:0] dmem_ztable, // the same, right when dmem_hit is low
-    output logic                  dmem_miss,       // one cycle; the instruction restarts
-    output logic [ADDR_WIDTH-1:0] dmem_miss_addr,
-    input  logic                  dmem_busy,       // handling a miss: nothing may issue
+    input  logic                  dmem_busy,       // clearing the tape: nothing may issue
     output logic                  dmem_we,
     output logic [ADDR_WIDTH-1:0] dmem_waddr,
     output logic [7:0]            dmem_wdata,
@@ -322,17 +323,18 @@ module brainfunk_core #(
     assign a_ready  = !a_valid || (!dmem_busy && (!a_multi || a_last)) || scan_done;
 
     // A MUL with both cells read at once: a factor of 1 or -1, and the cells not in the same bank of
-    // different lines. Their distance is the distance of the offsets.
+    // different lines. Their distance is the distance of the offsets: cells whose offsets agree in the
+    // bank bits share a bank, in the same line or not, which takes the base to know, so those wait.
     logic d_mul_unit, d_mul_pair;
     assign d_mul_unit    = d_instr[7:0] == 8'd1 || d_instr[7:0] == 8'hFF;
-    assign d_mul_pair    = d_is_mul && d_mul_unit && !(d_short[LINE_BITS-1:0] == d_addr[LINE_BITS-1:0] &&
+    assign d_mul_pair    = d_is_mul && d_mul_unit && !(d_short[BANK_BITS-1:0] == d_addr[BANK_BITS-1:0] &&
                                                        d_short[ADDR_WIDTH-1:0] != d_addr[ADDR_WIDTH-1:0]);
     assign front_en = a_ready && !imem_miss && !imem_hold;
 
     logic drained;
     logic m0_valid, m1_valid, m2_valid, x_valid, w_valid;
 
-    // Writes that would reach the cache after a read issued in the next cycle.
+    // Writes that would reach the tape after a read issued in the next cycle.
     logic m0_writes, m1_writes, m2_writes, older_writes, a_writes;
     assign older_writes = (m0_valid && m0_writes) || (m1_valid && m1_writes) || (m2_valid && m2_writes);
     assign a_writes     = a_valid && (a_is_add || a_is_set || a_is_mul || a_is_in);
@@ -411,8 +413,9 @@ module brainfunk_core #(
                 end
             endcase
         end else if (a_is_in) begin
-            // A read first, so that the line is in the cache and the write cannot miss: a byte
-            // once taken cannot be asked for again.
+            // A read first, then the byte once nothing older is left to write, so that the write
+            // cannot miss: a byte once taken cannot be asked for again. (The first read brought the
+            // line into the data cache there was; the tape needs only the wait.)
             if (a_phase == 2'd0) begin
                 if (!dmem_busy) begin
                     a_go    <= 1'b0;
@@ -500,10 +503,12 @@ module brainfunk_core #(
     logic [7:0]            x_early;
     logic                  x_pair, x_s_from_w, x_s_from_early;
     logic [7:0]            x_s_early;
-    logic [ADDR_WIDTH-1:0] x_ea2;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [ADDR_WIDTH-1:0] x_ea2;   // only the formal invariants look at it
+    /* verilator lint_on UNUSEDSIGNAL */
 
     logic                  w_writes, w_retire, w_is_halt, w_is_trap;
-    logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after, w_miss_ea;
+    logic [ADDR_WIDTH-1:0] w_ea, w_base, w_base_after;
     logic [PC_WIDTH-1:0]   w_pc, w_next_pc, w_alt_pc;
     logic [31:0]           w_instr;
     logic                  w_is_branch, w_taken, w_wrong_guess;
@@ -531,7 +536,7 @@ module brainfunk_core #(
     assign x_miss       = x_valid && !flush && x_uses_cache && !dmem_hit_both;
     assign x_wrong_way  = x_taken != x_predict_taken;
     assign x_mispredict = x_valid && !flush && dmem_hit && x_is_branch && (x_wrong_way || x_target_wrong);
-    assign x_scan_zeros = (dmem_hit ? dmem_zero : dmem_ztable) & x_scan_mask;
+    assign x_scan_zeros = dmem_zero & x_scan_mask;
     assign x_scan_found = x_valid && !flush && x_is_scan && |x_scan_zeros;
 
     // A factor of 1 or -1 takes the source's value as it is: from the second port, or else straight
@@ -551,7 +556,6 @@ module brainfunk_core #(
             scan_stop <= 1'b0;
             scan_found_1 <= 1'b0;
             scan_done <= 1'b0;
-            dmem_miss <= 1'b0;
             dmem_we   <= 1'b0;
         end else begin
             m0_valid  <= a_issue && !flush;
@@ -564,7 +568,6 @@ module brainfunk_core #(
             scan_stop <= x_scan_found;
             scan_found_1 <= scan_stop;
             scan_done <= scan_found_1;
-            dmem_miss <= x_miss;
         end
 
         // A to M0
@@ -600,7 +603,7 @@ module brainfunk_core #(
         m0_mul_negate    <= a_mul_negate;
         m0_pair          <= a_is_mul && a_mul_pair;
         m0_ea2           <= ea2;
-        // as m0_valid, which the cache would otherwise have to decode on its way to the block RAM
+        // as m0_valid, which the tape would otherwise have to decode on its way to the block RAM
         m0_bank2         <= (!rst && a_issue && !flush && a_is_mul && a_mul_pair) ? (1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;
         m0_target_wrong  <= a_next_taken && a_is_branch && a_next_pc != a_fetched_next;
         m0_slot           <= a_slot;
@@ -748,7 +751,6 @@ module brainfunk_core #(
         w_is_halt    <= x_is_halt;
         w_is_trap    <= x_is_trap;
         w_ea         <= x_ea;
-        w_miss_ea    <= !dmem_hit ? x_ea : x_ea2;
         w_base       <= x_base;
         w_base_after <= x_base_after;
         w_pc         <= x_pc;
@@ -816,7 +818,6 @@ module brainfunk_core #(
     assign dmem_raddr2 = m0_ea2;
     assign dmem_waddr = w_ea;
     assign dmem_wdata = w_data;
-    assign dmem_miss_addr = w_miss_ea;
 
     assign retire_valid    = (w_valid && w_retire) || scan_done;
     assign retire_pc       = w_pc;

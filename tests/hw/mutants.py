@@ -1,7 +1,11 @@
 """Deliberately broken designs, each of which the tests must catch: (name, file in rtl/, text, replacement).
 
-Left out because they do not change behaviour: writing back clean lines, or not clearing the dirty bit on a
-fill, which only cost time; and the dmem_hit check on a misprediction, because x_miss flushes those anyway. An illegal IO word taking an input byte is left out because only formal sees it, and
+Left out because they do not change behaviour: the tape's clash test ignoring the row or the half of the
+line, which only restarts more reads and costs time; and the dmem_hit check on a misprediction, because x_miss
+flushes those anyway. Two more stopped changing it when the tape came on chip: S no longer restarting on a
+miss, since S does not use what it reads, and with no data cache a miss no longer has a line to bring in
+before S writes; and A issuing while dmem_busy is high, since the tape raises it only while it clears after a
+reset, and the SoC holds the core in reset until then. The checks stay, and their mutants are left out. An illegal IO word taking an input byte is left out because only formal sees it, and
 an illegal M moving base_ptr because nothing can tell after the trap.
 
 The system's end of input waits for the receive FIFO to be empty, not only for it to offer nothing, and the
@@ -105,42 +109,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   'assign x_addend  = !x_is_mul_dst ? x_data : !x_mul_unit ? product : x_mul_negate ? -mul_operand : mul_operand;',
   'assign x_addend  = x_data;'),
- ('D: no write-back',
-  'brainfunk_cache.sv',
-  'tag_rdata[TAG_WIDTH] && dirty_rdata ? ST_WRITEBACK : ST_REQUEST',
-  'ST_REQUEST'),
- ('D: write-back to wrong line',
-  'brainfunk_cache.sv',
-  'ST_WRITEBACK, ST_WRITEBACK_WAIT: line_address = {victim_tag, index_q};',
-  'ST_WRITEBACK, ST_WRITEBACK_WAIT: line_address = {tag_q, index_q};'),
- ('D: write does not set dirty',
-  'brainfunk_cache.sv',
-  '.we(dmem_we || state == ST_TAG_WRITE),',
-  '.we(state == ST_TAG_WRITE),'),
- ('D: dirty index wrong',
-  'brainfunk_cache.sv',
-  '.waddr(dmem_we ? dmem_waddr[13:5] : index_q),',
-  '.waddr(dmem_we ? dmem_waddr[12:4] : index_q),'),
- ('D: hit ignores tag',
-  'brainfunk_cache.sv',
-  "dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};",
-  'dmem_hit   <= tag_rdata[TAG_WIDTH];'),
- ('D: hit ignores valid',
-  'brainfunk_cache.sv',
-  "dmem_hit   <= tag_rdata == {1'b1, addr_2[ADDR_WIDTH-1:14]};",
-  'dmem_hit   <= tag_rdata[TAG_WIDTH-1:0] == addr_2[ADDR_WIDTH-1:14];'),
- ('D: lane select off',
-  'brainfunk_cache.sv',
-  'dmem_rdata <= line_rdata[8*addr_2[4:0] +: 8];',
-  'dmem_rdata <= line_rdata[8*addr_1[4:0] +: 8];'),
- ('D: write to wrong lane',
-  'brainfunk_cache.sv',
-  "(dmem_we && dmem_waddr[4:0] == 5'(i))",
-  "(dmem_we && dmem_waddr[4:0] == 5'(31-i))"),
- ('D: fill word order',
-  'brainfunk_cache.sv',
-  'fill_addr <= {index_q, word_q};\n        fill_data <= rd_data;\n    end\n\n    generate\n        for (genvar i = 0; i < 32',
-  'fill_addr <= {index_q, ~word_q};\n        fill_data <= rd_data;\n    end\n\n    generate\n        for (genvar i = 0; i < 32'),
  ('unit factor ignores its sign',
   'brainfunk_core.sv',
   'x_mul_negate ? -mul_operand : mul_operand;',
@@ -153,14 +121,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   'product <= 8\'(mul_operand * m2_data);',
   'product <= 8\'(mul_operand * m1_data);'),
- ('D: zero flag from the wrong cell',
-  'brainfunk_cache.sv',
-  "dmem_zero[i] <= line_rdata[8*i +: 8] == 8'd0;",
-  "dmem_zero[i] <= line_rdata[8*(31-i) +: 8] == 8'd0;"),
- ('D: write-back word late',
-  'brainfunk_cache.sv',
-  "line_rdata[32*addr_1[4:2] +: 32];",
-  "line_rdata[32*addr_2[4:2] +: 32];"),
  ('scan does not wait for an older write',
   'brainfunk_core.sv',
   'a_go            <= !d_is_scan || !(a_writes || older_writes);',
@@ -209,18 +169,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   'm2_scan_mask     <= m1_scan_mask << (2 * ((m1_scan_cell >> 1) & LINE_BITS\'(3)));',
   'm2_scan_mask     <= m1_scan_mask;'),
- ('D: fetch misaligned',
-  'brainfunk_cache.sv',
-  'fsm_raddr[4:2] <= fetched[2:0];',
-  "fsm_raddr[4:2] <= fetched[2:0] + 3'd1;"),
- ('D: busy falls early',
-  'brainfunk_cache.sv',
-  "                    dmem_busy <= 1'b1;\n                    index_q   <= dmem_miss_addr[13:5];",
-  '                    index_q   <= dmem_miss_addr[13:5];'),
- ('D: miss port never owned',
-  'brainfunk_cache.sv',
-  'assign fsm_owns_read = dmem_busy;',
-  "assign fsm_owns_read = 1'b0;"),
  ('I: hit ignores valid',
   'brainfunk_cache.sv',
   "imem_hit <= tag_rdata == {1'b1, addr_2[PC_WIDTH-1:12]};",
@@ -275,14 +223,6 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
   'brainfunk_core.sv',
   'a_is_mul || a_is_branch || a_is_in ||',
   'a_is_mul || a_is_in ||'),
- ('core: set misses unnoticed',
-  'brainfunk_core.sv',
-  'm0_uses_cache    <= a_is_add || a_is_set ||',
-  'm0_uses_cache    <= a_is_add ||'),
- ('core: issues while busy',
-  'brainfunk_core.sv',
-  'assign a_issue        = a_valid && !dmem_busy && (!a_multi || a_go);',
-  'assign a_issue        = a_valid && (!a_multi || a_go);'),
  ('core: refetch forgets',
   'brainfunk_core.sv',
   'end else if (imem_refetch && imem_miss) begin',
@@ -300,13 +240,7 @@ MUTANTS = [('fwd d1 off', 'brainfunk_core.sv', 'x_from_w     <= !m2_no_read && m
  ('sdram: no auto-precharge',
   'sdram_ctrl.sv',
   "sd_addr <= {3'b100, line_q[4:0], 3'b000};",
-  "sd_addr <= {3'b000, line_q[4:0], 3'b000};"),
- ('sdram: oe short', 'sdram_ctrl.sv', "write_left <= 4'd7;", "write_left <= 4'd6;"),
- ('soc: wrong read owner', 'brainfunk_soc.sv', 'i_owns_read    <= !load_req_valid && !d_req_valid;', 'i_owns_read    <= !load_req_valid && d_req_valid;'),
- ('soc: priority inverted',
-  'brainfunk_soc.sv',
-  'assign d_req_ready    = req_ready && !load_req_valid && d_req_valid;',
-  'assign d_req_ready    = req_ready && !load_req_valid && d_req_valid && !i_req_valid;')]
+  "sd_addr <= {3'b000, line_q[4:0], 3'b000};")]
 
 MUTANTS += [
     ('flush misses w', 'brainfunk_core.sv', "w_valid   <= x_valid && !flush && !x_miss;", "w_valid   <= x_valid && !x_miss;"),
@@ -318,7 +252,9 @@ MUTANTS += [
 # The second read port, which a MUL with a factor of 1 or -1 reads its source on.
 MUTANTS += [
  ('pair ignores the bank', 'brainfunk_core.sv',
-  "!(d_short[LINE_BITS-1:0] == d_addr[LINE_BITS-1:0] &&", "!(1'b0 &&"),
+  "!(d_short[BANK_BITS-1:0] == d_addr[BANK_BITS-1:0] &&", "!(1'b0 &&"),
+ ('pair banks of whole lines', 'brainfunk_core.sv',
+  "!(d_short[BANK_BITS-1:0] == d_addr[BANK_BITS-1:0] &&", "!(d_short[LINE_BITS-1:0] == d_addr[LINE_BITS-1:0] &&"),
  ('pair source fwd d1 off', 'brainfunk_core.sv', 'x_s_from_w     <= m2_s_from_w_next;', "x_s_from_w     <= 1'b0;"),
  ('pair source fwd d2 off', 'brainfunk_core.sv', 'm2_s_from_w      <= !m1_hit2[1] && m1_hit2[2];', "m2_s_from_w      <= 1'b0;"),
  ('pair source fwd d3 off', 'brainfunk_core.sv',
@@ -329,22 +265,13 @@ MUTANTS += [
   'm1_hit2[1] <= m1_valid && m1_writes && m0_ea2 == m1_ea;', 'm1_hit2[1] <= m1_valid && m0_ea2 == m1_ea;'),
  ('pair source misses ignored', 'brainfunk_core.sv',
   'x_uses_cache && !dmem_hit_both;', 'x_uses_cache && !dmem_hit;'),
- ('pair source miss fills the destination', 'brainfunk_core.sv',
-  'w_miss_ea    <= !dmem_hit ? x_ea : x_ea2;', 'w_miss_ea    <= x_ea;'),
  ('pair subtracts without the carry', 'brainfunk_core.sv',
   'assign x_sum     = x_value + x_operand + 8\'(x_pair && x_mul_negate);', 'assign x_sum     = x_value + x_operand;'),
  ('pair ignores the sign', 'brainfunk_core.sv',
   'assign x_operand = !x_pair ? x_addend : x_mul_negate ? ~x_source : x_source;', 'assign x_operand = !x_pair ? x_addend : x_source;'),
  ('pair source at the destination', 'brainfunk_core.sv', 'assign ea2   = base_ptr + a_mul_source;', 'assign ea2   = base_ptr + a_offset;'),
- ('cache: second port takes no bank', 'brainfunk_cache.sv',
-  ".raddr(dmem_bank2[i] ? dmem_raddr2[13:5] : raddr[13:5]),", '.raddr(raddr[13:5]),'),
  ('pair bank one off', 'brainfunk_core.sv',
   "(1 << LINE_BITS)'(1) << ea2[LINE_BITS-1:0] : '0;", "(1 << LINE_BITS)'(2) << ea2[LINE_BITS-1:0] : '0;"),
- ('cache: second port hit from the first tags', 'brainfunk_cache.sv',
-  "(!re2_2 || tag2_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]})", "(!re2_2 || tag_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]})"),
- ('cache: second port misses ignored', 'brainfunk_cache.sv',
-  "(!re2_2 || tag2_rdata == {1'b1, addr2_2[ADDR_WIDTH-1:14]})", "1'b1"),
- ('cache: second port hit a cycle late', 'brainfunk_cache.sv', 're2_2      <= re2_1;', 're2_2      <= |dmem_bank2;'),
 ]
 
 # The same idea against formal: names from MUTANTS that its properties must catch.
@@ -370,8 +297,8 @@ PERFORMANCE_MUTANTS = [
  ('direction table read a word late', 'brainfunk_predict.sv', '.raddr(i1_pc[DIR_BITS-1:0]),', '.raddr(fetch_pc[DIR_BITS-1:0]),'),
 ]
 
-# The real cache only raises dmem_busy when a miss has already redirected the core, so only formal, which
-# has it free, can see these.
+# The tape only raises dmem_busy while it clears, before the core starts, so only formal, which has it free,
+# can see these.
 FORMAL_ONLY_MUTANTS = [
  ('scan moves on without having read', 'brainfunk_core.sv',
   'if (!a_scan_more || a_issue) begin', 'begin'),
@@ -386,17 +313,27 @@ FORMAL_ONLY_MUTANTS += [
   'm1_base          <= m0_is_scan ? m0_ea - a_offset : m0_base;', 'm1_base          <= m0_base;'),
 ]
 
-# F's zero table: the cache writes it, the core reads it on a miss.
+# The tape: sixteen RAMs of two cells, a read that meets a write to the other cell restarting, and the
+# clear at reset. Clash images (cosim --clash) are what make reads meet writes, and MULs share banks.
 MUTANTS += [
-    ('D: zero table not written back', 'brainfunk_cache.sv',
-     'assign ztable_we    = state == ST_RESET || state == ST_WRITEBACK;', 'assign ztable_we    = state == ST_RESET;'),
-    ('D: zero table starts nonzero', 'brainfunk_cache.sv',
-     "assign ztable_wdata = state == ST_RESET ? '1 : dmem_zero;", "assign ztable_wdata = state == ST_RESET ? '0 : dmem_zero;"),
-    ('D: zero table written at the index alone', 'brainfunk_cache.sv',
-     'assign ztable_waddr = state == ST_RESET ? clear_line : {victim_tag, index_q};',
-     "assign ztable_waddr = state == ST_RESET ? clear_line : (ADDR_WIDTH-5)'(index_q);"),
-    ('core: scan ignores the zero table', 'brainfunk_core.sv',
-     'assign x_scan_zeros = (dmem_hit ? dmem_zero : dmem_ztable) & x_scan_mask;', 'assign x_scan_zeros = dmem_zero & x_scan_mask;'),
+    ('tape: read meets a write unnoticed', 'brainfunk_tape.sv',
+     'assign clash  = dmem_we && !clearing &&', "assign clash  = 1'b0 && dmem_we && !clearing &&"),
+    ('tape: second read meets a write unnoticed', 'brainfunk_tape.sv',
+     'assign clash2 = dmem_we && !clearing && |dmem_bank2 &&', "assign clash2 = 1'b0 && dmem_we && !clearing && |dmem_bank2 &&"),
+    ('tape: second hit a cycle late', 'brainfunk_tape.sv', 'clean2_2    <= clean2_1;', 'clean2_2    <= !clash2;'),
+    ('tape: second port takes no RAM', 'brainfunk_tape.sv', '.raddr(second[j] ? row2 : row),', '.raddr(row),'),
+    ('tape: second port takes one half', 'brainfunk_tape.sv',
+     'assign second = dmem_bank2[15:0] | dmem_bank2[31:16];', 'assign second = dmem_bank2[15:0];'),
+    ('tape: halves written the wrong way round', 'brainfunk_tape.sv',
+     '{dmem_waddr[4], !dmem_waddr[4]}', '{!dmem_waddr[4], dmem_waddr[4]}'),
+    ('tape: write to the wrong RAM', 'brainfunk_tape.sv', "dmem_waddr[3:0] == 4'(j)}}", "dmem_waddr[3:0] == 4'(15 - j)}}"),
+    ('tape: read a cycle early', 'brainfunk_tape.sv',
+     'dmem_rdata  <= line_rdata[8*cell_2 +: 8];', 'dmem_rdata  <= line_rdata[8*cell_1 +: 8];'),
+    ('tape: zero flag from the wrong cell', 'brainfunk_tape.sv',
+     "dmem_zero[i] <= line_rdata[8*i +: 8] == 8'd0;", "dmem_zero[i] <= line_rdata[8*(31-i) +: 8] == 8'd0;"),
+    ('tape: not cleared at reset', 'brainfunk_tape.sv', "            clearing  <= 1'b1;\n", "            clearing  <= 1'b0;\n"),
+    ('tape: clear stops a row short', 'brainfunk_tape.sv', 'if (&clear_row) clearing <= 1\'b0;',
+     "if (clear_row == '1 - 1'b1) clearing <= 1'b0;"),
 ]
 
 # The end of input that leaves the cell: added as 0, not set. Random programs read past their input in
@@ -416,7 +353,7 @@ FORMAL_MUTANTS = [
     "scan moves on without having read", "backward scan goes forward a line", "unit factor ignores its sign",
     "pair ignores the bank", "pair source fwd d1 off", "pair source fwd d3 off", "pair source fwd d4 off (collision)",
     "pair source misses ignored", "pair subtracts without the carry", "pair source at the destination",
-    "pair bank one off", "core: scan ignores the zero table", "backward scan cell not mirrored",
+    "pair bank one off", "pair banks of whole lines", "backward scan cell not mirrored",
     "scan restarts from where it began", "core: keep sets the cell", "core: keep stores the byte",
 ]
 
@@ -434,6 +371,8 @@ LOADER_MUTANTS = [
     ('loader: always LZ', 'loader.sv', "raw <= !byte_data[0];", "raw <= 1'b0;"),
     ('loader: header not in the CRC', 'loader.sv', "(state == ST_HEADER && header_pos < 4'd12)", "1'b0"),
     ('soc: loader never reads', 'brainfunk_soc.sv', 'load_owns_read <= load_req_valid;', "load_owns_read <= 1'b0;"),
+    # Only the loader writes the SDRAM, now that the tape is on chip.
+    ('sdram: oe short', 'sdram_ctrl.sv', "write_left <= 4'd7;", "write_left <= 4'd6;"),
     ('loader: end of input not read', 'loader.sv', 'eof <= byte_data[3:2];', "eof <= 2'd0;"),
     ('loader: unknown flags taken', 'loader.sv',
      "if (byte_data[7:4] != 4'd0 || byte_data[1]) header_bad <= 1'b1;", "if (byte_data[1]) header_bad <= 1'b1;"),

@@ -741,12 +741,14 @@ enum class MulMode { Split, PairUnit, Single };
 enum class Forward { None, Set, Add, Mul };
 constexpr std::string_view FORWARD_NAMES[] = {"none", "set", "add", "mul"};
 
-/* The caches and the SDRAM behind them, as the core has them; doc/analysis.md says what each field means.
- * Both caches are direct-mapped and share the SDRAM, which moves a line at a time and refreshes on its own. */
+/* The memories, as the core has them; doc/analysis.md says what each field means. The tape is on chip, and
+ * the code is cached; either can be either. Caches are direct-mapped and share the SDRAM, which moves a line
+ * at a time and refreshes on its own. */
 struct MemoryConfig {
     bool     on = true;
     unsigned i_lines = 512, i_words = 8;     // instruction cache: lines, and words in a line
     unsigned d_lines = 512, d_cells = 32;    // data cache: lines, and cells in a line; written back
+    unsigned d_on_chip = 1, i_on_chip = 0;   // 1: the tape, or the code, in block RAM, which never misses
     unsigned zero_table = 1;                 // 1: F takes a missing line's zero bits from a table, and never misses
     unsigned read_latency = 15;              // SDRAM: a line read, from the request to its last word
     unsigned read_busy = 17, write_busy = 19;   // and until the next request, after a read or a write
@@ -782,11 +784,11 @@ struct MemoryConfig {
     }
 
 private:
-    static constexpr const char* NAMES[] = {"i_lines", "i_words", "d_lines", "d_cells", "zero_table", "read_latency", "read_busy",
+    static constexpr const char* NAMES[] = {"i_lines", "i_words", "d_lines", "d_cells", "d_on_chip", "i_on_chip", "zero_table", "read_latency", "read_busy",
                                             "write_busy", "refresh_every", "refresh_busy", "fetch_lead", "i_request",
                                             "i_resume", "d_request", "d_resume"};
     static unsigned* field(MemoryConfig& m, std::string_view name) {
-        unsigned* const fields[] = {&m.i_lines, &m.i_words, &m.d_lines, &m.d_cells, &m.zero_table, &m.read_latency, &m.read_busy,
+        unsigned* const fields[] = {&m.i_lines, &m.i_words, &m.d_lines, &m.d_cells, &m.d_on_chip, &m.i_on_chip, &m.zero_table, &m.read_latency, &m.read_busy,
                                     &m.write_busy, &m.refresh_every, &m.refresh_busy, &m.fetch_lead, &m.i_request,
                                     &m.i_resume, &m.d_request, &m.d_resume};
         for (std::size_t i = 0; i < std::size(NAMES); ++i) if (name == NAMES[i]) return fields[i];
@@ -811,7 +813,7 @@ struct MachineConfig {
     unsigned        write_banks = 0;      // two writes in a group are to cells different modulo this; 0 any
     bool            early_second = true;  // a branch second in its group may resolve early
     bool            early_store = true;   // with early_cells, a store of values; else only the zero bits
-    unsigned        banks = 32;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
+    unsigned        banks = 16;         // cells in a line of banks: two in one bank of different lines conflict; 0 none
     unsigned        penalty = 9, steer = 3;
     unsigned        scan_base = 8, line_cells = 32, stride_limit = 16, io = 7;
     /* Branches resolved before X: once the cell's value is known, a misprediction costs early_penalty
@@ -907,6 +909,7 @@ public:
     /* The word at pc, which would issue at `at` from the cache: when it can. A miss holds fetch, which
      * was `fetch_lead` cycles ahead of issue, until the line is in. */
     std::uint64_t fetch(addr_t pc, std::uint64_t at) {
+        if (c_.i_on_chip) return at;
         const std::uint64_t line = pc / c_.i_words;
         auto& tag = i_tags_[line % c_.i_lines];
         if (tag == line) return at;
@@ -922,6 +925,7 @@ public:
      * restarts the instruction, `restart` cycles at least, once the line is in, after writing back the
      * one it replaces if that was written. */
     std::uint64_t data(addr_t cell, bool write, std::uint64_t at, unsigned restart) {
+        if (c_.d_on_chip) return at;
         const std::uint64_t line = cell / c_.d_cells;
         const auto index = line % c_.d_lines;
         std::uint64_t ready = at;

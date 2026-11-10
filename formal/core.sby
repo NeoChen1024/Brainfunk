@@ -2,7 +2,7 @@
 # 90 s against more than an hour. z3 was slower still.
 #
 # The prove tasks are unbounded: k-induction over the invariants in core_invariants.svh, which hold in
-# every reachable state. They cover the pipeline with every cache signal free, F and I/O included, at
+# every reachable state. They cover the pipeline with every memory signal free, F and I/O included, at
 # two sizes: 16 cells in lines of 4 with strides up to 3, and lines of 8 with strides up to 7, so that
 # a backward scan has lines to go wrong in and the tables have strides to get wrong. prove and
 # prove_lines replace the 8 x 8 multiplier with an XOR on both sides, which the solver finds far

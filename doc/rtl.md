@@ -2,7 +2,8 @@
 
 `rtl/brainfunk_core.sv` is a scalar pipelined core for the instruction set in
 [bitcode.txt](bitcode.txt) and [bincode.txt](bincode.txt), built for clock speed and checked
-against the C++ interpreter at every retire. Code and tape live in SDRAM, behind two caches.
+against the C++ interpreter at every retire. The tape is on chip, in block RAM; the code is in SDRAM,
+behind an instruction cache.
 
 It does not implement the fused instructions (`MULC`, `DJN`, `MJN`, `SRUN`) and traps on
 them, so programs must come from `-O2` or lower.
@@ -10,7 +11,9 @@ them, so programs must come from `-O2` or lower.
 ```text
 rtl/brainfunk_core.sv    the core
 rtl/brainfunk_predict.sv next-fetch and direction tables, which only guess
-rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction and data caches, 32-byte lines; the data cache reads whole lines
+rtl/brainfunk_cache.sv   16 KiB direct-mapped instruction cache, 32-byte lines
+rtl/brainfunk_tape.sv    the 64 KiB tape in sixteen block RAMs, a whole line per read
+rtl/tape_ram.sv          the tape's block RAM, 2K x 16 with byte writes, as tools infer it
 rtl/brainfunk_mem.sv     block RAM behind a registered bank multiplexer
 rtl/brainfunk_soc.sv     all of those together, in front of a line memory
 rtl/uart.sv              UART and FIFOs
@@ -20,7 +23,7 @@ rtl/brainfunk_system.sv  the SoC with its loader, commands, flash boot and I/O: 
 rtl/sdram_ctrl.sv        SDRAM controller, as a line memory
 rtl/sdram_memory.sv      the controller and the EG4S20's SDRAM pins
 rtl/brainfunk_soc_sdram.sv the SoC with that SDRAM, which the cosimulator runs
-rtl/board/               the YADAN Board: top, PLL, SDRAM pins; nothing else in rtl/ is particular to a board
+rtl/board/               the YADAN Board: top, PLL, SDRAM pins, the tape's BRAM32K; nothing else in rtl/ is particular to a board
 tb/                      Verilator cosimulation, SDRAM and flash models, loader, UART and console testbenches
 formal/                  SymbiYosys properties and the invariants that make them inductive
 synth/                   Tang Dynasty flow for the YADAN Board
@@ -109,7 +112,7 @@ Input waits for an empty pipeline. Output acts in `X`, when everything older has
 | Branch mispredicted, or the table's target wrong | 9 more |
 | `IO` | about 8, plus waiting for the byte |
 | Cache miss, instruction | about 20, holding the front end |
-| Cache miss, data | about 30 to restart the instruction, about 20 more to write back a dirty line |
+| A read that meets a write to the other cell of its RAM's row | 9 more, restarting the instruction |
 
 `F` reads a line per cycle, and the read that finds a zero stops the reads behind it; see
 [Scanning](#scanning).
@@ -125,7 +128,7 @@ On the same images at `-O2`:
 In `mandel.b`, 42% of the cycles are charged to `MUL` and 11% to `F`. The charge includes the
 misprediction before an instruction, which is why `MUL` averages 3.6 cycles. See [Multiplying](#multiplying)
 for what came after this table. These programs fit
-their caches, which cost them almost nothing. `LostKng.b` does not, and its CPI is about 11.
+the instruction cache, which costs them almost nothing. `LostKng.b` does not, and its CPI is about 11.
 
 ### Scanning
 
@@ -150,17 +153,20 @@ gives the first cell the stride lands on there, from where it landed in the line
 strides use the same tables with cells numbered from the end of the line. A mask of the cells to look
 at follows the read down the pipeline, built in three steps because it is a 32-way shift.
 
-`dmem_zero` comes straight from the cache, so `F` has no forwarding, and waits while any older write
-would still reach the cache after its first read. It stays in `A` until it finishes, so nothing younger
+`dmem_zero` comes straight from the tape, so `F` has no forwarding, and waits while any older write
+would still reach the tape after its first read. It stays in `A` until it finishes, so nothing younger
 runs alongside it, and its younger reads can be discarded.
 
-`F` never misses. All it needs of a cell is whether it is zero, and a bit for each cell of the tape is
-64 Kbit, eight 9K block RAMs: the data cache keeps them as a zero table, read with each line. For a
-line in the cache, `F` takes `dmem_zero` from the cache as before; for one that is not, the table's
-bits, which are right for every such line: a line goes into the table when the cache writes it back, a
-line evicted clean is as it came in, and a reset makes the table all zeros, as the tape starts. Nothing
-writes the table while `F` reads it, because only a miss writes back. So `F` goes a line a cycle however
-far it reaches, and brings nothing into the cache.
+`F` never misses, now that the tape is on chip; see [The tape](#the-tape). Before that, the tape was in
+SDRAM behind a data cache, and what follows is how `F` came not to miss there.
+
+All it needs of a cell is whether it is zero, and a bit for each cell of the tape is
+64 Kbit, eight 9K block RAMs: the data cache kept them as a zero table, read with each line. For a
+line in the cache, `F` took `dmem_zero` from the cache as before; for one that was not, the table's
+bits, which were right for every such line: a line went into the table when the cache wrote it back, a
+line evicted clean was as it came in, and a reset made the table all zeros, as the tape starts. Nothing
+wrote the table while `F` read it, because only a miss wrote back. So `F` went a line a cycle however
+far it reached, and brought nothing into the cache.
 
 Before, a line that missed restarted `F`, from fetch, and a scan past what the cache holds evicted its
 own first lines on the way, so it missed those again when it started over. In the cosimulator, the
@@ -193,12 +199,14 @@ the DSP block, which takes its factor from the destination in `M2`.
 
 A factor of 1 or -1 is now one cycle: the destination reads on the first port and the source on a
 second, and `X` adds the two, or adds the complement and a carry. The data cache's 32 byte banks each
-take their own address, so the second port costs a copy of the tags and a multiplexer per bank; the
+took their own address, so the second port cost a copy of the tags and a multiplexer per bank; the
 core decodes which bank the second port wants as it leaves `A`, so that the multiplexer is all that
 comes before the block RAM. Two cells in the same bank of different lines cannot go together, and `D`
-tells that from the offsets alone, because both are `base_ptr` plus a constant: those go the old way,
-and none of the corpus has any. The source has forwarding of its own, as wide as the first port's, and
-the cache gives one hit for both reads, so that `X`'s restart has no more to look at than before.
+tells that from the offsets alone, because both are `base_ptr` plus a constant: those go the old way.
+The tape's banks hold two cells each, 16 apart, so `D` now compares four bits of the offsets rather than
+five, and sends the cells 16 apart the old way too, though in the same line they could go together.
+The source has forwarding of its own, as wide as the first port's, and the memory gives one hit for both
+reads, so that `X`'s restart has no more to look at than before.
 
 | Program | `MUL` before | `MUL` after | Cycles |
 |---|---|---|---|
@@ -264,13 +272,16 @@ matters is the clock times the instructions per cycle, and neither paid for its 
   `mandel.b` 1.517 to 1.248 CPI, but at 120 to 130 MHz.
 
 Over the corpus (`tools/issue_sweep.py`, 93 programs in 29 families, each family counting once), the
-issue model, caches and SDRAM included, gives these, each changing one thing in the core as it is:
+issue model, caches and SDRAM included, gives these, each changing one thing in the core as it was
+with a data cache:
 
 | Change | Cycles saved |
 |---|---|
 | Line scanning, against a cell per cycle (already in) | 24%, mostly in a few families |
 | A factor of 1 or -1 in one cycle (already in) | 4% |
 | A memory that never misses | 19% |
+| The tape on chip (now in) | 3.6% |
+| The code on chip, with the tape | 7.3% more |
 | `IO` in 2 cycles rather than 7 | 7% |
 | `F` ending in 2 cycles rather than 8 | 5% |
 | Early resolution, both guesses | 3% |
@@ -287,9 +298,10 @@ over the corpus, mostly optimistic; see doc/analysis.md.
 
 ## Memory
 
-`brainfunk_soc` reaches memory through a line memory port: one 8-word line at a time, read as 8
-words in order, written by fetching 8 words, with the next request not taken before a read's last
-word. Its comment has the details. `sdram_ctrl` is one; another board's memory, behind its own
+The tape is on chip, in `dtape` ([The tape](#the-tape)). The code is in a line memory, behind the
+instruction cache: `brainfunk_soc` reaches it through a line memory port, one 8-word line at a time,
+read as 8 words in order, written by fetching 8 words, with the next request not taken before a read's
+last word. Its comment has the details. `sdram_ctrl` is one; another board's memory, behind its own
 controller, would be another.
 
 ```mermaid
@@ -297,16 +309,13 @@ flowchart LR
     pred["branch_predictor<br>next-fetch and direction tables"] <--> core
     core["brainfunk_core<br>IF I1 I2 D A M0 M1 M2 X W"]
     core -- "imem: a word" --> ic["icache<br>16 KiB, 32-byte lines"]
-    core -- "dmem: two cells, a line's zero bits, a write" --> dc
-    subgraph dc["dcache: 16 KiB, 32-byte lines, write-back"]
-        cells["32 cell RAMs<br>a whole line per read"]
-        tags["tags, dirty bits"]
-        zt["zero table<br>a bit per tape cell"]
+    core -- "dmem: two cells, a line's zero bits, a write" --> tape
+    subgraph tape["dtape: 64 KiB"]
+        rams["16 RAMs of 2K x 16<br>cells j and j + 16 of a line<br>a whole line per read"]
     end
     loader(["image_loader"]) -- "load port" --> arb
-    dc -- "fill, write-back, clear" --> arb
     ic -- "fill" --> arb
-    arb["arbiter<br>loader, then D, then I"] == "line memory port" ==> mem(["line memory"])
+    arb["arbiter<br>loader, then I"] == "line memory port" ==> mem(["line memory"])
 ```
 
 A read, and a request from another client waiting for it to finish, since the next request takes
@@ -322,44 +331,102 @@ read and its registers take.
 | Line memory word address | Contents |
 |---|---|
 | `0x000000` | Code, one instruction per word |
-| `0x100000` | Tape, four cells per word, the lowest address in the low byte |
 
-The caches keep the core's three-edge memory latency, so the pipeline did not change shape for
-them. Each hit flag is a registered comparison arriving with the data.
+The tape was in the top half, at `0x100000`, while a data cache held it.
+
+The cache and the tape keep the core's three-edge memory latency, so the pipeline did not change shape
+for them. Each hit flag is registered, and arrives with the data.
 
 An instruction miss holds the front end while the line fills. If a redirect abandons the
 instruction that missed, fetching carries on, and the line is still filled.
 
-A data miss is found in `X`. The instruction has written nothing by then, so it flushes itself
-and everything younger and restarts from fetch, the same as a misprediction back to itself, while
-`A` waits for the cache. Nothing past `A` stalls, so forwarding did not change. Two rules follow:
-a restarted instruction must find everything in the cache at once, which holds because `MUL`'s two
-cells are about 2 KiB apart at most; and input reads its cell before taking a byte, so that its
-write cannot miss, because a byte taken cannot be asked for again.
+A data read misses when a write to the other cell of its RAM's row came in the same cycle (below). The
+miss is found in `X`. The instruction has written nothing by then, so it flushes itself and everything
+younger and restarts from fetch, the same as a misprediction back to itself. When it reads again,
+nothing older is left to write, so it cannot miss twice. Nothing past `A` stalls, so forwarding did not
+change. Input reads its cell before taking a byte, and takes it only once nothing older is left to
+write, so that its write cannot miss, because a byte taken cannot be asked for again.
 
-The data cache, from a miss to the line it brings in:
+### The tape
 
-```mermaid
-stateDiagram-v2
-    [*] --> RESET
-    RESET --> CLEAR: swept, CLEAR_TAPE
-    RESET --> IDLE: swept
-    CLEAR --> CLEAR_WAIT: req_ready
-    CLEAR_WAIT --> CLEAR: written, more lines
-    CLEAR_WAIT --> IDLE: last line written
-    IDLE --> TAG_1: dmem_miss
-    TAG_1 --> TAG_2
-    TAG_2 --> DECIDE
-    DECIDE --> WRITEBACK: victim dirty
-    DECIDE --> REQUEST: victim clean
-    WRITEBACK --> WRITEBACK_WAIT: req_ready
-    WRITEBACK_WAIT --> REQUEST: 8 words fetched
-    REQUEST --> FILL: req_ready
-    FILL --> TAG_WRITE: 8th word
-    TAG_WRITE --> IDLE
-    note right of RESET: invalidates every tag, makes the zero table all zeros
-    note right of WRITEBACK: the zero table takes the victim's bits
-```
+All 64 KiB of the tape is in sixteen block RAMs of 2K x 16, one row of each per 32-cell line: RAM `j`
+holds cells `j` and `j + 16`, in its low and high byte. On the EG4S20 those are its sixteen BRAM32K,
+which hold the tape exactly; `rtl/tape_ram.sv` is the RAM as a tool infers it, and
+`rtl/board/eg4_tape_ram.sv` instantiates the BRAM32K, because Tang Dynasty builds the inferred one from
+four 9K block RAMs each, all 64 of them, rather than give a BRAM32K byte writes. A read still gets the
+whole line for `F`, and the second read port takes any RAM the first does not need, with an address of
+its own, as the data cache's 32 byte banks did. A reset clears the tape, a line a cycle, 2048 cycles,
+while the core waits.
+
+Two cells in a 16-bit row raise what one per RAM never did: a write of one cell and a read of the other
+in the same cycle are a write and a read of one address on the RAM's two ports, and neither DS301 nor
+the Tang Dynasty manual says what that read returns. So the tape reports such a read as a miss, and the
+core restarts it. Which cells share a row decides how often that is. Counted in the cosimulator over 20
+million instructions each, reads that met a write to the other cell of their row, per thousand cycles:
+
+| Program | Cells `j` and `j + 1` | Cells `j` and `j + 16` |
+|---|---|---|
+| `long.b` | 47.9 | 0 |
+| `factor.b` (awib) | 32.6 | 0.85 |
+| `Golden.b` | 17.7 | 0 |
+| `Hanoi.b` | 13.1 | 0 |
+| `mandel.b` | 5.3 | 0.35 |
+| `LostKng.b`, `Collatz.b` | under 0.1 | 0.02 or less |
+| `beemovie.bf`, `BusyBeaver.b` | 0 | 0 |
+
+The cells next to the one written are the ones read next. `F` never meets a write, since it waits for
+every older one; formal checks that, with zero bits that are free whenever a write meets their row.
+`MUL`'s two cells share a RAM when 16 apart, which `D` now sends the long way (see
+[Multiplying](#multiplying)).
+
+Against the data cache, in cycles over the first 20 million instructions, cosimulated:
+
+| Program | Data cache | Tape on chip | |
+|---|---|---|---|
+| `beemovie.bf` | 138.5 M | 83.0 M | 1.669 times as fast |
+| `memoryhog.b` (awib, all of it) | 155.8 K | 68.5 K | 2.275 |
+| `BusyBeaver.b` (all of it) | 6.531 M | 6.495 M | 1.006 |
+| `mandel.b` | 30.04 M | 30.15 M | 0.996, the restarts and the long-way `MUL`s |
+| `factor.b` (all of it) | 529.7 K | 534.2 K | 0.992 |
+| `LostKng.b` | 228.6 M | 228.8 M | 0.999 |
+| `Hanoi.b`, `Golden.b`, `Collatz.b`, `long.b`, `squares.b` | | | within 0.01% |
+
+The issue model put it at 3.6% fewer cycles over the corpus (family-weighted geometric mean, with
+banks of one cell), all of it in a few families that sweep the tape. A first try kept the 32 RAMs of a byte each, 2K deep,
+which Tang Dynasty built from all 64 9K block RAMs and one BRAM32K: it had no restarts, and closed
+timing at relaxations 0.8 and 0.9 by 0.02 ns, but left no 9K block RAM; giving each half a 9K of its
+own pushed the direction table into a BRAM32K, and that missed by 0.05 to 0.5 ns at every relaxation.
+Lines of 16 cells in sixteen 4K x 8 RAMs would have had no shared rows either, but halved `F`'s speed,
+which the model put at 2% more cycles than the data cache, and half as fast in `BusyBeaver.b`'s family.
+
+As built: 4109 LUTs against 4728 with the data cache, 16 of 16 BRAM32K and 20 of 64 9K block RAMs, at
+168 MHz with 0.001 ns of slack at relaxation 0.8 (`synth/yadan.tcl`). With the BRAM32K's own output
+register as the second edge, the read went straight from the RAM to the multiplexers that take the
+line apart, and missed by 0.7 to 1.8 ns; a register in the fabric there instead can sit by them.
+
+#### On another FPGA
+
+Two cells to a row is the EG4S20's doing: sixteen large block RAMs, and nothing documented about a read
+meeting a write on the other port. Neither holds on the XC7K160T of the ADP-XC7K160, which a port to it
+should use:
+
+- It has 325 RAMB36, each usable as two independent RAMB18, 650 in all (DS180 v2.6.1, Table 6). A RAMB18
+  port can be 2K x 9, so 32 of them, 5% of the part, hold the tape a cell each: no shared rows, no
+  restarts, and `MUL`'s pair rule back to five bits of the offsets. That is the first try above, which
+  was 0.37% faster than this one on `mandel.b` and 0.85% on `factor.b`, in the cosimulator, over the same
+  20 million instructions.
+- With one clock on both ports, a read meeting a write to the same address returns the old contents
+  when the writing port is `READ_FIRST`; in `WRITE_FIRST` or `NO_CHANGE` only the bytes being written
+  read as invalid, and the RAM's contents are never corrupted (PG058 v7.3, "Collision Behavior", which
+  covers the 7 series). The Xilinx `RAMB18E1` simulation model, run under Icarus with one clock, a 2K x 18
+  port reading a row while the other wrote one of its bytes, did the same. So two cells to a row would
+  need no restart there either, in `READ_FIRST`.
+- Vivado's synthesis guide gives byte-write block RAM as portable RTL to infer, so a RAM of a cell
+  each should need no board version; that is untried, since Vivado has not run on this design.
+
+What carries over is the rest: the whole line read for `F`, the second read port taking any RAM the
+first does not need, and the clearing after reset. Whether the BRAM's own output register or one in
+the fabric makes the second edge is for that part's timing to decide.
 
 ### SDRAM
 
@@ -432,7 +499,7 @@ pytest -n auto --full                 # also long.b and mandel.b, about 40 minut
 pytest -n auto --mutation             # broken designs must be caught, 4 minutes
 pytest --board                        # the real board, from build/yadan/yadan.bit; needs TD_HOME and pyserial
 pytest --board --flash                # also programs the user flash, which wears out, so only on request
-pytest -k "evict and seed_5"          # one test by name
+pytest -k "clash and seed_5"          # one test by name
 tools/sdram_sweep.py phase            # measure the SDRAM's clock window on the board
 ```
 
@@ -440,12 +507,12 @@ The cycle counts of the real programs end up in `build/hw-test/cycles.json`.
 
 **Cosimulation** runs the core in lock step with `libbrainfunk`. At every retire it compares
 pc, next pc, `base_ptr`, the write address and data, and output; at the end it compares the
-whole tape, through the data cache. `tb/sdram_model.sv` stops the simulation on any command or
+whole tape. `tb/sdram_model.sv` stops the simulation on any command or
 timing the part would not accept. `brainfunk -m hex` produces the image, and the interpreter loads
 the same file with `load_bincode`, so the encoder and decoder are covered too. Input stalls and output
-backpressure can be randomized with `--stall`. `--evict` runs images that jump between cells a
-whole cache size apart: nothing in the test corpus evicts a dirty line, so nothing else tests
-write-back.
+backpressure can be randomized with `--stall`. `--clash` runs images that keep a few rows of a few of
+the tape's RAMs busy, so that reads meet writes to the other cell of their row and restart, and `MUL`s
+take cells that share a RAM: the corpus seldom does either, so nothing else tests them.
 
 **The loader** is tested on its own with the controller and SDRAM model, `tb/loader_tb.sv`: images
 that copy from the line being filled, overlapping themselves, across lines, and from up to 65535 words
@@ -461,13 +528,15 @@ off, and a trap.
 
 **Formal** checks the core against abstract memories: two tape cells and one instruction word,
 at addresses the solver picks, behave like real memory with its latency, and every other read
-returns anything. The caches' signals are free too, so any access may miss and any stall can
+returns anything. The memories' signals are free too, so any access may miss and any stall can
 happen. So the properties cover every cell and every pair of cells, and words that no compiled
 program contains. They state that whatever reaches `W` is on the program's path and is the word at
 that pc; the pc and `base_ptr` rules; results on architectural cell values, which covers
 forwarding; writes only at retire and at the effective address; sticky halt and trap, exactly on
 illegal words; one I/O byte per instruction, and an end of input that keeps the cell writing it back
-as it was; and no lost output. The caches and controller
+as it was; and no lost output. The tape's zero bits are
+free for a cell whose row meets a write, so `F` never relying on such a read is proved too. The cache,
+the tape and the controller
 are not covered by formal, only by cosimulation.
 
 The proof is unbounded: k-induction over `formal/core_invariants.svh`, which says how every stage of
@@ -479,7 +548,7 @@ which every cell it lands on is known to be non-zero, with each read in flight s
 before left off. With those, three steps of induction prove the properties for every run, of any
 length, from reset.
 
-It runs at two sizes, both with every cache signal free and with `F` and I/O: 16 cells in lines of
+It runs at two sizes, both with every memory signal free and with `F` and I/O: 16 cells in lines of
 4, strides up to 3; and lines of 8, strides up to 7. Two lines are not enough, because a backward
 scan going forward a line looks the same. `prove` and `prove_lines` replace the multiplier with an
 XOR on both sides, and `prove_multiplier` keeps the real one. With Bitwuzla they take under a minute; yices took four times as long.
@@ -553,7 +622,7 @@ What happens when:
 | UART Break, 100 ms or longer | Whatever is going on, take a command at the loader's speed |
 | UART Break, 10 to 100 ms | Turn framing on, and answer with the image's flags |
 | UART Break, 1 to 10 ms | The end of input, after every byte sent before it |
-| Any restart | Clear the tape and caches, turn framing off, then wait about 200 ms so the first output is not lost |
+| Any restart | Clear the tape and the instruction cache, turn framing off, then wait about 200 ms so the first output is not lost |
 
 Closing the port only drops RTS with `HUPCL` set. minicom clears it, and that outlives the port being
 closed, so no terminal restarts the program afterwards. `stty -F <port> hupcl` before connecting puts

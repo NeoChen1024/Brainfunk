@@ -2,7 +2,7 @@
 from conftest import BRAINFUNK, ROOT, assemble_text, run
 
 SOURCES = ["tb/uart_tb.sv", "tb/spi_flash_model.sv", "rtl/board/yadan_top.sv", "rtl/board/yadan_pll.sv", "rtl/uart.sv",
-           "rtl/loader.sv", "rtl/flash.sv", "rtl/brainfunk_system.sv", "rtl/brainfunk_soc.sv", "rtl/sdram_memory.sv", "rtl/brainfunk_cache.sv", "rtl/sdram_ctrl.sv",
+           "rtl/loader.sv", "rtl/flash.sv", "rtl/brainfunk_system.sv", "rtl/brainfunk_soc.sv", "rtl/sdram_memory.sv", "rtl/brainfunk_cache.sv", "rtl/brainfunk_tape.sv", "rtl/tape_ram.sv", "rtl/sdram_ctrl.sv",
            "tb/sdram_model.sv", "rtl/brainfunk_mem.sv", "rtl/brainfunk_core.sv", "rtl/brainfunk_predict.sv"]
 
 # The loop is skipped, and is only there so that the loader copies from lines it has written already.

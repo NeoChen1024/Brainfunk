@@ -1,5 +1,6 @@
-// Brainfunk core and its caches, in front of a line memory: whatever a board has, behind a controller
-// that moves 8-word lines one at a time. brainfunk_soc_sdram puts the EG4S20's SDRAM there.
+// Brainfunk core, its instruction cache and its tape, in front of a line memory for the code: whatever a
+// board has, behind a controller that moves 8-word lines one at a time. brainfunk_soc_sdram puts the
+// EG4S20's SDRAM there. The tape is on chip (brainfunk_tape.sv), and never goes to the line memory.
 //
 // The memory's side of the port, which sdram_ctrl keeps to:
 //   - mem_ready rises once the memory can take requests, and stays high.
@@ -9,11 +10,10 @@
 //            word goes to whoever made the latest read request.
 //   - write: mem_wr_fetch is then high 8 times, and word k of the line is on mem_wr_data three
 //            cycles after the k-th of them.
-//   - mem_req_line is 18 bits: the top one picks the tape (1) or code (0), the rest the line in it.
+//   - mem_req_line is 18 bits, the line. The code is in the bottom half; the loader may use the rest.
 module brainfunk_soc #(
     parameter int IMEM_ADDR_WIDTH = 20,
-    parameter int DMEM_ADDR_WIDTH = 16,
-    parameter bit CLEAR_TAPE_ON_RESET = 1'b0
+    parameter int DMEM_ADDR_WIDTH = 16
 ) (
     input  logic       clk,
     input  logic       rst,
@@ -67,10 +67,10 @@ module brainfunk_soc #(
     logic                       imem_en, imem_hit, imem_miss, imem_hold, imem_refetch;
     logic [IMEM_ADDR_WIDTH-1:0] imem_addr, imem_miss_addr;
     logic [31:0]                imem_rdata;
-    logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr, dmem_miss_addr;
+    logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr, dmem_waddr;
     logic [7:0]                 dmem_rdata, dmem_wdata;
-    logic                       dmem_we, dmem_hit, dmem_miss, dmem_busy;
-    logic [31:0]                dmem_zero, dmem_ztable;
+    logic                       dmem_we, dmem_hit, dmem_busy;
+    logic [31:0]                dmem_zero;
     logic                       dmem_hit_both;
     logic [31:0]                dmem_bank2;
     logic [DMEM_ADDR_WIDTH-1:0] dmem_raddr2;
@@ -89,7 +89,7 @@ module brainfunk_soc #(
     assign dmem_wdata_o = dmem_wdata;
 `endif
 
-    // ---- the line memory: code in the bottom half, tape in the top half ----
+    // ---- the line memory: code ----
     logic        req_valid, req_write, req_ready, rd_valid, wr_fetch;
     logic [17:0] req_line;
     logic [31:0] rd_data, wr_data;
@@ -102,34 +102,25 @@ module brainfunk_soc #(
     assign wr_fetch      = mem_wr_fetch;
     assign mem_wr_data   = wr_data;
 
-    // One line at a time. The data cache goes first, because it holds the whole core up, and
-    // the owner of a request gets its read data.
-    logic        i_req_valid, i_req_ready, d_req_valid, d_req_write, d_req_ready, i_owns_read;
-    logic [17:0] i_req_line, d_req_line;
-    logic        cache_rst, load_req_active, load_owns_read = 1'b0;
-    logic [31:0] d_wr_data;
+    // One line at a time, the loader's first; the owner of a read request gets its data. Only the
+    // loader writes.
+    logic        i_req_valid, i_req_ready;
+    logic [17:0] i_req_line;
+    logic        cache_rst, load_owns_read = 1'b0;
     assign cache_rst = rst || !mem_ready;
 
-    // Write data comes after the request, so the data path needs to remember whose it was.
-    always_ff @(posedge clk) begin
-        if (req_ready && req_valid) load_req_active <= load_req_valid;
-    end
-
-    assign req_valid      = load_req_valid || d_req_valid || i_req_valid;
-    assign req_write      = load_req_valid ? load_req_write : d_req_valid && d_req_write;
-    assign req_line       = load_req_valid ? load_req_line : (d_req_valid ? d_req_line : i_req_line);
+    assign req_valid      = load_req_valid || i_req_valid;
+    assign req_write      = load_req_valid && load_req_write;
+    assign req_line       = load_req_valid ? load_req_line : i_req_line;
     assign load_req_ready = req_ready && load_req_valid;
-    assign d_req_ready    = req_ready && !load_req_valid && d_req_valid;
-    assign i_req_ready    = req_ready && !load_req_valid && !d_req_valid;
+    assign i_req_ready    = req_ready && !load_req_valid;
     assign load_wr_fetch  = wr_fetch;
     assign load_rd_valid  = rd_valid && load_owns_read;
     assign load_rd_data   = rd_data;
+    assign wr_data        = load_wr_data;
 
     always_ff @(posedge clk) begin
-        if (req_ready && req_valid && !req_write) begin
-            i_owns_read    <= !load_req_valid && !d_req_valid;
-            load_owns_read <= load_req_valid;
-        end
+        if (req_ready && req_valid && !req_write) load_owns_read <= load_req_valid;
     end
 
     logic i_ready, d_ready, core_rst;
@@ -139,21 +130,17 @@ module brainfunk_soc #(
         .imem_en(imem_en), .imem_addr(imem_addr), .imem_rdata(imem_rdata), .imem_hit(imem_hit),
         .imem_miss(imem_miss), .imem_miss_addr(imem_miss_addr), .imem_hold(imem_hold), .imem_refetch(imem_refetch),
         .req_valid(i_req_valid), .req_line(i_req_line), .req_ready(i_req_ready),
-        .rd_valid(rd_valid && i_owns_read), .rd_data(rd_data)
+        .rd_valid(rd_valid && !load_owns_read), .rd_data(rd_data)
     );
 
-    dcache #(.ADDR_WIDTH(DMEM_ADDR_WIDTH), .CLEAR_TAPE(CLEAR_TAPE_ON_RESET)) dcache (
+    dtape #(.ADDR_WIDTH(DMEM_ADDR_WIDTH)) tape (
         .clk(clk), .rst(cache_rst), .ready(d_ready),
-        .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit), .dmem_zero(dmem_zero), .dmem_ztable(dmem_ztable),
+        .dmem_raddr(dmem_raddr), .dmem_rdata(dmem_rdata), .dmem_hit(dmem_hit), .dmem_zero(dmem_zero),
         .dmem_bank2(dmem_bank2), .dmem_raddr2(dmem_raddr2), .dmem_rdata2(dmem_rdata2), .dmem_hit_both(dmem_hit_both),
-        .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata),
-        .dmem_miss(dmem_miss), .dmem_miss_addr(dmem_miss_addr), .dmem_busy(dmem_busy),
-        .req_valid(d_req_valid), .req_write(d_req_write), .req_line(d_req_line), .req_ready(d_req_ready),
-        .rd_valid(rd_valid && !i_owns_read && !load_owns_read), .rd_data(rd_data), .wr_fetch(wr_fetch), .wr_data(d_wr_data)
+        .dmem_we(dmem_we), .dmem_waddr(dmem_waddr), .dmem_wdata(dmem_wdata), .dmem_busy(dmem_busy)
     );
-    assign wr_data = load_req_active ? load_wr_data : d_wr_data;
 
-    // The core starts once the caches have invalidated themselves.
+    // The core starts once the cache has invalidated itself and the tape is clear.
     always_ff @(posedge clk) core_rst <= cache_rst || !i_ready || !d_ready;
 `ifdef BRAINFUNK_RETIRE_PORT
     assign core_ready = !core_rst;

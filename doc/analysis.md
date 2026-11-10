@@ -98,11 +98,11 @@ inputs.
 ### `issue`
 
 A trace-driven model of in-order cores that issue up to `width` instructions a cycle, from the dual-issue
-study. Its defaults are the scalar core in `rtl/` as it is, caches and SDRAM included; over the first
-two million instructions, it is 0.0% off the cosimulator on `long.b`, 0.1% short on `hanoi.b`, 1.6% on
-`mandel.b` and 1.8% on `fib.b`, and 2.7% over on `LostKng.b`, which waits on the instruction cache, and
-`tests/hw/test_cosim.py` keeps it there. Over 86 programs of the corpus it is 4.1% off on average and 1.5%
-short at the median; 61 are within 5%, and the worst is 23% short.
+study. Its defaults are the scalar core in `rtl/` as it is, its memories included; over the first two
+million instructions, it is 0.0% off the cosimulator on `long.b`, 0.1% short on `hanoi.b`, 1.8% on
+`fib.b` and 2.2% on `mandel.b`, and 2.6% over on `LostKng.b`, which waits on the instruction cache, and
+`tests/hw/test_cosim.py` keeps it there. Over 86 programs of the corpus, with the data cache the core had
+then, it was 4.1% off on average and 1.5% short at the median; 61 were within 5%, and the worst 23% short.
 
 Without `--config` it compares `rtl`, the defaults, with the two designs that tag `rtl-dual-issue` built
 and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual issue`, `width` 2,
@@ -125,7 +125,7 @@ and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual
 | `write_banks` | 0 | two writes in a group are to cells different modulo this; 0 any |
 | `early_second` | true | a branch second in its group may resolve early |
 | `early_store` | true | with `early_cells`, a store of values; false, only the zero bits |
-| `banks` | 32 | cells per line of banks, two cells in one bank of different lines conflicting; 0 none |
+| `banks` | 16 | cells per line of banks: a `MUL`'s two cells, different and equal modulo this, are not read at once, as the core's tape keeps cells 16 apart in one RAM; 0 none |
 | `penalty` | 9 | cycles lost to a misprediction |
 | `steer` | 3 | cycles lost when decode redirects fetch |
 | `scan_base`, `line_cells`, `stride_limit` | 8, 32, 16 | `F` costs a cycle per line it reaches, plus `scan_base`; a stride of `stride_limit` or more goes a cell at a time |
@@ -139,7 +139,7 @@ and doc/rtl.md says why they went: `early resolve`, `early_penalty` 6, and `dual
 | `zero_bits_penalty` | 0 | what a misprediction the zero bits resolve costs, if not `early_penalty` |
 | `early_zero_bits` | true | a branch whose cell is not in the store tests a bit per cell of the whole tape instead, written in order as values are known at X |
 | `predictor` | `rtl` | how branches are guessed, below |
-| `memory` | the core's | the caches and SDRAM, below; `false` or `null` for a memory that always hits |
+| `memory` | the core's | the tape on chip, the instruction cache and SDRAM, below; `false` or `null` for a memory that always hits |
 
 A group closes at a taken branch, a misprediction, and a redirect. The report gives, for each machine,
 `cycles`, `cpi`, `speedup` against the first, `joined` (the share of instructions issued alongside an
@@ -153,7 +153,12 @@ what instructions waited for each cache.
 
 #### Memory
 
-Two direct-mapped caches share an SDRAM that moves a line at a time, as in the core. An instruction
+The core keeps its tape on chip, which never misses, and its code in SDRAM behind a cache. Either can be
+either: `d_on_chip` 0 puts a data cache in front of the tape, as the core had before, and `i_on_chip` 1
+takes the code on chip too. The model does not count the core's restarts of a read that meets a write
+to the other cell of its RAM's row, which cost `mandel.b` about 0.4% (rtl.md).
+
+Caches are direct-mapped and share an SDRAM that moves a line at a time, as in the core. An instruction
 whose word misses waits for its line, which fetch asked for `fetch_lead` + `i_request` cycles after it
 would have fetched the word, and issues `i_resume` cycles after the line's last word. An instruction
 whose cell misses issues again `d_resume` cycles after its line's last word, or `penalty` + 1 cycles
@@ -167,6 +172,7 @@ each within 0.1%.
 
 | Field | Default | Meaning |
 |---|---|---|
+| `d_on_chip`, `i_on_chip` | 1, 0 | 1: the tape, or the code, in block RAM, and never a miss; 0: behind a cache |
 | `i_lines`, `i_words` | 512, 8 | instruction cache lines, and words in a line |
 | `d_lines`, `d_cells` | 512, 32 | data cache lines, and cells in a line |
 | `zero_table` | 1 | 1: F reads a line not in the data cache from the zero table, so it never misses; 0: it misses like any read |
