@@ -52,8 +52,12 @@ function(brainfunk_pytest name)
 endfunction()
 
 set(full)
+set(cosim_timeout 1800)
 if(BRAINFUNK_TEST_FULL)
     set(full --full)
+    # One case, mandel.b at -O0, took 1863 s on its own worker, more than the default for the whole
+    # file (pytest -n 16, every thread of an 8-core, 16-thread Ryzen busy; the file took 1911 s).
+    set(cosim_timeout 3600)
 endif()
 
 brainfunk_pytest(sw.codegen LABEL sw PROCESSORS 8 FILES tests/sw/test_codegen.py)
@@ -98,7 +102,7 @@ if(NOT TARGET cosim)
     return()
 endif()
 
-brainfunk_pytest(hw.cosim LABEL hw PROCESSORS 8 FILES tests/hw/test_cosim.py ARGS ${full})
+brainfunk_pytest(hw.cosim LABEL hw PROCESSORS 8 TIMEOUT ${cosim_timeout} FILES tests/hw/test_cosim.py ARGS ${full})
 brainfunk_pytest(hw.loader LABEL hw PROCESSORS 4 FILES tests/hw/test_loader.py)
 brainfunk_pytest(hw.uart LABEL hw PROCESSORS 2 FILES tests/hw/test_uart_tb.py)
 brainfunk_pytest(formal LABEL formal PROCESSORS 5 FILES tests/hw/test_formal.py)
